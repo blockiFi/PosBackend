@@ -1,0 +1,1063 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\Branch;
+use App\Models\BranchProduct;
+use App\Models\Product;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+
+class BranchProductController extends Controller
+{
+    /**
+     * List all products for a specific branch
+     */
+    public function index(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $branchId = $request->input('branch_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        if (!$branchId) {
+            return response()->json([
+                'message' => 'Branch ID is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Verify branch belongs to business
+        $branch = Branch::where('id', $branchId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        // Get query parameters for filtering
+        $isAvailable = $request->input('is_available');
+        $isFeatured = $request->input('is_featured');
+        $stockStatus = $request->input('stock_status'); // in_stock, low_stock, out_of_stock
+        $search = $request->input('search');
+        $perPage = $request->input('per_page', 15);
+
+        $query = BranchProduct::where('branch_id', $branchId)
+            ->with(['product.category', 'product.business']);
+
+        // Apply filters
+        if ($isAvailable !== null) {
+            $query->where('is_available', filter_var($isAvailable, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($isFeatured !== null) {
+            $query->where('is_featured', filter_var($isFeatured, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($stockStatus) {
+            switch ($stockStatus) {
+                case 'in_stock':
+                    $query->inStock();
+                    break;
+                case 'low_stock':
+                    $query->lowStock();
+                    break;
+                case 'out_of_stock':
+                    $query->where('stock_quantity', '<=', 0)
+                        ->where('allow_backorder', false);
+                    break;
+            }
+        }
+
+        if ($search) {
+            $query->whereHas('product', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('barcode', 'like', "%{$search}%");
+            });
+        }
+
+        $branchProducts = $query->orderBy('display_order')
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        // Transform data
+        $data = $branchProducts->map(function ($branchProduct) {
+            return [
+                'id' => $branchProduct->id,
+                'branch_id' => $branchProduct->branch_id,
+                'product_id' => $branchProduct->product_id,
+                'product' => [
+                    'id' => $branchProduct->product->id,
+                    'name' => $branchProduct->product->name,
+                    'sku' => $branchProduct->product->sku,
+                    'barcode' => $branchProduct->product->barcode,
+                    'image' => $branchProduct->product->image,
+                    'category' => $branchProduct->product->category ? [
+                        'id' => $branchProduct->product->category->id,
+                        'name' => $branchProduct->product->category->name,
+                    ] : null,
+                ],
+                'pricing' => [
+                    'cost_price' => $branchProduct->cost_price,
+                    'selling_price' => $branchProduct->selling_price,
+                    'compare_price' => $branchProduct->compare_price,
+                    'discount_amount' => $branchProduct->discount_amount,
+                    'discount_type' => $branchProduct->discount_type,
+                    'tax_rate' => $branchProduct->tax_rate,
+                    'final_price' => $branchProduct->getFinalPrice(),
+                    'price_with_tax' => $branchProduct->getPriceWithTax(),
+                    'profit_margin' => $branchProduct->getProfitMargin(),
+                ],
+                'inventory' => [
+                    'stock_quantity' => $branchProduct->stock_quantity,
+                    'shelf_quantity' => $branchProduct->shelf_quantity,
+                    'store_quantity' => $branchProduct->store_quantity,
+                    'low_stock_threshold' => $branchProduct->low_stock_threshold,
+                    'allow_backorder' => $branchProduct->allow_backorder,
+                    'reorder_point' => $branchProduct->reorder_point,
+                    'reorder_quantity' => $branchProduct->reorder_quantity,
+                    'is_in_stock' => $branchProduct->isInStock(),
+                    'is_low_stock' => $branchProduct->isLowStock(),
+                    'is_out_of_stock' => $branchProduct->isOutOfStock(),
+                    'needs_reorder' => $branchProduct->needsReorder(),
+                    'shelf_needs_restocking' => $branchProduct->shelfNeedsRestocking(),
+                    'bin_location' => $branchProduct->bin_location,
+                    'shelf_location' => $branchProduct->shelf_location,
+                ],
+                'settings' => [
+                    'is_available' => $branchProduct->is_available,
+                    'is_featured' => $branchProduct->is_featured,
+                    'display_order' => $branchProduct->display_order,
+                ],
+                'branch_meta_data' => $branchProduct->branch_meta_data,
+                'created_at' => $branchProduct->created_at,
+                'updated_at' => $branchProduct->updated_at,
+            ];
+        });
+
+        return response()->json([
+            'data' => $data,
+            'meta' => [
+                'current_page' => $branchProducts->currentPage(),
+                'last_page' => $branchProducts->lastPage(),
+                'per_page' => $branchProducts->perPage(),
+                'total' => $branchProducts->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Add or update a product in a branch
+     */
+    public function store(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'branch_id' => ['required', 'integer', 'exists:branches,id'],
+            'product_id' => ['required', 'integer', 'exists:products,id'],
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
+            'compare_price' => ['nullable', 'numeric', 'min:0'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'discount_type' => ['nullable', 'in:fixed,percentage'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'shelf_quantity' => ['nullable', 'integer', 'min:0'],
+            'store_quantity' => ['nullable', 'integer', 'min:0'],
+            'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
+            'allow_backorder' => ['nullable', 'boolean'],
+            'reorder_point' => ['nullable', 'integer', 'min:0'],
+            'reorder_quantity' => ['nullable', 'integer', 'min:0'],
+            'is_available' => ['nullable', 'boolean'],
+            'is_featured' => ['nullable', 'boolean'],
+            'display_order' => ['nullable', 'integer'],
+            'bin_location' => ['nullable', 'string', 'max:255'],
+            'shelf_location' => ['nullable', 'string', 'max:255'],
+            'branch_meta_data' => ['nullable', 'array'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Verify branch belongs to business
+        $branch = Branch::where('id', $data['branch_id'])
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        // Verify product belongs to business
+        $product = Product::where('id', $data['product_id'])
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$product) {
+            return response()->json(['message' => 'Product not found'], 404);
+        }
+
+        // Check if branch product already exists
+        $branchProduct = BranchProduct::where('branch_id', $data['branch_id'])
+            ->where('product_id', $data['product_id'])
+            ->first();
+
+        if ($branchProduct) {
+            return response()->json([
+                'message' => 'Product already exists in this branch. Use update endpoint to modify.',
+            ], 422);
+        }
+
+        // Calculate total stock from shelf and store quantities
+        $shelfQty = $data['shelf_quantity'] ?? 0;
+        $storeQty = $data['store_quantity'] ?? 0;
+        $totalStock = $shelfQty + $storeQty;
+        
+        // If stock_quantity is provided but not shelf/store, put all on shelf
+        if (isset($data['stock_quantity']) && !isset($data['shelf_quantity']) && !isset($data['store_quantity'])) {
+            $shelfQty = $data['stock_quantity'];
+            $totalStock = $data['stock_quantity'];
+        }
+
+        // Create branch product
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $data['branch_id'],
+            'product_id' => $data['product_id'],
+            'cost_price' => $data['cost_price'] ?? null,
+            'selling_price' => $data['selling_price'] ?? null,
+            'compare_price' => $data['compare_price'] ?? null,
+            'discount_amount' => $data['discount_amount'] ?? null,
+            'discount_type' => $data['discount_type'] ?? null,
+            'tax_rate' => $data['tax_rate'] ?? null,
+            'stock_quantity' => $totalStock,
+            'shelf_quantity' => $shelfQty,
+            'store_quantity' => $storeQty,
+            'low_stock_threshold' => $data['low_stock_threshold'] ?? null,
+            'allow_backorder' => $data['allow_backorder'] ?? false,
+            'reorder_point' => $data['reorder_point'] ?? null,
+            'reorder_quantity' => $data['reorder_quantity'] ?? null,
+            'is_available' => $data['is_available'] ?? true,
+            'is_featured' => $data['is_featured'] ?? false,
+            'display_order' => $data['display_order'] ?? 0,
+            'bin_location' => $data['bin_location'] ?? null,
+            'shelf_location' => $data['shelf_location'] ?? null,
+            'branch_meta_data' => $data['branch_meta_data'] ?? null,
+        ]);
+
+        $branchProduct->load('product.category');
+
+        return response()->json([
+            'message' => 'Product added to branch successfully',
+            'data' => $this->transformBranchProduct($branchProduct),
+        ], 201);
+    }
+
+    /**
+     * Get a specific branch product
+     */
+    public function show(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with(['product.category', 'branch'])
+            ->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        return response()->json([
+            'data' => $this->transformBranchProduct($branchProduct),
+        ]);
+    }
+
+    /**
+     * Update a branch product
+     */
+    public function update(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
+            'compare_price' => ['nullable', 'numeric', 'min:0'],
+            'discount_amount' => ['nullable', 'numeric', 'min:0'],
+            'discount_type' => ['nullable', 'in:fixed,percentage'],
+            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'stock_quantity' => ['nullable', 'integer', 'min:0'],
+            'shelf_quantity' => ['nullable', 'integer', 'min:0'],
+            'store_quantity' => ['nullable', 'integer', 'min:0'],
+            'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
+            'allow_backorder' => ['nullable', 'boolean'],
+            'reorder_point' => ['nullable', 'integer', 'min:0'],
+            'reorder_quantity' => ['nullable', 'integer', 'min:0'],
+            'is_available' => ['nullable', 'boolean'],
+            'is_featured' => ['nullable', 'boolean'],
+            'display_order' => ['nullable', 'integer'],
+            'bin_location' => ['nullable', 'string', 'max:255'],
+            'shelf_location' => ['nullable', 'string', 'max:255'],
+            'branch_meta_data' => ['nullable', 'array'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Update only provided fields
+        $updateData = [];
+        $fillableFields = [
+            'cost_price', 'selling_price', 'compare_price',
+            'discount_amount', 'discount_type', 'tax_rate',
+            'stock_quantity', 'shelf_quantity', 'store_quantity',
+            'low_stock_threshold', 'allow_backorder',
+            'reorder_point', 'reorder_quantity',
+            'is_available', 'is_featured', 'display_order',
+            'bin_location', 'shelf_location', 'branch_meta_data'
+        ];
+
+        foreach ($fillableFields as $field) {
+            if (array_key_exists($field, $data)) {
+                $updateData[$field] = $data[$field];
+            }
+        }
+
+        // If shelf or store quantities are updated, recalculate total stock
+        if (isset($updateData['shelf_quantity']) || isset($updateData['store_quantity'])) {
+            $newShelf = $updateData['shelf_quantity'] ?? $branchProduct->shelf_quantity;
+            $newStore = $updateData['store_quantity'] ?? $branchProduct->store_quantity;
+            $updateData['stock_quantity'] = $newShelf + $newStore;
+        }
+
+        $branchProduct->update($updateData);
+        $branchProduct->load('product.category');
+
+        return response()->json([
+            'message' => 'Branch product updated successfully',
+            'data' => $this->transformBranchProduct($branchProduct),
+        ]);
+    }
+
+    /**
+     * Delete a branch product (remove product from branch)
+     */
+    public function destroy(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $branchProduct->delete();
+
+        return response()->json([
+            'message' => 'Product removed from branch successfully',
+        ]);
+    }
+
+    /**
+     * Update stock quantity for a branch product
+     */
+    public function updateStock(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'quantity' => ['required', 'integer'],
+            'operation' => ['required', 'in:add,subtract,set'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $previousQuantity = $branchProduct->stock_quantity;
+        $branchProduct->updateStock($data['quantity'], $data['operation']);
+        $branchProduct->load('product.category');
+
+        return response()->json([
+            'message' => 'Stock updated successfully',
+            'data' => [
+                'previous_quantity' => $previousQuantity,
+                'new_quantity' => $branchProduct->stock_quantity,
+                'operation' => $data['operation'],
+                'branch_product' => $this->transformBranchProduct($branchProduct),
+            ],
+        ]);
+    }
+
+    /**
+     * Get stock summary for a branch
+     */
+    public function stockSummary(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $branchId = $request->input('branch_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        if (!$branchId) {
+            return response()->json([
+                'message' => 'Branch ID is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Verify branch belongs to business
+        $branch = Branch::where('id', $branchId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        $totalProducts = BranchProduct::where('branch_id', $branchId)->count();
+        $inStockProducts = BranchProduct::where('branch_id', $branchId)
+            ->inStock()
+            ->count();
+        $lowStockProducts = BranchProduct::where('branch_id', $branchId)
+            ->lowStock()
+            ->count();
+        $outOfStockProducts = BranchProduct::where('branch_id', $branchId)
+            ->where('stock_quantity', '<=', 0)
+            ->where('allow_backorder', false)
+            ->count();
+        $needsReorderProducts = BranchProduct::where('branch_id', $branchId)
+            ->whereNotNull('reorder_point')
+            ->whereColumn('stock_quantity', '<=', 'reorder_point')
+            ->count();
+
+        $totalInventoryValue = BranchProduct::where('branch_id', $branchId)
+            ->get()
+            ->sum(function ($bp) {
+                return $bp->getEffectiveCostPrice() * $bp->stock_quantity;
+            });
+
+        $totalRetailValue = BranchProduct::where('branch_id', $branchId)
+            ->get()
+            ->sum(function ($bp) {
+                return $bp->getEffectiveSellingPrice() * $bp->stock_quantity;
+            });
+
+        return response()->json([
+            'data' => [
+                'branch_id' => $branchId,
+                'branch_name' => $branch->name,
+                'summary' => [
+                    'total_products' => $totalProducts,
+                    'in_stock' => $inStockProducts,
+                    'low_stock' => $lowStockProducts,
+                    'out_of_stock' => $outOfStockProducts,
+                    'needs_reorder' => $needsReorderProducts,
+                ],
+                'valuation' => [
+                    'total_inventory_value' => round($totalInventoryValue, 2),
+                    'total_retail_value' => round($totalRetailValue, 2),
+                    'potential_profit' => round($totalRetailValue - $totalInventoryValue, 2),
+                ],
+            ],
+        ]);
+    }
+
+    /**
+     * Bulk update branch products
+     */
+    public function bulkUpdate(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'updates' => ['required', 'array'],
+            'updates.*.id' => ['required', 'integer', 'exists:branch_products,id'],
+            'updates.*.data' => ['required', 'array'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $updated = [];
+        $failed = [];
+
+        foreach ($data['updates'] as $update) {
+            $branchProduct = BranchProduct::with('branch')->find($update['id']);
+
+            if (!$branchProduct || $branchProduct->branch->business_id != $businessId) {
+                $failed[] = [
+                    'id' => $update['id'],
+                    'reason' => 'Not found or access denied',
+                ];
+                continue;
+            }
+
+            try {
+                $branchProduct->update($update['data']);
+                $updated[] = $update['id'];
+            } catch (\Exception $e) {
+                $failed[] = [
+                    'id' => $update['id'],
+                    'reason' => $e->getMessage(),
+                ];
+            }
+        }
+
+        return response()->json([
+            'message' => 'Bulk update completed',
+            'data' => [
+                'updated' => $updated,
+                'failed' => $failed,
+                'total_attempted' => count($data['updates']),
+                'successful' => count($updated),
+                'failed_count' => count($failed),
+            ],
+        ]);
+    }
+
+    /**
+     * Get branch products by category ID (includes all child and descendant categories)
+     */
+    public function getByCategory(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $categoryId = $request->input('category_id');
+        $branchId = $request->input('branch_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        if (!$categoryId) {
+            return response()->json([
+                'message' => 'Category ID is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Get the category and verify it belongs to the business
+        $category = \App\Models\ProductCategory::where('id', $categoryId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$category) {
+            return response()->json(['message' => 'Category not found'], 404);
+        }
+
+        // Get all descendant category IDs recursively
+        $categoryIds = $this->getAllDescendantCategoryIds($category);
+        
+        // Include the parent category itself
+        array_unshift($categoryIds, $category->id);
+
+        // Query parameters for filtering
+        $isAvailable = $request->input('is_available');
+        $isFeatured = $request->input('is_featured');
+        $stockStatus = $request->input('stock_status');
+        $search = $request->input('search');
+        $perPage = $request->input('per_page', 15);
+
+        // Build query for branch products
+        $query = BranchProduct::with(['product.category', 'product.business'])
+            ->whereHas('product', function ($q) use ($categoryIds) {
+                $q->whereIn('category_id', $categoryIds);
+            });
+
+        // Filter by branch if provided
+        if ($branchId) {
+            $branch = Branch::where('id', $branchId)
+                ->where('business_id', $businessId)
+                ->first();
+
+            if (!$branch) {
+                return response()->json(['message' => 'Branch not found'], 404);
+            }
+
+            $query->where('branch_id', $branchId);
+        } else {
+            // If no branch specified, get products from all branches in the business
+            $query->whereHas('branch', function ($q) use ($businessId) {
+                $q->where('business_id', $businessId);
+            });
+        }
+
+        // Apply filters
+        if ($isAvailable !== null) {
+            $query->where('is_available', filter_var($isAvailable, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($isFeatured !== null) {
+            $query->where('is_featured', filter_var($isFeatured, FILTER_VALIDATE_BOOLEAN));
+        }
+
+        if ($stockStatus) {
+            switch ($stockStatus) {
+                case 'in_stock':
+                    $query->inStock();
+                    break;
+                case 'low_stock':
+                    $query->lowStock();
+                    break;
+                case 'out_of_stock':
+                    $query->where('stock_quantity', '<=', 0)
+                        ->where('allow_backorder', false);
+                    break;
+            }
+        }
+
+        if ($search) {
+            $query->whereHas('product', function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('sku', 'like', "%{$search}%")
+                    ->orWhere('barcode', 'like', "%{$search}%");
+            });
+        }
+
+        $branchProducts = $query->orderBy('display_order')
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage);
+
+        // Transform data
+        $data = $branchProducts->map(function ($branchProduct) {
+            return $this->transformBranchProduct($branchProduct);
+        });
+
+        return response()->json([
+            'message' => 'Branch products retrieved successfully',
+            'category' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'breadcrumb' => $category->getBreadcrumb(),
+            ],
+            'included_categories' => count($categoryIds),
+            'data' => $data,
+            'meta' => [
+                'current_page' => $branchProducts->currentPage(),
+                'last_page' => $branchProducts->lastPage(),
+                'per_page' => $branchProducts->perPage(),
+                'total' => $branchProducts->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Recursively get all descendant category IDs
+     */
+    private function getAllDescendantCategoryIds(\App\Models\ProductCategory $category): array
+    {
+        $categoryIds = [];
+        
+        $children = $category->children;
+        
+        foreach ($children as $child) {
+            $categoryIds[] = $child->id;
+            
+            // Recursively get descendants of this child
+            $childDescendants = $this->getAllDescendantCategoryIds($child);
+            $categoryIds = array_merge($categoryIds, $childDescendants);
+        }
+        
+        return $categoryIds;
+    }
+
+    /**
+     * Move stock from store to shelf
+     */
+    public function moveToShelf(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'quantity' => ['required', 'integer', 'min:1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if ($data['quantity'] > $branchProduct->store_quantity) {
+            return response()->json([
+                'message' => 'Insufficient quantity in store',
+                'available_in_store' => $branchProduct->store_quantity,
+            ], 422);
+        }
+
+        $previousShelf = $branchProduct->shelf_quantity;
+        $previousStore = $branchProduct->store_quantity;
+
+        $branchProduct->moveToShelf($data['quantity']);
+        $branchProduct->load('product.category');
+
+        return response()->json([
+            'message' => 'Stock moved to shelf successfully',
+            'data' => [
+                'quantity_moved' => $data['quantity'],
+                'previous_shelf_quantity' => $previousShelf,
+                'new_shelf_quantity' => $branchProduct->shelf_quantity,
+                'previous_store_quantity' => $previousStore,
+                'new_store_quantity' => $branchProduct->store_quantity,
+                'branch_product' => $this->transformBranchProduct($branchProduct),
+            ],
+        ]);
+    }
+
+    /**
+     * Move stock from shelf to store
+     */
+    public function moveToStore(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        // Verify branch belongs to business
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'quantity' => ['required', 'integer', 'min:1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if ($data['quantity'] > $branchProduct->shelf_quantity) {
+            return response()->json([
+                'message' => 'Insufficient quantity on shelf',
+                'available_on_shelf' => $branchProduct->shelf_quantity,
+            ], 422);
+        }
+
+        $previousShelf = $branchProduct->shelf_quantity;
+        $previousStore = $branchProduct->store_quantity;
+
+        $branchProduct->moveToStore($data['quantity']);
+        $branchProduct->load('product.category');
+
+        return response()->json([
+            'message' => 'Stock moved to store successfully',
+            'data' => [
+                'quantity_moved' => $data['quantity'],
+                'previous_shelf_quantity' => $previousShelf,
+                'new_shelf_quantity' => $branchProduct->shelf_quantity,
+                'previous_store_quantity' => $previousStore,
+                'new_store_quantity' => $branchProduct->store_quantity,
+                'branch_product' => $this->transformBranchProduct($branchProduct),
+            ],
+        ]);
+    }
+
+    /**
+     * Transform branch product for response
+     */
+    private function transformBranchProduct(BranchProduct $branchProduct): array
+    {
+        return [
+            'id' => $branchProduct->id,
+            'branch_id' => $branchProduct->branch_id,
+            'product_id' => $branchProduct->product_id,
+            'product' => [
+                'id' => $branchProduct->product->id,
+                'name' => $branchProduct->product->name,
+                'sku' => $branchProduct->product->sku,
+                'barcode' => $branchProduct->product->barcode,
+                'image' => $branchProduct->product->image,
+                'category' => $branchProduct->product->category ? [
+                    'id' => $branchProduct->product->category->id,
+                    'name' => $branchProduct->product->category->name,
+                ] : null,
+            ],
+            'pricing' => [
+                'cost_price' => $branchProduct->cost_price,
+                'selling_price' => $branchProduct->selling_price,
+                'compare_price' => $branchProduct->compare_price,
+                'discount_amount' => $branchProduct->discount_amount,
+                'discount_type' => $branchProduct->discount_type,
+                'tax_rate' => $branchProduct->tax_rate,
+                'final_price' => $branchProduct->getFinalPrice(),
+                'price_with_tax' => $branchProduct->getPriceWithTax(),
+                'profit_margin' => $branchProduct->getProfitMargin(),
+            ],
+            'inventory' => [
+                'stock_quantity' => $branchProduct->stock_quantity,
+                'shelf_quantity' => $branchProduct->shelf_quantity,
+                'store_quantity' => $branchProduct->store_quantity,
+                'low_stock_threshold' => $branchProduct->low_stock_threshold,
+                'allow_backorder' => $branchProduct->allow_backorder,
+                'reorder_point' => $branchProduct->reorder_point,
+                'reorder_quantity' => $branchProduct->reorder_quantity,
+                'is_in_stock' => $branchProduct->isInStock(),
+                'is_low_stock' => $branchProduct->isLowStock(),
+                'is_out_of_stock' => $branchProduct->isOutOfStock(),
+                'needs_reorder' => $branchProduct->needsReorder(),
+                'shelf_needs_restocking' => $branchProduct->shelfNeedsRestocking(),
+                'bin_location' => $branchProduct->bin_location,
+                'shelf_location' => $branchProduct->shelf_location,
+            ],
+            'settings' => [
+                'is_available' => $branchProduct->is_available,
+                'is_featured' => $branchProduct->is_featured,
+                'display_order' => $branchProduct->display_order,
+            ],
+            'branch_meta_data' => $branchProduct->branch_meta_data,
+            'created_at' => $branchProduct->created_at,
+            'updated_at' => $branchProduct->updated_at,
+        ];
+    }
+}

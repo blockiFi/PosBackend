@@ -1,0 +1,3839 @@
+{
+	"info": {
+		"_postman_id": "pos-backend-complete-v2",
+		"name": "POS Backend Complete API v2",
+		"description": "Complete API collection for POS Backend system with all controllers and endpoints accurately documented",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://127.0.0.1:8000/api",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "business_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "branch_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "device_id",
+			"value": "device-{{$randomUUID}}",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Authentication",
+			"item": [
+				{
+					"name": "Register",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('auth_token', response.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"Password123!\",\n  \"password_confirmation\": \"Password123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/register",
+							"host": ["{{base_url}}"],
+							"path": ["register"]
+						},
+						"description": "Register a new user account. Returns user data and authentication token."
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('auth_token', response.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"password\": \"Password123!\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/login",
+							"host": ["{{base_url}}"],
+							"path": ["login"]
+						},
+						"description": "Login with email and password. Returns user data and authentication token."
+					},
+					"response": []
+				},
+				{
+					"name": "PIN Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('auth_token', response.token);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"email\": \"john.doe@example.com\",\n  \"pin\": \"1234\",\n  \"business_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/pin-login",
+							"host": ["{{base_url}}"],
+							"path": ["pin-login"]
+						},
+						"description": "Login using PIN code for quick access. Requires email, 4-digit PIN, and business_id."
+					},
+					"response": []
+				},
+				{
+					"name": "Set PIN",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{auth_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": 1,\n  \"pin\": \"1234\",\n  \"pin_confirmation\": \"1234\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/pin/set",
+							"host": ["{{base_url}}"],
+							"path": ["pin", "set"]
+						},
+						"description": "Set a 4-digit PIN for quick login to a specific business."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove PIN",
+					"request": {
+						"auth": {
+							"type": "bearer",
+							"bearer": [
+								{
+									"key": "token",
+									"value": "{{auth_token}}",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/pin/remove",
+							"host": ["{{base_url}}"],
+							"path": ["pin", "remove"]
+						},
+						"description": "Remove PIN for a specific business."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "2. Business Management",
+			"item": [
+				{
+					"name": "List Businesses",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/businesses",
+							"host": ["{{base_url}}"],
+							"path": ["businesses"]
+						},
+						"description": "Get all businesses the authenticated user has access to."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Business",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('business_id', response.data.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"My Business\",\n  \"email\": \"business@example.com\",\n  \"phone\": \"+1234567890\",\n  \"address\": \"123 Business St\",\n  \"registration_number\": \"REG123456\",\n  \"tax_number\": \"TAX789012\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/businesses",
+							"host": ["{{base_url}}"],
+							"path": ["businesses"]
+						},
+						"description": "Create a new business. The creator automatically becomes the owner with full permissions."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Business",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["businesses", "{{business_id}}"]
+						},
+						"description": "Get details of a specific business."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Business",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Business Name\",\n  \"email\": \"updated@example.com\",\n  \"phone\": \"+1234567890\",\n  \"address\": \"456 New Address\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["businesses", "{{business_id}}"]
+						},
+						"description": "Update business information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Business",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["businesses", "{{business_id}}"]
+						},
+						"description": "Delete a business (soft delete)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "3. Branch Management",
+			"item": [
+				{
+					"name": "List Branches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branches",
+							"host": ["{{base_url}}"],
+							"path": ["branches"]
+						},
+						"description": "Get all branches for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Branch",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    const response = pm.response.json();",
+									"    pm.collectionVariables.set('branch_id', response.data.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"name\": \"Main Branch\",\n  \"code\": \"BR001\",\n  \"address\": \"123 Main St\",\n  \"phone\": \"+1234567890\",\n  \"email\": \"branch@example.com\",\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branches",
+							"host": ["{{base_url}}"],
+							"path": ["branches"]
+						},
+						"description": "Create a new branch for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Branch",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branches/{{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["branches", "{{branch_id}}"]
+						},
+						"description": "Get details of a specific branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Branch",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Branch Name\",\n  \"address\": \"456 Updated Address\",\n  \"phone\": \"+0987654321\",\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branches/{{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["branches", "{{branch_id}}"]
+						},
+						"description": "Update branch information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Branch",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branches/{{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["branches", "{{branch_id}}"]
+						},
+						"description": "Delete a branch (soft delete)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "4. Roles & Permissions",
+			"item": [
+				{
+					"name": "List Permissions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/permissions",
+							"host": ["{{base_url}}"],
+							"path": ["permissions"]
+						},
+						"description": "Get all available system permissions."
+					},
+					"response": []
+				},
+				{
+					"name": "List Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/roles",
+							"host": ["{{base_url}}"],
+							"path": ["roles"]
+						},
+						"description": "Get all roles for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"name\": \"Cashier\",\n  \"description\": \"Can process sales and manage inventory\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles",
+							"host": ["{{base_url}}"],
+							"path": ["roles"]
+						},
+						"description": "Create a new role for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Role",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/roles/1",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "1"]
+						},
+						"description": "Get role details with permissions."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Role",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Senior Cashier\",\n  \"description\": \"Senior cashier with additional privileges\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/1",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "1"]
+						},
+						"description": "Update role information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Role",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/roles/1",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "1"]
+						},
+						"description": "Delete a role."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Permission to Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role_id\": 1,\n  \"permission_id\": 5\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/addpermission",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "addpermission"]
+						},
+						"description": "Add a permission to a role."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Permission from Role",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"role_id\": 1,\n  \"permission_id\": 5\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/removepermission",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "removepermission"]
+						},
+						"description": "Remove a permission from a role."
+					},
+					"response": []
+				},
+				{
+					"name": "Assign Role to User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": 1,\n  \"role_id\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/assign",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "assign"]
+						},
+						"description": "Assign a role to a user in the business context."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Role from User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"user_id\": 1,\n  \"role_id\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/roles/remove",
+							"host": ["{{base_url}}"],
+							"path": ["roles", "remove"]
+						},
+						"description": "Remove a role from a user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/users/1/roles",
+							"host": ["{{base_url}}"],
+							"path": ["users", "1", "roles"]
+						},
+						"description": "Get all roles assigned to a user."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "5. User Business Management",
+			"item": [
+				{
+					"name": "List Business Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/business-users",
+							"host": ["{{base_url}}"],
+							"path": ["business-users"]
+						},
+						"description": "Get all users associated with the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Add User to Business",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"email\": \"employee@example.com\",\n  \"branch_ids\": [1, 2],\n  \"role_id\": 2,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/business-users",
+							"host": ["{{base_url}}"],
+							"path": ["business-users"]
+						},
+						"description": "Add an existing user to the business or invite a new user."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Business User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/business-users/1",
+							"host": ["{{base_url}}"],
+							"path": ["business-users", "1"]
+						},
+						"description": "Get user details within business context."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Business User",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"branch_ids\": [1, 2, 3],\n  \"role_id\": 3,\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/business-users/1",
+							"host": ["{{base_url}}"],
+							"path": ["business-users", "1"]
+						},
+						"description": "Update user's access, branches, or role within the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove User from Business",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/business-users/1",
+							"host": ["{{base_url}}"],
+							"path": ["business-users", "1"]
+						},
+						"description": "Remove user's access from the business."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "6. Product Categories",
+			"item": [
+				{
+					"name": "List Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories?include_products=true",
+							"host": ["{{base_url}}"],
+							"path": ["categories"],
+							"query": [
+								{
+									"key": "include_products",
+									"value": "true",
+									"description": "Include products in each category"
+								},
+								{
+									"key": "parent_id",
+									"value": "1",
+									"disabled": true,
+									"description": "Filter by parent category"
+								}
+							]
+						},
+						"description": "Get all product categories for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"name\": \"Electronics\",\n  \"description\": \"Electronic devices and accessories\",\n  \"parent_id\": null\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/categories",
+							"host": ["{{base_url}}"],
+							"path": ["categories"]
+						},
+						"description": "Create a new product category. Can be hierarchical with parent_id."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Category",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["categories", "1"]
+						},
+						"description": "Get category details with products."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Category",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Category Name\",\n  \"description\": \"Updated description\",\n  \"parent_id\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["categories", "1"]
+						},
+						"description": "Update category information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Category",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories/1",
+							"host": ["{{base_url}}"],
+							"path": ["categories", "1"]
+						},
+						"description": "Delete a category (soft delete)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Category Breadcrumb",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/categories/1/breadcrumb",
+							"host": ["{{base_url}}"],
+							"path": ["categories", "1", "breadcrumb"]
+						},
+						"description": "Get category hierarchy breadcrumb."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "7. Products",
+			"item": [
+				{
+					"name": "List Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products?category_id=1&search=laptop&per_page=20",
+							"host": ["{{base_url}}"],
+							"path": ["products"],
+							"query": [
+								{
+									"key": "category_id",
+									"value": "1",
+									"description": "Filter by category"
+								},
+								{
+									"key": "search",
+									"value": "laptop",
+									"description": "Search by name, SKU, or barcode"
+								},
+								{
+									"key": "per_page",
+									"value": "20",
+									"description": "Items per page"
+								},
+								{
+									"key": "stock_tracking",
+									"value": "1",
+									"disabled": true,
+									"description": "Filter by stock tracking status"
+								}
+							]
+						},
+						"description": "Get all products for the business with optional filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"category_id\": 1,\n  \"name\": \"Laptop Dell XPS 15\",\n  \"sku\": \"DELL-XPS-15\",\n  \"barcode\": \"1234567890123\",\n  \"description\": \"High-performance laptop\",\n  \"base_selling_price\": 1299.99,\n  \"base_cost_price\": 999.99,\n  \"stock_tracking\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["products"]
+						},
+						"description": "Create a new product in the catalog."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1"]
+						},
+						"description": "Get product details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Updated Product Name\",\n  \"description\": \"Updated description\",\n  \"base_selling_price\": 1399.99,\n  \"base_cost_price\": 1099.99\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1"]
+						},
+						"description": "Update product information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1"]
+						},
+						"description": "Delete a product (soft delete)."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Product to Branch",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"branch_id\": {{branch_id}},\n  \"selling_price\": 1499.99,\n  \"cost_price\": 1199.99\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products/1/branches",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "branches"]
+						},
+						"description": "Add product to a branch with branch-specific pricing."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove Product from Branch",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"branch_id\": {{branch_id}}\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products/1/branches",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "branches"]
+						},
+						"description": "Remove product from a branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product Price",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"base_selling_price\": 1599.99,\n  \"base_cost_price\": 1299.99\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/products/1/price",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "price"]
+						},
+						"description": "Update product pricing."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Products by Branch",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branches/{{branch_id}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["branches", "{{branch_id}}", "products"]
+						},
+						"description": "Get all products available at a specific branch."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "8. Branch Products & Inventory",
+			"item": [
+				{
+					"name": "List Branch Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branch-products?branch_id={{branch_id}}&location=shelf",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "location",
+									"value": "shelf",
+									"description": "Filter by location: shelf or store"
+								},
+								{
+									"key": "category_id",
+									"value": "1",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get all products at a branch with shelf/store inventory."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Branch Products by Category",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branch-products/by-category?branch_id={{branch_id}}&category_id=1",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "by-category"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "category_id",
+									"value": "1"
+								}
+							]
+						},
+						"description": "Get branch products grouped by category."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Branch Product",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"branch_id\": {{branch_id}},\n  \"product_id\": 1,\n  \"selling_price\": 1299.99,\n  \"cost_price\": 999.99\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products"]
+						},
+						"description": "Add a product to a branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Branch Product",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branch-products/1",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1"]
+						},
+						"description": "Get branch product details with inventory."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Branch Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"selling_price\": 1399.99,\n  \"cost_price\": 1099.99\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products/1",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1"]
+						},
+						"description": "Update branch product pricing."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Branch Product",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branch-products/1",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1"]
+						},
+						"description": "Remove product from branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Stock",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"location\": \"shelf\",\n  \"quantity_change\": 50,\n  \"batch_number\": \"BATCH001\",\n  \"expiry_date\": \"2025-12-31\",\n  \"reason\": \"stock_in\",\n  \"notes\": \"New stock delivery\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products/1/stock",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1", "stock"]
+						},
+						"description": "Update inventory stock with batch tracking."
+					},
+					"response": []
+				},
+				{
+					"name": "Move to Shelf",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"batch_ids\": [1, 2, 3],\n  \"quantity\": 20,\n  \"notes\": \"Restocking shelf\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products/1/move-to-shelf",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1", "move-to-shelf"]
+						},
+						"description": "Move product from store to shelf."
+					},
+					"response": []
+				},
+				{
+					"name": "Move to Store",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"batch_ids\": [1, 2],\n  \"quantity\": 10,\n  \"notes\": \"Moving excess stock to store\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products/1/move-to-store",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "1", "move-to-store"]
+						},
+						"description": "Move product from shelf to store."
+					},
+					"response": []
+				},
+				{
+					"name": "Stock Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/branch-products/summary/stock?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "summary", "stock"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get stock summary for a branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Update",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"updates\": [\n    {\n      \"branch_product_id\": 1,\n      \"selling_price\": 1299.99\n    },\n    {\n      \"branch_product_id\": 2,\n      \"selling_price\": 599.99\n    }\n  ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/branch-products/bulk-update",
+							"host": ["{{base_url}}"],
+							"path": ["branch-products", "bulk-update"]
+						},
+						"description": "Bulk update branch products."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "9. Inventory Transactions",
+			"item": [
+				{
+					"name": "List Transactions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory/transactions?branch_id={{branch_id}}&product_id=1&type=stock_in&start_date=2026-01-01&end_date=2026-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "transactions"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "product_id",
+									"value": "1"
+								},
+								{
+									"key": "type",
+									"value": "stock_in",
+									"description": "stock_in, stock_out, transfer, adjustment, sale, return"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								}
+							]
+						},
+						"description": "Get inventory transaction history."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Transaction",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"branch_id\": {{branch_id}},\n  \"product_id\": 1,\n  \"type\": \"stock_in\",\n  \"quantity\": 100,\n  \"location\": \"store\",\n  \"batch_number\": \"BATCH001\",\n  \"expiry_date\": \"2025-12-31\",\n  \"cost_price\": 999.99,\n  \"reference\": \"PO-2026-001\",\n  \"notes\": \"New stock arrival\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/inventory/transactions",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "transactions"]
+						},
+						"description": "Create an inventory transaction."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transaction",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory/transactions/1",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "transactions", "1"]
+						},
+						"description": "Get transaction details."
+					},
+					"response": []
+				},
+				{
+					"name": "Stock Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/inventory/stock-summary?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["inventory", "stock-summary"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get current stock summary."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "10. Customers",
+			"item": [
+				{
+					"name": "List Customers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/customers?search=john&type=regular&per_page=20",
+							"host": ["{{base_url}}"],
+							"path": ["customers"],
+							"query": [
+								{
+									"key": "search",
+									"value": "john",
+									"description": "Search by name, email, phone, or customer code"
+								},
+								{
+									"key": "type",
+									"value": "regular",
+									"description": "walk-in or regular"
+								},
+								{
+									"key": "per_page",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get all customers for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Customer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"customer_code\": \"CUST001\",\n  \"name\": \"John Doe\",\n  \"email\": \"john.customer@example.com\",\n  \"phone\": \"+1234567890\",\n  \"address\": \"123 Customer St\",\n  \"type\": \"regular\",\n  \"credit_limit\": 5000.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/customers",
+							"host": ["{{base_url}}"],
+							"path": ["customers"]
+						},
+						"description": "Create a new customer."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/customers/1",
+							"host": ["{{base_url}}"],
+							"path": ["customers", "1"]
+						},
+						"description": "Get customer details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Customer",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"John Doe Updated\",\n  \"email\": \"john.updated@example.com\",\n  \"phone\": \"+0987654321\",\n  \"credit_limit\": 10000.00\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/customers/1",
+							"host": ["{{base_url}}"],
+							"path": ["customers", "1"]
+						},
+						"description": "Update customer information."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Customer",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/customers/1",
+							"host": ["{{base_url}}"],
+							"path": ["customers", "1"]
+						},
+						"description": "Delete a customer (soft delete)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "11. Payment Methods",
+			"item": [
+				{
+					"name": "List Payment Methods",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/payment-methods?is_active=1",
+							"host": ["{{base_url}}"],
+							"path": ["payment-methods"],
+							"query": [
+								{
+									"key": "is_active",
+									"value": "1",
+									"description": "Filter by active status"
+								}
+							]
+						},
+						"description": "Get all payment methods for the business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Payment Method",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"name\": \"Credit Card\",\n  \"type\": \"card\",\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/payment-methods",
+							"host": ["{{base_url}}"],
+							"path": ["payment-methods"]
+						},
+						"description": "Create a new payment method. Types: cash, card, mobile_money, bank_transfer, credit, other"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Payment Method",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/payment-methods/1",
+							"host": ["{{base_url}}"],
+							"path": ["payment-methods", "1"]
+						},
+						"description": "Get payment method details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Payment Method",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"name\": \"Credit/Debit Card\",\n  \"is_active\": true\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/payment-methods/1",
+							"host": ["{{base_url}}"],
+							"path": ["payment-methods", "1"]
+						},
+						"description": "Update payment method."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Payment Method",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/payment-methods/1",
+							"host": ["{{base_url}}"],
+							"path": ["payment-methods", "1"]
+						},
+						"description": "Delete a payment method (soft delete)."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "12. Sales",
+			"item": [
+				{
+					"name": "List Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sales?branch_id={{branch_id}}&shift_id=1&customer_id=1&payment_status=paid&status=completed&start_date=2026-01-01&end_date=2026-12-31&per_page=20",
+							"host": ["{{base_url}}"],
+							"path": ["sales"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "shift_id",
+									"value": "1"
+								},
+								{
+									"key": "customer_id",
+									"value": "1"
+								},
+								{
+									"key": "payment_status",
+									"value": "paid",
+									"description": "paid, partial, unpaid"
+								},
+								{
+									"key": "status",
+									"value": "completed",
+									"description": "completed, cancelled, refunded"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								},
+								{
+									"key": "per_page",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get all sales with filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"shift_id\": 1,\n  \"customer_id\": 1,\n  \"sale_type\": \"pos\",\n  \"sale_date\": \"2026-02-10T10:30:00Z\",\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2,\n      \"unit_price\": 1299.99,\n      \"discount\": 0,\n      \"tax\": 259.998,\n      \"subtotal\": 2599.98\n    },\n    {\n      \"product_id\": 2,\n      \"quantity\": 1,\n      \"unit_price\": 599.99,\n      \"discount\": 50,\n      \"tax\": 109.998,\n      \"subtotal\": 549.99\n    }\n  ],\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 3149.97,\n      \"payment_date\": \"2026-02-10T10:35:00Z\"\n    }\n  ],\n  \"subtotal\": 3149.97,\n  \"tax\": 369.996,\n  \"discount\": 50,\n  \"total\": 3469.966\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sales",
+							"host": ["{{base_url}}"],
+							"path": ["sales"]
+						},
+						"description": "Create a new sale with items and payments. Automatically deducts inventory using FEFO."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Sale",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sales/1",
+							"host": ["{{base_url}}"],
+							"path": ["sales", "1"]
+						},
+						"description": "Get sale details with items and payments."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Payment to Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"payment_method_id\": 1,\n  \"amount\": 500.00,\n  \"payment_date\": \"2026-02-10T15:00:00Z\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sales/1/payments",
+							"host": ["{{base_url}}"],
+							"path": ["sales", "1", "payments"]
+						},
+						"description": "Add a payment to an existing sale (for partial payments)."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Customer changed mind\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sales/1/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["sales", "1", "cancel"]
+						},
+						"description": "Cancel a sale and reverse inventory."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "13. Sales Shifts",
+			"item": [
+				{
+					"name": "List Shifts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/shifts?branch_id={{branch_id}}&user_id=1&status=open&start_date=2026-01-01&end_date=2026-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["shifts"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "user_id",
+									"value": "1"
+								},
+								{
+									"key": "status",
+									"value": "open",
+									"description": "open, closed, discrepancy_resolved"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								}
+							]
+						},
+						"description": "Get all sales shifts."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Shift",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"opening_float\": 1000.00,\n  \"notes\": \"Morning shift\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts",
+							"host": ["{{base_url}}"],
+							"path": ["shifts"]
+						},
+						"description": "Open a new sales shift."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Shift",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/shifts/current?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "current"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get currently open shift for the user at a branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Shift",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/shifts/1",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "1"]
+						},
+						"description": "Get shift details with statistics."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Shift Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/shifts/1/sales",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "1", "sales"]
+						},
+						"description": "Get all sales for a shift."
+					},
+					"response": []
+				},
+				{
+					"name": "Close Shift",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"actual_cash\": 5250.00,\n  \"actual_card\": 3100.00,\n  \"actual_mobile_money\": 800.00,\n  \"notes\": \"End of day shift\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts/1/close",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "1", "close"]
+						},
+						"description": "Close a shift with cash reconciliation."
+					},
+					"response": []
+				},
+				{
+					"name": "Resolve Discrepancy",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"resolution_notes\": \"Discrepancy due to incorrect change given. Cashier counseled.\",\n  \"resolved_by\": 2\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/shifts/1/resolve-discrepancy",
+							"host": ["{{base_url}}"],
+							"path": ["shifts", "1", "resolve-discrepancy"]
+						},
+						"description": "Resolve cash discrepancy in a shift."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "14. Batches & Expiry",
+			"item": [
+				{
+					"name": "List Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/batches?branch_id={{branch_id}}&product_id=1&location=shelf",
+							"host": ["{{base_url}}"],
+							"path": ["batches"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "product_id",
+									"value": "1"
+								},
+								{
+									"key": "location",
+									"value": "shelf",
+									"description": "shelf or store"
+								}
+							]
+						},
+						"description": "Get all inventory batches."
+					},
+					"response": []
+				},
+				{
+					"name": "Near Expiry Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/batches/near-expiry?branch_id={{branch_id}}&days=30",
+							"host": ["{{base_url}}"],
+							"path": ["batches", "near-expiry"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "days",
+									"value": "30",
+									"description": "Days until expiry threshold (default 30)"
+								}
+							]
+						},
+						"description": "Get batches nearing expiry date."
+					},
+					"response": []
+				},
+				{
+					"name": "Expired Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/batches/expired?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["batches", "expired"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get expired batches."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Batch",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/batches/1",
+							"host": ["{{base_url}}"],
+							"path": ["batches", "1"]
+						},
+						"description": "Get batch details."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Batch",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"expiry_date\": \"2025-12-31\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/batches/1",
+							"host": ["{{base_url}}"],
+							"path": ["batches", "1"]
+						},
+						"description": "Update batch information (e.g., correct expiry date)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/products/1/batches?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["products", "1", "batches"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get all batches for a specific product."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "15. Analytics",
+			"item": [
+				{
+					"name": "Organization Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/organization?start_date=2026-01-01&end_date=2026-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "organization"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								}
+							]
+						},
+						"description": "Get organization-wide analytics (total sales, revenue, customers, products)."
+					},
+					"response": []
+				},
+				{
+					"name": "Branch Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/branches?start_date=2026-01-01&end_date=2026-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "branches"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								},
+								{
+									"key": "branch_id",
+									"value": "1",
+									"disabled": true,
+									"description": "Filter for specific branch"
+								}
+							]
+						},
+						"description": "Get branch-wise performance analytics."
+					},
+					"response": []
+				},
+				{
+					"name": "Product Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/products?start_date=2026-01-01&end_date=2026-12-31&top_n=20",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "products"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								},
+								{
+									"key": "top_n",
+									"value": "20",
+									"description": "Top N products by sales"
+								},
+								{
+									"key": "branch_id",
+									"value": "1",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get product sales analytics (top sellers, slow movers, etc.)."
+					},
+					"response": []
+				},
+				{
+					"name": "Profit & Loss",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/profit-loss?start_date=2026-01-01&end_date=2026-12-31",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								},
+								{
+									"key": "branch_id",
+									"value": "1",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get profit and loss statement."
+					},
+					"response": []
+				},
+				{
+					"name": "Growth Trends",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/analytics/growth-trends?start_date=2026-01-01&end_date=2026-12-31&interval=monthly",
+							"host": ["{{base_url}}"],
+							"path": ["analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-12-31"
+								},
+								{
+									"key": "interval",
+									"value": "monthly",
+									"description": "daily, weekly, monthly, yearly"
+								}
+							]
+						},
+						"description": "Get growth trends over time."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "16. Stock Transfer Requests",
+			"item": [
+				{
+					"name": "List Transfers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests?branch_id={{branch_id}}&product_id=1&status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "product_id",
+									"value": "1"
+								},
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "pending, approved, rejected, confirmed, cancelled"
+								}
+							]
+						},
+						"description": "Get stock transfer requests (store to shelf)."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Transfer Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"branch_product_id\": 1,\n  \"quantity_requested\": 50,\n  \"reason\": \"Low shelf stock\",\n  \"notes\": \"Urgent - shelf almost empty\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests"]
+						},
+						"description": "Create a request to transfer stock from store to shelf."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Transfer Request",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests/1",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests", "1"]
+						},
+						"description": "Get transfer request details."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"quantity_approved\": 50,\n  \"notes\": \"Approved for transfer\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests", "1", "approve"]
+						},
+						"description": "Approve stock transfer request."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Insufficient store stock\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests", "1", "reject"]
+						},
+						"description": "Reject stock transfer request."
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Stock transferred successfully\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests/1/confirm",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests", "1", "confirm"]
+						},
+						"description": "Confirm that approved transfer has been completed."
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"No longer needed\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-transfer-requests/1/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["stock-transfer-requests", "1", "cancel"]
+						},
+						"description": "Cancel a transfer request."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "17. Stock Write-offs",
+			"item": [
+				{
+					"name": "List Write-offs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/stock-writeoffs?branch_id={{branch_id}}&product_id=1&reason=expired",
+							"host": ["{{base_url}}"],
+							"path": ["stock-writeoffs"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "product_id",
+									"value": "1"
+								},
+								{
+									"key": "reason",
+									"value": "expired",
+									"description": "expired, damaged, stolen, other"
+								}
+							]
+						},
+						"description": "Get all stock write-offs."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Write-off",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"branch_product_id\": 1,\n  \"batch_id\": 5,\n  \"quantity\": 10,\n  \"location\": \"shelf\",\n  \"reason\": \"expired\",\n  \"notes\": \"Expired stock found during audit\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/stock-writeoffs",
+							"host": ["{{base_url}}"],
+							"path": ["stock-writeoffs"]
+						},
+						"description": "Write off damaged, expired, or stolen stock."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Write-off",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/stock-writeoffs/1",
+							"host": ["{{base_url}}"],
+							"path": ["stock-writeoffs", "1"]
+						},
+						"description": "Get write-off details."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "18. Refund Requests",
+			"item": [
+				{
+					"name": "List Refund Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/refund-requests?branch_id={{branch_id}}&sale_id=1&status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["refund-requests"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "sale_id",
+									"value": "1"
+								},
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "pending, approved, rejected"
+								}
+							]
+						},
+						"description": "Get all refund requests."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Refund Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"sale_id\": 1,\n  \"items\": [\n    {\n      \"sale_item_id\": 1,\n      \"quantity\": 1,\n      \"reason\": \"defective\"\n    }\n  ],\n  \"refund_type\": \"full\",\n  \"reason\": \"Product defective\",\n  \"notes\": \"Customer reported screen issue\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/refund-requests",
+							"host": ["{{base_url}}"],
+							"path": ["refund-requests"]
+						},
+						"description": "Create a refund request for a sale."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Refund Request",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/refund-requests/1",
+							"host": ["{{base_url}}"],
+							"path": ["refund-requests", "1"]
+						},
+						"description": "Get refund request details."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Refund approved by manager\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/refund-requests/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["refund-requests", "1", "approve"]
+						},
+						"description": "Approve a refund request."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"No defect found upon inspection\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/refund-requests/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["refund-requests", "1", "reject"]
+						},
+						"description": "Reject a refund request."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "19. Quick Sales (Flash Sales)",
+			"item": [
+				{
+					"name": "List Quick Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/quick-sales?branch_id={{branch_id}}&batch_id=1&status=active",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "batch_id",
+									"value": "1"
+								},
+								{
+									"key": "status",
+									"value": "active",
+									"description": "pending, approved, rejected, active, ended"
+								}
+							]
+						},
+						"description": "Get all quick sale campaigns."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"batch_id\": 5,\n  \"discount_percentage\": 25,\n  \"start_date\": \"2026-02-11T00:00:00Z\",\n  \"end_date\": \"2026-02-15T23:59:59Z\",\n  \"reason\": \"Near expiry - 15 days remaining\",\n  \"notes\": \"Urgent clearance sale\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/quick-sales",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales"]
+						},
+						"description": "Create a quick sale campaign for near-expiry products."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Quick Sale",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/quick-sales/1",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales", "1"]
+						},
+						"description": "Get quick sale details."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Approved by branch manager\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/quick-sales/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales", "1", "approve"]
+						},
+						"description": "Approve a quick sale campaign."
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"reason\": \"Discount too high\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/quick-sales/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales", "1", "reject"]
+						},
+						"description": "Reject a quick sale campaign."
+					},
+					"response": []
+				},
+				{
+					"name": "End Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"notes\": \"Campaign ended early - stock sold out\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/quick-sales/1/end",
+							"host": ["{{base_url}}"],
+							"path": ["quick-sales", "1", "end"]
+						},
+						"description": "End an active quick sale campaign."
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "20. Offline Sync",
+			"item": [
+				{
+					"name": "Register Device",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"device_id\": \"{{device_id}}\",\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"device_name\": \"POS Terminal 1\",\n  \"device_type\": \"desktop\",\n  \"os\": \"Windows 11\",\n  \"app_version\": \"1.0.0\",\n  \"capabilities\": [\"offline_sales\", \"inventory_sync\"]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sync/register-device",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "register-device"]
+						},
+						"description": "Register a device for offline sync operations."
+					},
+					"response": []
+				},
+				{
+					"name": "Bootstrap",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "{{device_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"branch_id\": {{branch_id}},\n  \"entities\": [\"products\", \"categories\", \"payment_methods\", \"customers\", \"branch_products\"],\n  \"include_history\": false\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sync/bootstrap",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "bootstrap"]
+						},
+						"description": "Download initial dataset for offline operation."
+					},
+					"response": []
+				},
+				{
+					"name": "Pull Changes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "{{device_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"last_sync_at\": \"2026-02-10T10:00:00Z\",\n  \"entities\": [\"products\", \"customers\", \"branch_products\"],\n  \"limit\": 500\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sync/pull",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "pull"]
+						},
+						"description": "Pull server changes since last sync."
+					},
+					"response": []
+				},
+				{
+					"name": "Push Changes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "{{device_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"business_id\": {{business_id}},\n  \"session_id\": \"{{$randomUUID}}\",\n  \"batch_id\": \"batch-001\",\n  \"changes\": {\n    \"sales\": [\n      {\n        \"client_uuid\": \"{{$randomUUID}}\",\n        \"branch_id\": {{branch_id}},\n        \"shift_id\": 1,\n        \"sale_number\": \"SALE-001\",\n        \"sale_type\": \"pos\",\n        \"sale_date\": \"2026-02-10T14:30:00Z\",\n        \"subtotal\": 100.00,\n        \"tax\": 10.00,\n        \"discount\": 0,\n        \"total\": 110.00,\n        \"payment_status\": \"paid\",\n        \"status\": \"completed\",\n        \"version\": 1,\n        \"items\": [\n          {\n            \"client_uuid\": \"{{$randomUUID}}\",\n            \"product_id\": 1,\n            \"quantity\": 2,\n            \"unit_price\": 50.00,\n            \"subtotal\": 100.00,\n            \"version\": 1\n          }\n        ],\n        \"payments\": [\n          {\n            \"client_uuid\": \"{{$randomUUID}}\",\n            \"payment_method_id\": 1,\n            \"amount\": 110.00,\n            \"payment_date\": \"2026-02-10T14:31:00Z\",\n            \"version\": 1\n          }\n        ]\n      }\n    ],\n    \"customers\": [\n      {\n        \"client_uuid\": \"{{$randomUUID}}\",\n        \"customer_code\": \"CUST-OFFLINE-001\",\n        \"name\": \"Walk-in Customer\",\n        \"type\": \"walk-in\",\n        \"version\": 1\n      }\n    ]\n  }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/sync/push",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "push"]
+						},
+						"description": "Push offline changes to server."
+					},
+					"response": []
+				},
+				{
+					"name": "Sync Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "{{device_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sync/status",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "status"]
+						},
+						"description": "Get current sync status for the device."
+					},
+					"response": []
+				},
+				{
+					"name": "Heartbeat",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "{{device_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/sync/heartbeat",
+							"host": ["{{base_url}}"],
+							"path": ["sync", "heartbeat"]
+						},
+						"description": "Device heartbeat to check for pending changes."
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

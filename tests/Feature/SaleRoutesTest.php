@@ -1,0 +1,125 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\{Branch, BranchProduct, Business, Customer, PaymentMethod, Product, Sale, User};
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\{Permission, Role};
+use Tests\TestCase;
+
+class SaleRoutesTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private User $user;
+    private Business $business;
+    private Branch $branch;
+    private Role $role;
+    private Product $product;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->user = User::factory()->create();
+        $this->business = Business::create(['name' => 'Test Business', 'email' => 'b@test.com', 'owner_id' => $this->user->id]);
+        $this->branch = Branch::create(['business_id' => $this->business->id, 'name' => 'Main', 'code' => 'MAIN', 'address' => '123 St']);
+        $this->user->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $this->product = Product::create([
+            'business_id' => $this->business->id, 'name' => 'Test Product', 'sku' => 'TEST-001',
+            'cost_price' => 50, 'selling_price' => 100, 'base_selling_price' => 100, 'is_active' => true,
+        ]);
+
+        BranchProduct::create(['branch_id' => $this->branch->id, 'product_id' => $this->product->id,
+            'stock_quantity' => 100, 'cost_price' => 50, 'selling_price' => 100]);
+
+        foreach (['view sales', 'create sales', 'manage sales'] as $p) {
+            Permission::firstOrCreate(['name' => $p, 'guard_name' => 'api']);
+        }
+
+        $this->role = Role::create(['name' => 'Manager', 'guard_name' => 'api', 'business_id' => $this->business->id]);
+        setPermissionsTeamId($this->business->id);
+        $this->user->assignRole($this->role);
+    }
+
+    public function test_can_create_sale_with_stock_update(): void
+    {
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 5, 'unit_price' => 100, 'tax_rate' => 10]],
+            'payments' => [['payment_method_id' => $pm->id, 'amount' => 550]],
+        ]);
+
+        if ($response->status() !== 201) {
+            dump($response->json());
+        }
+
+        $response->assertStatus(201);
+        $this->assertEquals(95, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
+        $this->assertEquals('completed', Sale::latest()->value('status'));
+    }
+
+    public function test_cannot_sell_insufficient_stock(): void
+    {
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1000, 'unit_price' => 100]],
+        ]);
+
+        $response->assertStatus(500)
+            ->assertJson(['message' => 'Failed to create sale']);
+    }
+
+    public function test_can_list_and_view_sales(): void
+    {
+        $this->role->givePermissionTo('view sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $sale = Sale::create(['sale_number' => 'SAL-001', 'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id, 'user_id' => $this->user->id, 'sale_date' => now(),
+            'subtotal' => 100, 'total_amount' => 100, 'status' => 'completed', 'payment_status' => 'paid']);
+
+        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/sales?current_business_id=' . $this->business->id);
+        $response->assertStatus(200)->assertJsonStructure(['data']);
+
+        $response = $this->actingAs($this->user, 'sanctum')->getJson("/api/sales/{$sale->id}?current_business_id=" . $this->business->id);
+        $response->assertStatus(200)->assertJson(['id' => $sale->id]);
+    }
+
+    public function test_can_cancel_sale_and_restore_stock(): void
+    {
+        $this->role->givePermissionTo(['create sales', 'manage sales']);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $createResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10, 'unit_price' => 100]],
+        ]);
+
+        $sale = Sale::latest()->first();
+        $this->assertEquals(90, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson("/api/sales/{$sale->id}/cancel?current_business_id=" . $this->business->id);
+        $response->assertStatus(200);
+        $this->assertEquals(100, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
+    }
+
+    public function test_enforces_permissions(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/sales?current_business_id=' . $this->business->id);
+        $response->assertStatus(403);
+    }
+}

@@ -1,0 +1,268 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\BranchProduct;
+use App\Models\InventoryTransaction;
+use App\Models\Product;
+use App\Models\StockWriteoff;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+
+class StockWriteoffController extends Controller
+{
+    /**
+     * List all stock write-offs
+     */
+    public function index(Request $request)
+    {
+        $request->validate([
+            'current_business_id' => 'required|exists:businesses,id',
+            'branch_id' => 'nullable|exists:branches,id',
+            'product_id' => 'nullable|exists:products,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $user = auth()->user();
+        $businessId = $request->current_business_id;
+
+        if (!$user->hasPermissionTo('write off stock')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Verify user has access to the business
+        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $query = StockWriteoff::with(['product', 'branch', 'branchProduct', 'writtenOffBy'])
+            ->where('business_id', $businessId);
+
+        // Filter by branch if provided
+        if ($request->filled('branch_id')) {
+            $branchId = $request->branch_id;
+            
+            // Verify user has access to this branch
+            if (!$this->userHasBranchAccess($user, $branchId, $businessId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+
+            $query->where('branch_id', $branchId);
+        }
+
+        // Filter by product
+        if ($request->filled('product_id')) {
+            $query->where('product_id', $request->product_id);
+        }
+
+        // Filter by date range
+        if ($request->filled('start_date')) {
+            $query->whereDate('written_off_at', '>=', $request->start_date);
+        }
+
+        if ($request->filled('end_date')) {
+            $query->whereDate('written_off_at', '<=', $request->end_date);
+        }
+
+        $writeoffs = $query->latest('written_off_at')
+            ->paginate($request->per_page ?? 15);
+
+        return response()->json($writeoffs);
+    }
+
+    /**
+     * Write off stock
+     */
+    public function store(Request $request)
+    {
+        $request->validate([
+            'current_business_id' => 'required|exists:businesses,id',
+            'branch_id' => 'required|exists:branches,id',
+            'sku' => 'required|string',
+            'quantity' => 'required|integer|min:1',
+            'reason' => 'required|string|max:1000',
+        ]);
+
+        $user = auth()->user();
+        $businessId = $request->current_business_id;
+        $branchId = $request->branch_id;
+
+        // Check permission
+        if (!$user->hasPermissionTo('write off stock')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Verify user has access to the business
+        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Verify user has access to this branch
+        if (!$this->userHasBranchAccess($user, $branchId, $businessId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        // Find the product by SKU or barcode
+        $product = Product::where('business_id', $businessId)
+            ->where(function ($query) use ($request) {
+                $query->where('sku', $request->sku)
+                    ->orWhere('barcode', $request->sku);
+            })
+            ->first();
+
+        if (!$product) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'sku' => ['Product not found with this SKU or barcode']
+                ]
+            ], 422);
+        }
+
+        // Find the branch product
+        $branchProduct = BranchProduct::where('branch_id', $branchId)
+            ->where('product_id', $product->id)
+            ->first();
+
+        if (!$branchProduct) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'sku' => ['Product not available in this branch']
+                ]
+            ], 422);
+        }
+
+        // Check if there's enough stock on shelf
+        if ($branchProduct->shelf_quantity < $request->quantity) {
+            return response()->json([
+                'message' => 'The given data was invalid.',
+                'errors' => [
+                    'quantity' => [
+                        "Insufficient stock on shelf. Available: {$branchProduct->shelf_quantity}, Requested: {$request->quantity}"
+                    ]
+                ]
+            ], 422);
+        }
+
+        // Create write-off and reduce shelf quantity in a transaction
+        $writeoff = DB::transaction(function () use ($request, $businessId, $branchId, $branchProduct, $product, $user) {
+            // Capture quantities before change
+            $shelfQuantityBefore = $branchProduct->shelf_quantity;
+            $storeQuantityBefore = $branchProduct->store_quantity;
+            $totalQuantityBefore = $shelfQuantityBefore + $storeQuantityBefore;
+            
+            // Reduce shelf quantity
+            $branchProduct->updateShelfQuantity($request->quantity, 'subtract');
+            
+            // Refresh to get updated quantities
+            $branchProduct->refresh();
+            $shelfQuantityAfter = $branchProduct->shelf_quantity;
+            $storeQuantityAfter = $branchProduct->store_quantity;
+            $totalQuantityAfter = $shelfQuantityAfter + $storeQuantityAfter;
+
+            // Create write-off record
+            $writeoff = StockWriteoff::create([
+                'business_id' => $businessId,
+                'branch_id' => $branchId,
+                'branch_product_id' => $branchProduct->id,
+                'product_id' => $product->id,
+                'sku' => $product->sku,
+                'quantity' => $request->quantity,
+                'reason' => $request->reason,
+                'written_off_by' => $user->id,
+            ]);
+
+            // Create inventory transaction for audit trail
+            InventoryTransaction::create([
+                'uuid' => Str::uuid(),
+                'business_id' => $businessId,
+                'branch_id' => $branchId,
+                'product_id' => $product->id,
+                'user_id' => $user->id,
+                'type' => 'damage',
+                'quantity' => -$request->quantity,
+                'shelf_quantity' => -$request->quantity,
+                'store_quantity' => 0,
+                'quantity_before' => $totalQuantityBefore,
+                'shelf_quantity_before' => $shelfQuantityBefore,
+                'store_quantity_before' => $storeQuantityBefore,
+                'quantity_after' => $totalQuantityAfter,
+                'shelf_quantity_after' => $shelfQuantityAfter,
+                'store_quantity_after' => $storeQuantityAfter,
+                'reference_number' => 'WO-' . str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
+                'notes' => $request->reason,
+            ]);
+
+            return $writeoff;
+        });
+
+        $writeoff->load(['product', 'branch', 'branchProduct', 'writtenOffBy']);
+
+        return response()->json([
+            'message' => 'Stock written off successfully',
+            'data' => $writeoff
+        ], 201);
+    }
+
+    /**
+     * Show a specific write-off
+     */
+    public function show(Request $request, int $id)
+    {
+        $request->validate([
+            'current_business_id' => 'required|exists:businesses,id',
+        ]);
+
+        $user = auth()->user();
+        $businessId = $request->current_business_id;
+
+        if (!$user->hasPermissionTo('write off stock')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Verify user has access to the business
+        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $writeoff = StockWriteoff::with(['product', 'branch', 'branchProduct', 'writtenOffBy'])
+            ->where('business_id', $businessId)
+            ->findOrFail($id);
+
+        return response()->json(['data' => $writeoff]);
+    }
+
+    /**
+     * Check if user has access to a branch
+     */
+    private function userHasBranchAccess($user, $branchId, $businessId): bool
+    {
+        // Check if branch belongs to the business
+        $branch = \App\Models\Branch::where('id', $branchId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (!$branch) {
+            return false;
+        }
+
+        // Get user's roles for this business with branch restrictions
+        $userRoles = $user->roles()
+            ->where('roles.business_id', $businessId)
+            ->get();
+
+        // If user has any business-wide role (no branch_id), they have access to all branches
+        if ($userRoles->where('pivot.branch_id', null)->count() > 0) {
+            return true;
+        }
+
+        // Check if user has a role specifically for this branch
+        return $userRoles->where('pivot.branch_id', $branchId)->count() > 0;
+    }
+}

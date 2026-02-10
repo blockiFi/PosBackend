@@ -1,0 +1,741 @@
+{
+	"info": {
+		"_postman_id": "analytics-api-collection-2026",
+		"name": "POS Backend - Analytics API",
+		"description": "Comprehensive analytics endpoints for revenue, profit, and business intelligence.\n\n## Authentication\nAll endpoints require:\n- **Bearer Token**: Sanctum authentication token\n- **X-Business-Id Header**: Current business context ID\n\n## Features\n- Organization-wide analytics with period comparisons\n- Branch-level performance tracking\n- Product sales analytics and rankings\n- Profit & Loss statements\n- Revenue growth trends over time\n- Automatic caching (15-30 minutes)\n\n## Permissions Required\n- `view analytics` - For most analytics endpoints\n- `view financial reports` - For profit/loss statements",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Organization Analytics",
+			"item": [
+				{
+					"name": "Get Organization Analytics (Current Month)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text",
+								"description": "Current business context ID"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/organization?period=month&compare_previous=true",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "organization"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month",
+									"description": "Time period: today, week, month, year, custom"
+								},
+								{
+									"key": "compare_previous",
+									"value": "true",
+									"description": "Include comparison with previous period"
+								}
+							]
+						},
+						"description": "Get organization-wide analytics for the current month with previous period comparison.\n\n**Returns:**\n- Current period metrics (revenue, profit, margin, transactions)\n- Previous period metrics\n- Comparison (% change, trends)\n- Branch contributions\n- Daily revenue trend"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/analytics/organization?period=month&compare_previous=true",
+									"host": ["{{base_url}}"],
+									"path": ["api", "analytics", "organization"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"period\": {\n        \"start_date\": \"2026-02-01\",\n        \"end_date\": \"2026-02-08\",\n        \"days\": 8\n    },\n    \"current\": {\n        \"revenue\": \"125500.50\",\n        \"cost\": \"75300.30\",\n        \"profit\": \"50200.20\",\n        \"margin_percentage\": \"40.00\",\n        \"transaction_count\": 342,\n        \"average_order_value\": \"367.00\"\n    },\n    \"previous\": {\n        \"revenue\": \"98200.00\",\n        \"cost\": \"65100.00\",\n        \"profit\": \"33100.00\",\n        \"margin_percentage\": \"33.71\",\n        \"transaction_count\": 289,\n        \"average_order_value\": \"339.79\"\n    },\n    \"comparison\": {\n        \"revenue_change_percentage\": \"27.83\",\n        \"profit_change_percentage\": \"51.66\",\n        \"transaction_change_percentage\": \"18.34\",\n        \"revenue_trend\": \"up\",\n        \"profit_trend\": \"up\"\n    },\n    \"branch_contributions\": [\n        {\n            \"branch_id\": 1,\n            \"branch_name\": \"Main Branch\",\n            \"revenue\": \"75300.30\",\n            \"profit\": \"30120.12\",\n            \"transaction_count\": 205,\n            \"contribution_percentage\": \"60.00\"\n        },\n        {\n            \"branch_id\": 2,\n            \"branch_name\": \"Downtown Branch\",\n            \"revenue\": \"50200.20\",\n            \"profit\": \"20080.08\",\n            \"transaction_count\": 137,\n            \"contribution_percentage\": \"40.00\"\n        }\n    ],\n    \"revenue_trend\": [\n        {\n            \"date\": \"2026-02-01\",\n            \"revenue\": \"15687.50\",\n            \"transactions\": 42\n        },\n        {\n            \"date\": \"2026-02-02\",\n            \"revenue\": \"18234.75\",\n            \"transactions\": 51\n        }\n    ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Organization Analytics (Today)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/organization?period=today",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "organization"],
+							"query": [
+								{
+									"key": "period",
+									"value": "today"
+								}
+							]
+						},
+						"description": "Get today's analytics without comparison."
+					}
+				},
+				{
+					"name": "Get Organization Analytics (Custom Date Range)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/organization?period=custom&start_date=2026-01-01&end_date=2026-01-31&compare_previous=false",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "organization"],
+							"query": [
+								{
+									"key": "period",
+									"value": "custom"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-01-01",
+									"description": "Required when period=custom (YYYY-MM-DD)"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-01-31",
+									"description": "Required when period=custom (YYYY-MM-DD)"
+								},
+								{
+									"key": "compare_previous",
+									"value": "false"
+								}
+							]
+						},
+						"description": "Get analytics for a custom date range (January 2026)."
+					}
+				}
+			],
+			"description": "Organization-wide analytics endpoints providing comprehensive business performance metrics."
+		},
+		{
+			"name": "Branch Analytics",
+			"item": [
+				{
+					"name": "Get All Branches Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/branches?period=month&compare_previous=true",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "branches"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "compare_previous",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Get analytics for all branches that the user has access to.\n\n**Returns:**\n- Array of branch analytics\n- Each branch includes current & previous period metrics\n- Revenue trends per branch"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/analytics/branches?period=month",
+									"host": ["{{base_url}}"],
+									"path": ["api", "analytics", "branches"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"branches\": [\n        {\n            \"branch_id\": 1,\n            \"branch_name\": \"Main Branch\",\n            \"period\": {\n                \"start_date\": \"2026-02-01\",\n                \"end_date\": \"2026-02-08\",\n                \"days\": 8\n            },\n            \"current\": {\n                \"revenue\": \"75300.30\",\n                \"cost\": \"45180.18\",\n                \"profit\": \"30120.12\",\n                \"margin_percentage\": \"40.00\",\n                \"transaction_count\": 205,\n                \"average_order_value\": \"367.32\"\n            },\n            \"previous\": {\n                \"revenue\": \"58920.00\",\n                \"cost\": \"39060.00\",\n                \"profit\": \"19860.00\",\n                \"margin_percentage\": \"33.71\",\n                \"transaction_count\": 173,\n                \"average_order_value\": \"340.58\"\n            },\n            \"comparison\": {\n                \"revenue_change_percentage\": \"27.80\",\n                \"profit_change_percentage\": \"51.66\",\n                \"transaction_change_percentage\": \"18.50\",\n                \"revenue_trend\": \"up\",\n                \"profit_trend\": \"up\"\n            },\n            \"revenue_trend\": [\n                {\n                    \"date\": \"2026-02-01\",\n                    \"revenue\": \"9412.54\",\n                    \"transactions\": 25\n                }\n            ]\n        }\n    ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Specific Branch Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/branches?branch_id=1&period=week&compare_previous=true",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "branches"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "1",
+									"description": "Specific branch ID"
+								},
+								{
+									"key": "period",
+									"value": "week"
+								},
+								{
+									"key": "compare_previous",
+									"value": "true"
+								}
+							]
+						},
+						"description": "Get analytics for a specific branch with weekly breakdown."
+					}
+				}
+			],
+			"description": "Branch-level analytics for comparing performance across locations."
+		},
+		{
+			"name": "Product Analytics",
+			"item": [
+				{
+					"name": "Get Product Analytics (Top Products)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/products?period=month&limit=20&sort_by=revenue&direction=desc",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "products"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "limit",
+									"value": "20",
+									"description": "Number of products to return (1-100)"
+								},
+								{
+									"key": "sort_by",
+									"value": "revenue",
+									"description": "Sort by: revenue, quantity, profit, margin"
+								},
+								{
+									"key": "direction",
+									"value": "desc",
+									"description": "Sort direction: asc, desc"
+								}
+							]
+						},
+						"description": "Get product performance analytics sorted by revenue.\n\n**Returns:**\n- Summary statistics (total products, revenue, cost, profit)\n- Top performing products\n- Bottom performing products\n- Product contribution percentages"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/analytics/products?period=month&limit=10",
+									"host": ["{{base_url}}"],
+									"path": ["api", "analytics", "products"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"period\": {\n        \"start_date\": \"2026-02-01\",\n        \"end_date\": \"2026-02-08\"\n    },\n    \"summary\": {\n        \"total_products\": 45,\n        \"total_revenue\": \"125500.50\",\n        \"total_cost\": \"75300.30\",\n        \"total_profit\": \"50200.20\",\n        \"average_margin\": \"40.00\"\n    },\n    \"top_products\": [\n        {\n            \"product_id\": 15,\n            \"product_name\": \"Premium Widget XL\",\n            \"product_sku\": \"WDG-XL-001\",\n            \"quantity_sold\": 87,\n            \"revenue\": \"26100.00\",\n            \"cost\": \"13050.00\",\n            \"profit\": \"13050.00\",\n            \"margin_percentage\": \"50.00\",\n            \"transaction_count\": 45,\n            \"contribution_percentage\": \"20.80\"\n        },\n        {\n            \"product_id\": 23,\n            \"product_name\": \"Deluxe Gadget Pro\",\n            \"product_sku\": \"GDG-PRO-002\",\n            \"quantity_sold\": 112,\n            \"revenue\": \"22400.00\",\n            \"cost\": \"13440.00\",\n            \"profit\": \"8960.00\",\n            \"margin_percentage\": \"40.00\",\n            \"transaction_count\": 58,\n            \"contribution_percentage\": \"17.85\"\n        }\n    ],\n    \"bottom_products\": [\n        {\n            \"product_id\": 8,\n            \"product_name\": \"Basic Tool Set\",\n            \"product_sku\": \"TLS-BSC-008\",\n            \"quantity_sold\": 5,\n            \"revenue\": \"125.00\",\n            \"cost\": \"87.50\",\n            \"profit\": \"37.50\",\n            \"margin_percentage\": \"30.00\",\n            \"transaction_count\": 4,\n            \"contribution_percentage\": \"0.10\"\n        }\n    ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Product Analytics (By Quantity Sold)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/products?period=month&sort_by=quantity&direction=desc&limit=10",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "products"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "sort_by",
+									"value": "quantity",
+									"description": "Sort by quantity sold"
+								},
+								{
+									"key": "direction",
+									"value": "desc"
+								},
+								{
+									"key": "limit",
+									"value": "10"
+								}
+							]
+						},
+						"description": "Get top 10 products by quantity sold."
+					}
+				},
+				{
+					"name": "Get Product Analytics (By Profit Margin)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/products?period=week&sort_by=margin&direction=desc",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "products"],
+							"query": [
+								{
+									"key": "period",
+									"value": "week"
+								},
+								{
+									"key": "sort_by",
+									"value": "margin",
+									"description": "Sort by profit margin"
+								},
+								{
+									"key": "direction",
+									"value": "desc"
+								}
+							]
+						},
+						"description": "Get products sorted by highest profit margin."
+					}
+				},
+				{
+					"name": "Get Product Analytics (For Specific Branch)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/products?branch_id=1&period=month&limit=20",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "products"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "1",
+									"description": "Filter by specific branch"
+								},
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								}
+							]
+						},
+						"description": "Get product analytics for a specific branch."
+					}
+				}
+			],
+			"description": "Product performance analytics including sales, profit, and contribution metrics."
+		},
+		{
+			"name": "Financial Reports",
+			"item": [
+				{
+					"name": "Get Profit & Loss Statement (Monthly)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/profit-loss?period=month",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month",
+									"description": "today, week, month, quarter, year, custom"
+								}
+							]
+						},
+						"description": "Get Profit & Loss statement for the current month.\n\n**Requires Permission:** `view financial reports`\n\n**Returns:**\n- Revenue breakdown (gross, discounts, net)\n- Cost of goods sold\n- Profit calculations (gross & net)\n- Margin percentages\n- Transaction metrics"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/analytics/profit-loss?period=month",
+									"host": ["{{base_url}}"],
+									"path": ["api", "analytics", "profit-loss"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"period\": {\n        \"start_date\": \"2026-02-01\",\n        \"end_date\": \"2026-02-08\"\n    },\n    \"revenue\": {\n        \"gross_revenue\": \"132025.50\",\n        \"discounts\": \"6525.00\",\n        \"net_revenue\": \"125500.50\"\n    },\n    \"costs\": {\n        \"cost_of_goods_sold\": \"75300.30\"\n    },\n    \"profit\": {\n        \"gross_profit\": \"50200.20\",\n        \"net_profit\": \"50200.20\"\n    },\n    \"margins\": {\n        \"gross_margin_percentage\": \"40.00\",\n        \"net_margin_percentage\": \"40.00\"\n    },\n    \"metrics\": {\n        \"total_transactions\": 342,\n        \"average_transaction_value\": \"367.00\"\n    }\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Profit & Loss Statement (Quarter)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/profit-loss?period=quarter",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "period",
+									"value": "quarter"
+								}
+							]
+						},
+						"description": "Get quarterly P&L statement."
+					}
+				},
+				{
+					"name": "Get Profit & Loss Statement (Custom Range)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/profit-loss?period=custom&start_date=2026-01-01&end_date=2026-01-31",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "period",
+									"value": "custom"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-01-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-01-31"
+								}
+							]
+						},
+						"description": "Get P&L for custom date range."
+					}
+				},
+				{
+					"name": "Get Profit & Loss Statement (By Branch)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/profit-loss?period=month&branch_id=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "branch_id",
+									"value": "1",
+									"description": "Filter by specific branch"
+								}
+							]
+						},
+						"description": "Get P&L statement for a specific branch."
+					}
+				}
+			],
+			"description": "Financial reporting endpoints requiring `view financial reports` permission."
+		},
+		{
+			"name": "Growth Trends",
+			"item": [
+				{
+					"name": "Get Monthly Growth Trends (12 Months)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/growth-trends?interval=monthly&periods=12",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "interval",
+									"value": "monthly",
+									"description": "Interval: daily, weekly, monthly"
+								},
+								{
+									"key": "periods",
+									"value": "12",
+									"description": "Number of periods (1-24)"
+								}
+							]
+						},
+						"description": "Get 12 months of revenue growth trends.\n\n**Returns:**\n- Array of period data with metrics\n- Revenue growth percentages\n- Trends over time for visualization"
+					},
+					"response": [
+						{
+							"name": "Success Response",
+							"originalRequest": {
+								"method": "GET",
+								"header": [],
+								"url": {
+									"raw": "{{base_url}}/api/analytics/growth-trends?interval=monthly&periods=3",
+									"host": ["{{base_url}}"],
+									"path": ["api", "analytics", "growth-trends"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"interval\": \"monthly\",\n    \"periods\": 3,\n    \"trends\": [\n        {\n            \"period\": \"2025-12\",\n            \"start_date\": \"2025-12-01\",\n            \"end_date\": \"2025-12-31\",\n            \"revenue\": \"98200.00\",\n            \"profit\": \"39280.00\",\n            \"transactions\": 289,\n            \"average_order_value\": \"339.79\",\n            \"revenue_growth_percentage\": null\n        },\n        {\n            \"period\": \"2026-01\",\n            \"start_date\": \"2026-01-01\",\n            \"end_date\": \"2026-01-31\",\n            \"revenue\": \"112350.00\",\n            \"profit\": \"44940.00\",\n            \"transactions\": 315,\n            \"average_order_value\": \"356.67\",\n            \"revenue_growth_percentage\": \"14.42\"\n        },\n        {\n            \"period\": \"2026-02\",\n            \"start_date\": \"2026-02-01\",\n            \"end_date\": \"2026-02-28\",\n            \"revenue\": \"125500.50\",\n            \"profit\": \"50200.20\",\n            \"transactions\": 342,\n            \"average_order_value\": \"367.00\",\n            \"revenue_growth_percentage\": \"11.71\"\n        }\n    ]\n}"
+						}
+					]
+				},
+				{
+					"name": "Get Weekly Growth Trends",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/growth-trends?interval=weekly&periods=8",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "interval",
+									"value": "weekly"
+								},
+								{
+									"key": "periods",
+									"value": "8",
+									"description": "Last 8 weeks"
+								}
+							]
+						},
+						"description": "Get weekly growth trends for the last 8 weeks."
+					}
+				},
+				{
+					"name": "Get Daily Growth Trends",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/growth-trends?interval=daily&periods=14",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "interval",
+									"value": "daily"
+								},
+								{
+									"key": "periods",
+									"value": "14",
+									"description": "Last 14 days"
+								}
+							]
+						},
+						"description": "Get daily growth trends for the last 2 weeks."
+					}
+				},
+				{
+					"name": "Get Branch Growth Trends",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/growth-trends?interval=monthly&periods=6&branch_id=1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "interval",
+									"value": "monthly"
+								},
+								{
+									"key": "periods",
+									"value": "6"
+								},
+								{
+									"key": "branch_id",
+									"value": "1",
+									"description": "Specific branch ID"
+								}
+							]
+						},
+						"description": "Get growth trends for a specific branch over 6 months."
+					}
+				}
+			],
+			"description": "Revenue and profit growth trends over configurable time periods for business intelligence."
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "your_sanctum_token_here",
+			"type": "string"
+		},
+		{
+			"key": "business_id",
+			"value": "1",
+			"type": "string"
+		}
+	]
+}

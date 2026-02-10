@@ -1,0 +1,529 @@
+<?php
+
+namespace App\Http\Controllers\Api;
+
+use App\Http\Controllers\Controller;
+use App\Models\BranchProduct;
+use App\Models\StockTransferRequest;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
+
+class StockTransferRequestController extends Controller
+{
+    /**
+     * List stock transfer requests
+     */
+    public function index(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context
+        setPermissionsTeamId($businessId);
+
+        // Check if user can view requests (either requester or approver)
+        $canView = $user->hasPermissionTo('request stock transfer') || 
+                   $user->hasPermissionTo('approve stock transfer');
+
+        if (!$canView) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $query = StockTransferRequest::where('business_id', $businessId)
+            ->with(['branch', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy']);
+
+        // Filters
+        if ($request->has('branch_id')) {
+            $branchId = $request->input('branch_id');
+            
+            // Check branch access
+            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+            
+            $query->where('branch_id', $branchId);
+        }
+
+        if ($request->has('status')) {
+            $query->where('status', $request->input('status'));
+        }
+
+        if ($request->has('priority')) {
+            $query->where('priority', $request->input('priority'));
+        }
+
+        // Filter by requester
+        if ($request->boolean('my_requests', false)) {
+            $query->where('requested_by', $user->id);
+        }
+
+        // Filter pending approvals (for approvers)
+        if ($request->boolean('pending_approval', false)) {
+            $query->where('status', StockTransferRequest::STATUS_PENDING);
+        }
+
+        // Filter approved pending confirmation
+        if ($request->boolean('pending_confirmation', false)) {
+            $query->where('status', StockTransferRequest::STATUS_APPROVED);
+        }
+
+        $perPage = $request->input('per_page', 15);
+        $requests = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        return response()->json([
+            'data' => $requests->map(fn($r) => $this->formatRequest($r)),
+            'meta' => [
+                'current_page' => $requests->currentPage(),
+                'last_page' => $requests->lastPage(),
+                'per_page' => $requests->perPage(),
+                'total' => $requests->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * Create a new stock transfer request
+     */
+    public function store(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (!$business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (!$user->hasPermissionTo('request stock transfer')) {
+            return response()->json(['message' => 'You do not have permission to request stock transfers'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'branch_product_id' => ['required', 'integer', 'exists:branch_products,id'],
+            'quantity_requested' => ['required', 'integer', 'min:1'],
+            'reason' => ['nullable', 'string', 'max:500'],
+            'priority' => ['nullable', 'in:low,normal,high,urgent'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Verify branch access
+        if (!$this->userHasBranchAccess($user, $businessId, $request->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        // Verify branch product belongs to the branch
+        $branchProduct = BranchProduct::where('id', $request->branch_product_id)
+            ->where('branch_id', $request->branch_id)
+            ->first();
+
+        if (!$branchProduct) {
+            return response()->json(['message' => 'Product not found in this branch'], 404);
+        }
+
+        // Check if there's enough stock in store
+        if ($branchProduct->store_quantity < $request->quantity_requested) {
+            return response()->json([
+                'message' => 'Insufficient stock in store',
+                'available' => $branchProduct->store_quantity,
+                'requested' => $request->quantity_requested,
+            ], 422);
+        }
+
+        $transferRequest = StockTransferRequest::create([
+            'business_id' => $businessId,
+            'branch_id' => $request->branch_id,
+            'branch_product_id' => $request->branch_product_id,
+            'quantity_requested' => $request->quantity_requested,
+            'reason' => $request->reason,
+            'priority' => $request->priority ?? 'normal',
+            'status' => StockTransferRequest::STATUS_PENDING,
+            'requested_by' => $user->id,
+            'requested_at' => now(),
+        ]);
+
+        return response()->json([
+            'message' => 'Stock transfer request created successfully',
+            'data' => $this->formatRequest($transferRequest->load(['branch', 'branchProduct.product', 'requestedBy'])),
+        ], 201);
+    }
+
+    /**
+     * Show a specific request
+     */
+    public function show(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->with(['branch', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy'])
+            ->first();
+
+        if (!$transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        // Set permission context
+        setPermissionsTeamId($businessId);
+
+        // Check if user can view (requester, approver, or has branch access)
+        $canView = $transferRequest->requested_by === $user->id ||
+                   $user->hasPermissionTo('approve stock transfer') ||
+                   $user->hasPermissionTo('request stock transfer');
+
+        if (!$canView) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        return response()->json([
+            'data' => $this->formatRequest($transferRequest),
+        ]);
+    }
+
+    /**
+     * Approve a stock transfer request
+     */
+    public function approve(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (!$user->hasPermissionTo('approve stock transfer')) {
+            return response()->json(['message' => 'You do not have permission to approve stock transfers'], 403);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->with('branchProduct')
+            ->lockForUpdate()
+            ->first();
+
+        if (!$transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        // Check branch access
+        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        // Prevent self-approval
+        if ($transferRequest->requested_by === $user->id) {
+            return response()->json(['message' => 'You cannot approve your own request'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $transferRequest->approve($user, $request->notes);
+
+            return response()->json([
+                'message' => 'Request approved successfully',
+                'data' => $this->formatRequest($transferRequest->fresh(['requestedBy', 'reviewedBy'])),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Reject a stock transfer request
+     */
+    public function reject(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (!$user->hasPermissionTo('approve stock transfer')) {
+            return response()->json(['message' => 'You do not have permission to reject stock transfers'], 403);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        // Check branch access
+        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $transferRequest->reject($user, $request->reason);
+
+            return response()->json([
+                'message' => 'Request rejected successfully',
+                'data' => $this->formatRequest($transferRequest->fresh(['requestedBy', 'reviewedBy'])),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Confirm a stock transfer request (perform the actual transfer)
+     */
+    public function confirm(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Set permission context
+        setPermissionsTeamId($businessId);
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->with('branchProduct')
+            ->lockForUpdate()
+            ->first();
+
+        if (!$transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        // Only the requester can confirm (or someone with special permission)
+        $canConfirm = $transferRequest->requested_by === $user->id ||
+                      $user->hasPermissionTo('approve stock transfer');
+
+        if (!$canConfirm) {
+            return response()->json(['message' => 'Only the requester can confirm this transfer'], 403);
+        }
+
+        // Check branch access
+        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'actual_quantity' => ['nullable', 'integer', 'min:1', 'max:' . $transferRequest->quantity_requested],
+            'notes' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $actualQuantity = $request->actual_quantity ?? $transferRequest->quantity_requested;
+            
+            $transferRequest->confirm($user, $actualQuantity, $request->notes);
+
+            return response()->json([
+                'message' => 'Transfer confirmed and completed successfully',
+                'data' => $this->formatRequest($transferRequest->fresh(['requestedBy', 'reviewedBy', 'confirmedBy', 'branchProduct'])),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Cancel a stock transfer request
+     */
+    public function cancel(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+
+        if (!$businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->lockForUpdate()
+            ->first();
+
+        if (!$transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        // Only the requester can cancel their own request
+        if ($transferRequest->requested_by !== $user->id) {
+            return response()->json(['message' => 'Only the requester can cancel this request'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $transferRequest->cancel($user, $request->reason);
+
+            return response()->json([
+                'message' => 'Request cancelled successfully',
+                'data' => $this->formatRequest($transferRequest->fresh()),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Check if user has access to a branch
+     */
+    private function userHasBranchAccess($user, int $businessId, int $branchId): bool
+    {
+        $accessibleBranches = $user->getBranchesInBusiness($businessId);
+        
+        if ($accessibleBranches->isEmpty()) {
+            $hasBusinessWideRole = \DB::table('model_has_roles')
+                ->where('model_type', get_class($user))
+                ->where('model_id', $user->id)
+                ->where('business_id', $businessId)
+                ->whereNull('branch_id')
+                ->exists();
+            
+            return $hasBusinessWideRole;
+        }
+        
+        return $accessibleBranches->contains($branchId);
+    }
+
+    /**
+     * Format request for response
+     */
+    private function formatRequest(StockTransferRequest $transferRequest): array
+    {
+        return [
+            'id' => $transferRequest->id,
+            'request_number' => $transferRequest->request_number,
+            'business_id' => $transferRequest->business_id,
+            'branch' => $transferRequest->branch ? [
+                'id' => $transferRequest->branch->id,
+                'name' => $transferRequest->branch->name,
+                'code' => $transferRequest->branch->code,
+            ] : null,
+            'product' => $transferRequest->branchProduct ? [
+                'id' => $transferRequest->branchProduct->product->id,
+                'name' => $transferRequest->branchProduct->product->name,
+                'sku' => $transferRequest->branchProduct->product->sku,
+                'current_shelf_quantity' => $transferRequest->branchProduct->shelf_quantity,
+                'current_store_quantity' => $transferRequest->branchProduct->store_quantity,
+            ] : null,
+            'quantity_requested' => $transferRequest->quantity_requested,
+            'quantity_transferred' => $transferRequest->quantity_transferred,
+            'reason' => $transferRequest->reason,
+            'priority' => $transferRequest->priority,
+            'status' => $transferRequest->status,
+            'requested_by' => $transferRequest->requestedBy ? [
+                'id' => $transferRequest->requestedBy->id,
+                'name' => $transferRequest->requestedBy->name,
+                'email' => $transferRequest->requestedBy->email,
+            ] : null,
+            'requested_at' => $transferRequest->requested_at,
+            'reviewed_by' => $transferRequest->reviewedBy ? [
+                'id' => $transferRequest->reviewedBy->id,
+                'name' => $transferRequest->reviewedBy->name,
+                'email' => $transferRequest->reviewedBy->email,
+            ] : null,
+            'reviewed_at' => $transferRequest->reviewed_at,
+            'review_notes' => $transferRequest->review_notes,
+            'confirmed_by' => $transferRequest->confirmedBy ? [
+                'id' => $transferRequest->confirmedBy->id,
+                'name' => $transferRequest->confirmedBy->name,
+                'email' => $transferRequest->confirmedBy->email,
+            ] : null,
+            'confirmed_at' => $transferRequest->confirmed_at,
+            'confirmation_notes' => $transferRequest->confirmation_notes,
+            'version' => $transferRequest->version,
+            'created_at' => $transferRequest->created_at,
+            'updated_at' => $transferRequest->updated_at,
+        ];
+    }
+}

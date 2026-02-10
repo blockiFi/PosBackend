@@ -1,0 +1,26 @@
+{
+  "name": "pos-api-data-generator",
+  "version": "1.0.0",
+  "description": "Generate test data for POS API by making HTTP requests",
+  "main": "api-data-generator.js",
+  "scripts": {
+    "generate": "node api-data-generator.js",
+    "generate:small": "node api-data-generator.js --preset small",
+    "generate:large": "node api-data-generator.js --preset large",
+    "test": "node api-test.js"
+  },
+  "keywords": [
+    "pos",
+    "test-data",
+    "api",
+    "data-generator"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@faker-js/faker": "^8.4.0",
+    "axios": "^1.6.5",
+    "dotenv": "^16.4.1"
+  },
+  "devDependencies": {}
+}

@@ -1,0 +1,3190 @@
+{
+	"info": {
+		"_postman_id": "pos-backend-complete-2026",
+		"name": "POS Backend - Complete API Collection",
+		"description": "# POS Backend API - Complete Documentation\n\nComprehensive API collection for the Point of Sale Backend system.\n\n## 🔐 Authentication\n\nAll endpoints (except login/register) require:\n- **Bearer Token**: Sanctum authentication token\n- **X-Business-Id Header**: Current business context ID (for most endpoints)\n- **X-Device-Id Header**: Device identifier (for sync endpoints)\n\n## 📋 Features\n\n- **Multi-tenant** - Business isolation with branch management\n- **Role-based permissions** - Granular access control\n- **PIN Authentication** - Quick login with 4-6 digit PIN\n- **Inventory Management** - Stock tracking, batches, expiry dates (FEFO)\n- **Shelf-Store Inventory** - Separate shelf and store stock management\n- **Sales Management** - POS transactions, shifts, payments\n- **Financial Analytics** - Revenue, profit, growth trends\n- **Approval Workflows** - Quick sales, refunds, stock transfers\n- **Stock Write-offs** - Track damaged/expired inventory\n- **Offline Sync** - Device registration and data synchronization\n\n## 🚀 Quick Start\n\n1. Login to get authentication token\n2. Set `auth_token` and `business_id` variables\n3. Start making authenticated requests\n\n## 📊 Modules\n\n- Authentication & User Management (with PIN support)\n- Business & Branch Management\n- Product & Inventory Management\n- Branch-Product Management (Shelf/Store)\n- Sales & Payments\n- Sales Shifts\n- Quick Sales, Refunds & Stock Transfers\n- Stock Write-offs\n- Analytics & Reporting\n- Batch & Expiry Management\n- Offline Sync & Device Management\n\nVersion: 2.0.0\nLast Updated: February 8, 2026",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Register New User",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"John Doe\",\n    \"email\": \"john@example.com\",\n    \"password\": \"password123\",\n    \"password_confirmation\": \"password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/register",
+							"host": ["{{base_url}}"],
+							"path": ["api", "register"]
+						},
+						"description": "Register a new user account.\n\n**No authentication required**"
+					},
+					"response": []
+				},
+				{
+					"name": "Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+									"    pm.collectionVariables.set(\"user_id\", jsonData.user.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john@example.com\",\n    \"password\": \"password123\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "login"]
+						},
+						"description": "Authenticate user and receive Sanctum token.\n\n**Returns:**\n- Authentication token\n- User details\n- Current business context\n\n**Auto-saves token to collection variables**"
+					},
+					"response": [
+						{
+							"name": "Login Success",
+							"originalRequest": {
+								"method": "POST",
+								"header": [],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n    \"email\": \"john@example.com\",\n    \"password\": \"password123\"\n}",
+									"options": {
+										"raw": {
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "{{base_url}}/api/login",
+									"host": ["{{base_url}}"],
+									"path": ["api", "login"]
+								}
+							},
+							"status": "OK",
+							"code": 200,
+							"_postman_previewlanguage": "json",
+							"header": [],
+							"cookie": [],
+							"body": "{\n    \"user\": {\n        \"id\": 1,\n        \"name\": \"John Doe\",\n        \"email\": \"john@example.com\",\n        \"current_business_id\": 1\n    },\n    \"token\": \"1|abc123def456ghi789jkl012mno345pqr678stu901vwx234yz\"\n}"
+						}
+					]
+				},
+				{
+					"name": "Logout",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/logout",
+							"host": ["{{base_url}}"],
+							"path": ["api", "logout"]
+						},
+						"description": "Logout and revoke current authentication token."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current User",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/user",
+							"host": ["{{base_url}}"],
+							"path": ["api", "user"]
+						},
+						"description": "Get authenticated user details."
+					},
+					"response": []
+				},
+				{
+					"name": "PIN Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"auth_token\", jsonData.token);",
+									"    pm.collectionVariables.set(\"user_id\", jsonData.user.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"john@example.com\",\n    \"pin\": \"1234\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/pin-login",
+							"host": ["{{base_url}}"],
+							"path": ["api", "pin-login"]
+						},
+						"description": "Quick login using PIN instead of password.\n\n**No authentication required**\n\n**Requirements:**\n- User must have set a PIN first\n- PIN must be 4-6 digits\n\n**Auto-saves token to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "Set PIN",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"pin\": \"1234\",\n    \"pin_confirmation\": \"1234\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/pin/set",
+							"host": ["{{base_url}}"],
+							"path": ["api", "pin", "set"]
+						},
+						"description": "Set or update user's PIN for quick login.\n\n**Requirements:**\n- PIN must be 4-6 digits\n- PIN and confirmation must match\n- User must be authenticated"
+					},
+					"response": []
+				},
+				{
+					"name": "Remove PIN",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/pin/remove",
+							"host": ["{{base_url}}"],
+							"path": ["api", "pin", "remove"]
+						},
+						"description": "Remove user's PIN. User will need to use password login after this."
+					},
+					"response": []
+				}
+			],
+			"description": "User authentication endpoints - register, login, logout, PIN management"
+		},
+		{
+			"name": "Business Management",
+			"item": [
+				{
+					"name": "List All Businesses",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/businesses",
+							"host": ["{{base_url}}"],
+							"path": ["api", "businesses"]
+						},
+						"description": "Get all businesses accessible to the current user."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Business",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"business_id\", jsonData.business.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"My Retail Store\",\n    \"email\": \"contact@mystore.com\",\n    \"phone\": \"+1234567890\",\n    \"address\": \"123 Main Street, City, Country\",\n    \"tax_id\": \"TAX123456\",\n    \"currency\": \"USD\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/businesses",
+							"host": ["{{base_url}}"],
+							"path": ["api", "businesses"]
+						},
+						"description": "Create a new business.\n\n**Auto-saves business_id to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Business Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "businesses", "{{business_id}}"]
+						},
+						"description": "Get details of a specific business."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Business",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Store Name\",\n    \"email\": \"newemail@mystore.com\",\n    \"phone\": \"+1987654321\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "businesses", "{{business_id}}"]
+						},
+						"description": "Update business details."
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Business",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/businesses/{{business_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "businesses", "{{business_id}}"]
+						},
+						"description": "Delete a business (soft delete)."
+					},
+					"response": []
+				}
+			],
+			"description": "Business/tenant management endpoints"
+		},
+		{
+			"name": "Branch Management",
+			"item": [
+				{
+					"name": "List All Branches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/branches",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branches"]
+						},
+						"description": "Get all branches for the current business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Branch",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"branch_id\", jsonData.branch.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Main Branch\",\n    \"address\": \"456 Store Avenue, Downtown\",\n    \"phone\": \"+1234567890\",\n    \"email\": \"mainbranch@mystore.com\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/branches",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branches"]
+						},
+						"description": "Create a new branch.\n\n**Auto-saves branch_id to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Branch Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/branches/{{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branches", "{{branch_id}}"]
+						},
+						"description": "Get details of a specific branch."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Branch",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Updated Branch Name\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/branches/{{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branches", "{{branch_id}}"]
+						},
+						"description": "Update branch details."
+					},
+					"response": []
+				}
+			],
+			"description": "Branch/location management for multi-location businesses"
+		},
+		{
+			"name": "Product Management",
+			"item": [
+				{
+					"name": "List All Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/products?per_page=20&search=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products"],
+							"query": [
+								{
+									"key": "per_page",
+									"value": "20"
+								},
+								{
+									"key": "search",
+									"value": ""
+								},
+								{
+									"key": "category_id",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated list of products with optional filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Product",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"product_id\", jsonData.product.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Premium Widget XL\",\n    \"sku\": \"WDG-XL-001\",\n    \"category_id\": 1,\n    \"description\": \"High-quality widget for professional use\",\n    \"base_selling_price\": 299.99,\n    \"base_cost_price\": 150.00,\n    \"barcode\": \"1234567890123\",\n    \"stock_tracking\": \"simple\",\n    \"is_active\": true,\n    \"is_taxable\": true,\n    \"default_tax_rate\": 15\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products"]
+						},
+						"description": "Create a new product.\n\n**Auto-saves product_id to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Product Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/products/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products", "{{product_id}}"]
+						},
+						"description": "Get detailed product information including stock levels."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Product",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Premium Widget XL - Updated\",\n    \"base_selling_price\": 319.99,\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products/{{product_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products", "{{product_id}}"]
+						},
+						"description": "Update product information."
+					},
+					"response": []
+				},
+				{
+					"name": "List Product Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/categories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "categories"]
+						},
+						"description": "Get all product categories."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Product Category",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Electronics\",\n    \"description\": \"Electronic devices and accessories\",\n    \"parent_id\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/categories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "categories"]
+						},
+						"description": "Create a new product category.\n\n**Supports hierarchical categories** - set parent_id to create subcategories."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Category Breadcrumb",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/categories/1/breadcrumb",
+							"host": ["{{base_url}}"],
+							"path": ["api", "categories", "1", "breadcrumb"]
+						},
+						"description": "Get category hierarchy breadcrumb trail.\n\n**Example:** Electronics > Mobile Phones > Smartphones"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Products by Branch",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/branches/{{branch_id}}/products",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branches", "{{branch_id}}", "products"]
+						},
+						"description": "Get all products available at a specific branch with stock levels."
+					},
+					"response": []
+				},
+				{
+					"name": "Add Product to Branch",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"selling_price\": 299.99,\n    \"reorder_point\": 20,\n    \"max_stock_level\": 200\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products/{{product_id}}/branches",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products", "{{product_id}}", "branches"]
+						},
+						"description": "Add product to a specific branch with branch-specific pricing."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Branch Product Price",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"selling_price\": 319.99\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/products/{{product_id}}/price",
+							"host": ["{{base_url}}"],
+							"path": ["api", "products", "{{product_id}}", "price"]
+						},
+						"description": "Update selling price for a product at current branch."
+					},
+					"response": []
+				}
+			],
+			"description": "Product catalog management with categories, pricing, and branch assignment"
+		},
+		{
+			"name": "Branch Product Management",
+			"item": [
+				{
+					"name": "List Branch Products",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/branch-products?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branch-products"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "low_stock",
+									"value": "true",
+									"disabled": true,
+									"description": "Filter products below reorder point"
+								}
+							]
+						},
+						"description": "Get products at a branch with shelf/store stock levels."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Stock Summary",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/branch-products/summary/stock?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branch-products", "summary", "stock"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get aggregated stock summary for a branch.\n\n**Returns:**\n- Total products\n- Total shelf stock\n- Total store stock\n- Low stock items\n- Out of stock items"
+					},
+					"response": []
+				},
+				{
+					"name": "Move Stock to Shelf",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 50\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/branch-products/1/move-to-shelf",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branch-products", "1", "move-to-shelf"]
+						},
+						"description": "Move stock from store to shelf.\n\n**Updates:**\n- Decreases store_stock\n- Increases shelf_stock\n\n**Permissions:** `manage inventory`"
+					},
+					"response": []
+				},
+				{
+					"name": "Move Stock to Store",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"quantity\": 30\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/branch-products/1/move-to-store",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branch-products", "1", "move-to-store"]
+						},
+						"description": "Move stock from shelf to store.\n\n**Updates:**\n- Decreases shelf_stock\n- Increases store_stock\n\n**Permissions:** `manage inventory`"
+					},
+					"response": []
+				},
+				{
+					"name": "Bulk Update Branch Products",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"updates\": [\n        {\n            \"id\": 1,\n            \"selling_price\": 299.99,\n            \"reorder_point\": 25\n        },\n        {\n            \"id\": 2,\n            \"selling_price\": 49.99,\n            \"max_stock_level\": 500\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/branch-products/bulk-update",
+							"host": ["{{base_url}}"],
+							"path": ["api", "branch-products", "bulk-update"]
+						},
+						"description": "Update multiple branch products in one request.\n\n**Useful for:**\n- Bulk price updates\n- Adjusting reorder points\n- Setting max stock levels\n\n**Permissions:** `manage products`"
+					},
+					"response": []
+				}
+			],
+			"description": "Shelf and store inventory management for branch products"
+		},
+		{
+			"name": "Inventory Management",
+			"item": [
+				{
+					"name": "Record Purchase (Stock In)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"product_id\": {{product_id}},\n    \"type\": \"purchase\",\n    \"quantity\": 100,\n    \"unit_cost\": 150.00,\n    \"batch_number\": \"BATCH-2026-001\",\n    \"lot_number\": \"LOT-A-123\",\n    \"manufacturing_date\": \"2026-01-15\",\n    \"expiry_date\": \"2027-01-15\",\n    \"supplier_name\": \"ABC Suppliers Ltd\",\n    \"supplier_reference\": \"INV-2026-001\",\n    \"notes\": \"Received in good condition\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/inventory/transactions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "transactions"]
+						},
+						"description": "Record a purchase/stock-in transaction.\n\n**Creates batch automatically** if expiry_date provided.\n\n**Fields:**\n- `batch_number` - Optional, auto-generated if not provided\n- `expiry_date` - Creates batch for FEFO allocation\n- `manufacturing_date` - Optional\n- `supplier_*` - Supplier information"
+					},
+					"response": []
+				},
+				{
+					"name": "Record Sale (Stock Out)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"product_id\": {{product_id}},\n    \"type\": \"sale\",\n    \"quantity\": 5,\n    \"notes\": \"Regular sale\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/inventory/transactions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "transactions"]
+						},
+						"description": "Record a sale/stock-out transaction.\n\n**Uses FEFO allocation** - automatically allocates from batches expiring soonest."
+					},
+					"response": []
+				},
+				{
+					"name": "Record Adjustment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"product_id\": {{product_id}},\n    \"type\": \"adjustment\",\n    \"quantity\": -3,\n    \"reason\": \"damaged\",\n    \"notes\": \"Damaged during handling\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/inventory/transactions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "transactions"]
+						},
+						"description": "Record inventory adjustment (positive or negative)."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Inventory Transactions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/transactions?branch_id={{branch_id}}&product_id={{product_id}}&type=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "transactions"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "product_id",
+									"value": "{{product_id}}"
+								},
+								{
+									"key": "type",
+									"value": "",
+									"description": "purchase, sale, adjustment, transfer"
+								},
+								{
+									"key": "start_date",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get inventory transaction history with filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Stock Levels",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/inventory/stock?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "inventory", "stock"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "low_stock",
+									"value": "true",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get current stock levels for all products at a branch."
+					},
+					"response": []
+				}
+			],
+			"description": "Inventory tracking with FEFO batch allocation"
+		},
+		{
+			"name": "Batch Management",
+			"item": [
+				{
+					"name": "List All Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/batches?branch_id={{branch_id}}&product_id={{product_id}}&status=active",
+							"host": ["{{base_url}}"],
+							"path": ["api", "batches"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"description": "Filter by branch"
+								},
+								{
+									"key": "product_id",
+									"value": "{{product_id}}",
+									"description": "Filter by product"
+								},
+								{
+									"key": "status",
+									"value": "active",
+									"description": "active, depleted, expired, recalled"
+								}
+							]
+						},
+						"description": "Get all batches with filters.\n\n**Permissions:** `view batches`"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Near-Expiry Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/batches/near-expiry?days=30&branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "batches", "near-expiry"],
+							"query": [
+								{
+									"key": "days",
+									"value": "30",
+									"description": "Alert threshold in days"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get batches expiring within specified days.\n\n**Use for expiry alerts**"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Expired Batches",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/batches/expired?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "batches", "expired"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get all expired batches still in stock."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Batch Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/batches/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "batches", "1"]
+						},
+						"description": "Get detailed batch information including allocation history."
+					},
+					"response": []
+				},
+				{
+					"name": "Update Batch Status",
+					"request": {
+						"method": "PATCH",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"status\": \"recalled\",\n    \"notes\": \"Supplier recall notice #12345\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/batches/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "batches", "1"]
+						},
+						"description": "Update batch status.\n\n**Statuses:** active, depleted, expired, recalled\n\n**Permissions:** `manage batches`"
+					},
+					"response": []
+				}
+			],
+			"description": "Batch tracking with FEFO allocation and expiry management"
+		},
+		{
+			"name": "Sales",
+			"item": [
+				{
+					"name": "Create Sale",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"sale_id\", jsonData.sale.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"shift_id\": 1,\n    \"customer_id\": null,\n    \"items\": [\n        {\n            \"product_id\": {{product_id}},\n            \"quantity\": 2,\n            \"price\": 299.99,\n            \"discount_amount\": 0\n        },\n        {\n            \"product_id\": 2,\n            \"quantity\": 1,\n            \"price\": 149.99,\n            \"discount_amount\": 10\n        }\n    ],\n    \"payments\": [\n        {\n            \"payment_method_id\": 1,\n            \"amount\": 739.97,\n            \"reference\": \"CASH-001\"\n        }\n    ],\n    \"discount_amount\": 10,\n    \"tax_amount\": 0,\n    \"notes\": \"Regular sale\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sales",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sales"]
+						},
+						"description": "Create a new sale with items and payments.\n\n**Features:**\n- Multiple items per sale\n- Multiple payment methods\n- Automatic inventory deduction (FEFO)\n- Links to active shift\n- Customer tracking (optional)\n\n**Auto-saves sale_id to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "List Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sales?branch_id={{branch_id}}&status=completed&start_date=2026-02-01&end_date=2026-02-08",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sales"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "status",
+									"value": "completed",
+									"description": "pending, completed, voided"
+								},
+								{
+									"key": "start_date",
+									"value": "2026-02-01"
+								},
+								{
+									"key": "end_date",
+									"value": "2026-02-08"
+								},
+								{
+									"key": "shift_id",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get paginated sales list with filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Sale Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sales/{{sale_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sales", "{{sale_id}}"]
+						},
+						"description": "Get detailed sale information including items and payments."
+					},
+					"response": []
+				},
+				{
+					"name": "Void Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"reason\": \"Customer requested cancellation\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sales/{{sale_id}}/void",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sales", "{{sale_id}}", "void"]
+						},
+						"description": "Void/cancel a sale and restore inventory."
+					},
+					"response": []
+				}
+			],
+			"description": "Point of sale transactions with multi-item and multi-payment support"
+		},
+		{
+			"name": "Sales Shifts",
+			"item": [
+				{
+					"name": "Open Shift",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201) {",
+									"    var jsonData = pm.response.json();",
+									"    pm.collectionVariables.set(\"shift_id\", jsonData.shift.id);",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"opening_balance\": 500.00,\n    \"opening_notes\": \"Starting shift - counted cash drawer\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/shifts",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts"]
+						},
+						"description": "Open a new sales shift.\n\n**Auto-generates shift number**\n**Permissions:** `manage shifts`\n\n**Auto-saves shift_id to collection variables**"
+					},
+					"response": []
+				},
+				{
+					"name": "Close Shift",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"closing_balance\": 1250.75,\n    \"closing_notes\": \"End of shift - all sales processed\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/shifts/{{shift_id}}/close",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts", "{{shift_id}}", "close"]
+						},
+						"description": "Close an active shift.\n\n**Calculates:**\n- Total sales\n- Expected cash\n- Variance (overage/shortage)\n- Payment method breakdown"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Current Shift",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/shifts/current?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts", "current"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get currently active shift for a branch."
+					},
+					"response": []
+				},
+				{
+					"name": "List Shifts",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/shifts?branch_id={{branch_id}}&filter=today&status=closed",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "filter",
+									"value": "today",
+									"description": "today, last_7_days, custom"
+								},
+								{
+									"key": "status",
+									"value": "closed",
+									"description": "open, closed"
+								},
+								{
+									"key": "start_date",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Get shift history with statistics."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Shift Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/shifts/{{shift_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts", "{{shift_id}}"]
+						},
+						"description": "Get detailed shift information including:\n- Sales breakdown\n- Payment method totals\n- Duration\n- Variance calculation"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Shift Sales",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/shifts/{{shift_id}}/sales?status=active&payment_method=Cash",
+							"host": ["{{base_url}}"],
+							"path": ["api", "shifts", "{{shift_id}}", "sales"],
+							"query": [
+								{
+									"key": "status",
+									"value": "active",
+									"description": "active, voided"
+								},
+								{
+									"key": "payment_method",
+									"value": "Cash",
+									"description": "Filter by payment method"
+								}
+							]
+						},
+						"description": "Get all sales for a specific shift with filters."
+					},
+					"response": []
+				}
+			],
+			"description": "Sales shift management for cashier accountability and reconciliation"
+		},
+		{
+			"name": "Quick Sales",
+			"item": [
+				{
+					"name": "Request Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"product_id\": {{product_id}},\n    \"branch_id\": {{branch_id}},\n    \"reason\": \"Product expires in 5 days - need to clear stock quickly\",\n    \"expiry_date\": \"2026-02-13\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/quick-sales",
+							"host": ["{{base_url}}"],
+							"path": ["api", "quick-sales"]
+						},
+						"description": "Request approval to sell product below minimum price.\n\n**Use case:** Near-expiry products, overstocked items\n**Permissions:** `request quick sale`"
+					},
+					"response": []
+				},
+				{
+					"name": "List Quick Sale Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/quick-sales?status=pending&branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "quick-sales"],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "pending, approved, rejected"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								}
+							]
+						},
+						"description": "Get quick sale requests with filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"approved_price\": 199.99,\n    \"notes\": \"Approved - near expiry clearance\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/quick-sales/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["api", "quick-sales", "1", "approve"]
+						},
+						"description": "Approve quick sale request with special price.\n\n**Permissions:** `approve quick sale`"
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Quick Sale",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Insufficient reason - maintain standard pricing\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/quick-sales/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["api", "quick-sales", "1", "reject"]
+						},
+						"description": "Reject quick sale request.\n\n**Permissions:** `approve quick sale`"
+					},
+					"response": []
+				}
+			],
+			"description": "Quick sale approval workflow for selling below minimum price"
+		},
+		{
+			"name": "Refund Requests",
+			"item": [
+				{
+					"name": "Request Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"sale_id\": {{sale_id}},\n    \"reason\": \"Customer dissatisfied with product quality\",\n    \"amount\": 299.99,\n    \"items\": [\n        {\n            \"sale_item_id\": 1,\n            \"quantity\": 1\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/refunds",
+							"host": ["{{base_url}}"],
+							"path": ["api", "refunds"]
+						},
+						"description": "Request approval for sale refund.\n\n**Permissions:** `request refund`"
+					},
+					"response": []
+				},
+				{
+					"name": "List Refund Requests",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/refunds?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["api", "refunds"],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "pending, approved, rejected"
+								}
+							]
+						},
+						"description": "Get refund requests.\n\n**Requester** - sees own requests\n**Approver** - sees all requests"
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Approved - valid product defect\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/refunds/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["api", "refunds", "1", "approve"]
+						},
+						"description": "Approve refund request.\n\n**Permissions:** `approve refund`\n**Restores inventory**"
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Refund",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Product in used condition - outside return policy\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/refunds/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["api", "refunds", "1", "reject"]
+						},
+						"description": "Reject refund request.\n\n**Permissions:** `approve refund`"
+					},
+					"response": []
+				}
+			],
+			"description": "Refund approval workflow with inventory restoration"
+		},
+		{
+			"name": "Stock Transfer Requests",
+			"item": [
+				{
+					"name": "List Stock Transfers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests"],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "pending, approved, rejected, confirmed, cancelled"
+								},
+								{
+									"key": "from_branch_id",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "to_branch_id",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all stock transfer requests with optional filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Stock Transfer Request",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"from_branch_id\": 1,\n    \"to_branch_id\": 2,\n    \"product_id\": {{product_id}},\n    \"quantity\": 50,\n    \"reason\": \"Stock rebalancing - Branch 2 running low\",\n    \"notes\": \"Urgent transfer needed for weekend sales\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests"]
+						},
+						"description": "Create new stock transfer request between branches.\n\n**Workflow:**\n1. Created → Pending approval\n2. Approved → Ready for shipping\n3. Confirmed → Inventory transferred\n\n**Permissions:** `create stock transfer`"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Stock Transfer Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests", "1"]
+						},
+						"description": "Get detailed information about a stock transfer request."
+					},
+					"response": []
+				},
+				{
+					"name": "Approve Stock Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Approved - stock available for transfer\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests/1/approve",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests", "1", "approve"]
+						},
+						"description": "Approve stock transfer request.\n\n**Permissions:** `approve stock transfer`\n**Next step:** Confirm receipt at destination branch"
+					},
+					"response": []
+				},
+				{
+					"name": "Reject Stock Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Insufficient stock at source branch\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests/1/reject",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests", "1", "reject"]
+						},
+						"description": "Reject stock transfer request.\n\n**Permissions:** `approve stock transfer`"
+					},
+					"response": []
+				},
+				{
+					"name": "Confirm Stock Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Stock received in good condition\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests/1/confirm",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests", "1", "confirm"]
+						},
+						"description": "Confirm receipt of transferred stock.\n\n**Updates inventory:**\n- Decreases stock at source branch\n- Increases stock at destination branch\n\n**Permissions:** `confirm stock transfer`"
+					},
+					"response": []
+				},
+				{
+					"name": "Cancel Stock Transfer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"notes\": \"Transfer no longer needed\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-transfer-requests/1/cancel",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-transfer-requests", "1", "cancel"]
+						},
+						"description": "Cancel pending stock transfer request.\n\n**Can only cancel if status is pending**"
+					},
+					"response": []
+				}
+			],
+			"description": "Stock transfer workflow between branches with approval process"
+		},
+		{
+			"name": "Stock Write-offs",
+			"item": [
+				{
+					"name": "List Stock Write-offs",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/stock-writeoffs?branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-writeoffs"],
+							"query": [
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}"
+								},
+								{
+									"key": "reason",
+									"value": "",
+									"disabled": true,
+									"description": "damaged, expired, theft, lost"
+								},
+								{
+									"key": "start_date",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "List all stock write-offs with optional filters."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Stock Write-off",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"product_id\": {{product_id}},\n    \"quantity\": 10,\n    \"reason\": \"expired\",\n    \"notes\": \"Products expired - batch #BT-2024-001\",\n    \"batch_id\": 1\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/stock-writeoffs",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-writeoffs"]
+						},
+						"description": "Record stock write-off for damaged, expired, or lost inventory.\n\n**Reason options:**\n- `damaged` - Physical damage\n- `expired` - Past expiry date\n- `theft` - Stolen inventory\n- `lost` - Cannot be located\n\n**Automatically:**\n- Decreases inventory\n- Creates inventory transaction\n- Records for financial reporting\n\n**Permissions:** `manage stock writeoff`"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Stock Write-off Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/stock-writeoffs/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "stock-writeoffs", "1"]
+						},
+						"description": "Get detailed information about a specific stock write-off."
+					},
+					"response": []
+				}
+			],
+			"description": "Track and record inventory losses (damaged, expired, theft, lost)"
+		},
+		{
+			"name": "Analytics",
+			"item": [
+				{
+					"name": "Organization Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/organization?period=month&compare_previous=true",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "organization"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month",
+									"description": "today, week, month, year, custom"
+								},
+								{
+									"key": "compare_previous",
+									"value": "true"
+								},
+								{
+									"key": "start_date",
+									"value": "",
+									"disabled": true
+								},
+								{
+									"key": "end_date",
+									"value": "",
+									"disabled": true
+								}
+							]
+						},
+						"description": "Organization-wide analytics with period comparison.\n\n**Returns:**\n- Revenue, cost, profit, margins\n- Transaction counts\n- Branch contributions\n- Revenue trends\n\n**Permissions:** `view analytics`"
+					},
+					"response": []
+				},
+				{
+					"name": "Branch Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/branches?period=month&branch_id={{branch_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "branches"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"description": "Optional - omit for all branches"
+								}
+							]
+						},
+						"description": "Branch-level performance analytics."
+					},
+					"response": []
+				},
+				{
+					"name": "Product Analytics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/products?period=month&limit=20&sort_by=revenue&direction=desc",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "products"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month"
+								},
+								{
+									"key": "limit",
+									"value": "20"
+								},
+								{
+									"key": "sort_by",
+									"value": "revenue",
+									"description": "revenue, quantity, profit, margin"
+								},
+								{
+									"key": "direction",
+									"value": "desc"
+								}
+							]
+						},
+						"description": "Product performance analytics with rankings."
+					},
+					"response": []
+				},
+				{
+					"name": "Profit & Loss Statement",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/profit-loss?period=month",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "profit-loss"],
+							"query": [
+								{
+									"key": "period",
+									"value": "month",
+									"description": "today, week, month, quarter, year, custom"
+								}
+							]
+						},
+						"description": "Comprehensive P&L statement.\n\n**Permissions:** `view financial reports`"
+					},
+					"response": []
+				},
+				{
+					"name": "Growth Trends",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/analytics/growth-trends?interval=monthly&periods=12",
+							"host": ["{{base_url}}"],
+							"path": ["api", "analytics", "growth-trends"],
+							"query": [
+								{
+									"key": "interval",
+									"value": "monthly",
+									"description": "daily, weekly, monthly"
+								},
+								{
+									"key": "periods",
+									"value": "12",
+									"description": "Number of periods (1-24)"
+								}
+							]
+						},
+						"description": "Revenue growth trends over time for charting."
+					},
+					"response": []
+				}
+			],
+			"description": "Business intelligence and analytics with caching (15-30 min TTL)"
+		},
+		{
+			"name": "Customers",
+			"item": [
+				{
+					"name": "List Customers",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/customers?search=",
+							"host": ["{{base_url}}"],
+							"path": ["api", "customers"],
+							"query": [
+								{
+									"key": "search",
+									"value": "",
+									"description": "Search by name, email, phone"
+								}
+							]
+						},
+						"description": "Get customer list."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Customer",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Jane Smith\",\n    \"email\": \"jane@example.com\",\n    \"phone\": \"+1234567890\",\n    \"address\": \"789 Customer Lane\",\n    \"notes\": \"VIP customer\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/customers",
+							"host": ["{{base_url}}"],
+							"path": ["api", "customers"]
+						},
+						"description": "Create new customer record."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Customer Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/customers/1",
+							"host": ["{{base_url}}"],
+							"path": ["api", "customers", "1"]
+						},
+						"description": "Get customer details with purchase history."
+					},
+					"response": []
+				}
+			],
+			"description": "Customer management and tracking"
+		},
+		{
+			"name": "Payment Methods",
+			"item": [
+				{
+					"name": "List Payment Methods",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/payment-methods",
+							"host": ["{{base_url}}"],
+							"path": ["api", "payment-methods"]
+						},
+						"description": "Get all available payment methods."
+					},
+					"response": []
+				},
+				{
+					"name": "Create Payment Method",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"Mobile Money\",\n    \"type\": \"digital\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/payment-methods",
+							"host": ["{{base_url}}"],
+							"path": ["api", "payment-methods"]
+						},
+						"description": "Create custom payment method."
+					},
+					"response": []
+				}
+			],
+			"description": "Payment method configuration"
+		},
+		{
+			"name": "Users & Permissions",
+			"item": [
+				{
+					"name": "List Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"]
+						},
+						"description": "Get all users in current business."
+					},
+					"response": []
+				},
+				{
+					"name": "Create User",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"name\": \"New Employee\",\n    \"email\": \"employee@mystore.com\",\n    \"password\": \"password123\",\n    \"role\": \"Cashier\",\n    \"branch_id\": {{branch_id}}\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "users"]
+						},
+						"description": "Create new user and assign role."
+					},
+					"response": []
+				},
+				{
+					"name": "List Roles",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/roles",
+							"host": ["{{base_url}}"],
+							"path": ["api", "roles"]
+						},
+						"description": "Get all roles with permissions."
+					},
+					"response": []
+				},
+				{
+					"name": "List Permissions",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/permissions",
+							"host": ["{{base_url}}"],
+							"path": ["api", "permissions"]
+						},
+						"description": "Get all available permissions."
+					},
+					"response": []
+				}
+			],
+			"description": "User management with role-based access control"
+		},
+		{
+			"name": "User-Business Management",
+			"item": [
+				{
+					"name": "List Business Users",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/business-users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "business-users"]
+						},
+						"description": "Get all users associated with current business."
+					},
+					"response": []
+				},
+				{
+					"name": "Add User to Business",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"newuser@example.com\",\n    \"name\": \"New User Name\",\n    \"is_active\": true\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/business-users",
+							"host": ["{{base_url}}"],
+							"path": ["api", "business-users"]
+						},
+						"description": "Add user to business by email. Creates new user if email doesn't exist, or adds existing user to business. Only business owners can add users.\n\n**Permissions:** Owner only"
+					},
+					"response": []
+				},
+				{
+					"name": "Get User Business Details",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/business-users/{{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "business-users", "{{user_id}}"]
+						},
+						"description": "Get user's relationship details with current business."
+					},
+					"response": []
+				},
+				{
+					"name": "Update User in Business",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"is_active\": false\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/business-users/{{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "business-users", "{{user_id}}"]
+						},
+						"description": "Update user's status in business (activate/deactivate). Only business owners can update users."
+					},
+					"response": []
+				},
+				{
+					"name": "Remove User from Business",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/business-users/{{user_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["api", "business-users", "{{user_id}}"]
+						},
+						"description": "Remove user from current business.\n\n**Permissions:** `manage users`"
+					},
+					"response": []
+				}
+			],
+			"description": "Manage user memberships and permissions within business context"
+		},
+		{
+			"name": "Offline Sync",
+			"item": [
+				{
+					"name": "Register Device",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_name\": \"POS Terminal 1\",\n    \"device_identifier\": \"POS-001-ABC123\",\n    \"branch_id\": {{branch_id}},\n    \"device_type\": \"pos_terminal\",\n    \"os_info\": \"Android 12\",\n    \"app_version\": \"1.0.0\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sync/register-device",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "register-device"]
+						},
+						"description": "Register a new device for offline sync.\n\n**Returns device_id** to use in subsequent sync requests.\n\n**Device Types:**\n- `pos_terminal` - POS hardware\n- `mobile` - Mobile app\n- `tablet` - Tablet app\n- `web` - Web browser"
+					},
+					"response": []
+				},
+				{
+					"name": "Bootstrap Device",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "device-uuid-here"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"branch_id\": {{branch_id}},\n    \"include_historical_data\": false,\n    \"days_of_history\": 30\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sync/bootstrap",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "bootstrap"]
+						},
+						"description": "Initial data download for new device.\n\n**Downloads:**\n- Products for branch\n- Categories\n- Payment methods\n- Customers\n- Current prices\n- Historical sales (optional)\n\n**Use once per device** after registration."
+					},
+					"response": []
+				},
+				{
+					"name": "Pull Changes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "device-uuid-here"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"last_sync_timestamp\": \"2026-02-08T10:00:00Z\",\n    \"models\": [\"products\", \"customers\", \"categories\"]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sync/pull",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "pull"]
+						},
+						"description": "Download server changes since last sync.\n\n**Returns:**\n- Updated records\n- Deleted records\n- New records\n- Conflict markers\n\n**Call periodically** when online to stay synchronized."
+					},
+					"response": []
+				},
+				{
+					"name": "Push Changes",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "device-uuid-here"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"changes\": [\n        {\n            \"model\": \"sales\",\n            \"action\": \"create\",\n            \"client_uuid\": \"sale-offline-001\",\n            \"data\": {\n                \"branch_id\": {{branch_id}},\n                \"total_amount\": 299.99,\n                \"created_at\": \"2026-02-08T12:30:00Z\",\n                \"items\": [\n                    {\n                        \"product_id\": 1,\n                        \"quantity\": 2,\n                        \"price\": 149.99\n                    }\n                ],\n                \"payments\": [\n                    {\n                        \"payment_method_id\": 1,\n                        \"amount\": 299.99\n                    }\n                ]\n            }\n        },\n        {\n            \"model\": \"customers\",\n            \"action\": \"update\",\n            \"server_id\": 5,\n            \"client_uuid\": \"customer-update-001\",\n            \"data\": {\n                \"loyalty_points\": 150\n            }\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sync/push",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "push"]
+						},
+						"description": "Upload local changes to server.\n\n**Actions:**\n- `create` - New records\n- `update` - Modified records\n- `delete` - Deleted records\n\n**Idempotent:** Uses client_uuid to prevent duplicates.\n\n**Conflict Detection:** Returns conflicts for manual resolution."
+					},
+					"response": []
+				},
+				{
+					"name": "Resolve Conflicts",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "device-uuid-here"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"resolutions\": [\n        {\n            \"conflict_id\": \"conflict-uuid-001\",\n            \"resolution\": \"server_wins\",\n            \"notes\": \"Accepting server version\"\n        },\n        {\n            \"conflict_id\": \"conflict-uuid-002\",\n            \"resolution\": \"client_wins\",\n            \"merged_data\": {\n                \"name\": \"Client Name\",\n                \"price\": 299.99\n            }\n        }\n    ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/api/sync/resolve-conflicts",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "resolve-conflicts"]
+						},
+						"description": "Resolve sync conflicts.\n\n**Resolution Strategies:**\n- `server_wins` - Keep server version\n- `client_wins` - Keep client version (with merged_data)\n- `manual_merge` - Custom merged data\n\n**Call after receiving conflicts** from push or pull."
+					},
+					"response": []
+				},
+				{
+					"name": "Get Sync Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							},
+							{
+								"key": "X-Device-Id",
+								"value": "device-uuid-here"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/sync/status",
+							"host": ["{{base_url}}"],
+							"path": ["api", "sync", "status"]
+						},
+						"description": "Get current sync status for device.\n\n**Returns:**\n- Last sync timestamp\n- Pending changes count\n- Conflict count\n- Device info\n- Sync statistics"
+					},
+					"response": []
+				}
+			],
+			"description": "Device registration and offline-first data synchronization with conflict resolution"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "business_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "branch_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "product_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "sale_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "shift_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "user_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "device_id",
+			"value": "",
+			"type": "string"
+		}
+	]
+}
