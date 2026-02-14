@@ -35,7 +35,7 @@ class RolePermissionController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -78,7 +78,7 @@ class RolePermissionController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -115,14 +115,20 @@ class RolePermissionController extends Controller
             ], 422);
         }
 
-        // Set team context so Spatie scopes its internal uniqueness check to this business
+        // Set team context for Spatie permission scoping
         app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($businessId);
 
-        $role = Role::create([
+        // Use query()->create() to bypass Spatie's internal findByParam which
+        // incorrectly matches roles with NULL business_id (global/seeded roles).
+        // The DB unique constraint on (business_id, name, guard_name) ensures correctness.
+        $role = Role::query()->create([
             'name' => $data['name'],
             'guard_name' => 'api',
             'business_id' => $businessId,
         ]);
+
+        // Clear cached permissions so the new role is recognized
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         if (! empty($data['permissions'])) {
             $permissions = Permission::whereIn('name', $data['permissions'])
@@ -144,7 +150,7 @@ class RolePermissionController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -153,7 +159,7 @@ class RolePermissionController extends Controller
         }
 
         // Verify user has access to this business
-        $business = $user->businesses()
+         $business = $user->businesses()
             ->where('businesses.id', $businessId)
             ->wherePivot('is_active', true)
             ->first();
@@ -201,7 +207,7 @@ class RolePermissionController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -275,7 +281,7 @@ class RolePermissionController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -334,7 +340,7 @@ class RolePermissionController extends Controller
     public function assignRoleToUser(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -452,7 +458,7 @@ class RolePermissionController extends Controller
     public function removeRoleFromUser(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -515,7 +521,7 @@ class RolePermissionController extends Controller
     public function getUserRoles(Request $request, int $userId)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([

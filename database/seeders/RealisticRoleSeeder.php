@@ -238,35 +238,24 @@ class RealisticRoleSeeder extends Seeder
             ],
         ];
 
-        // Create roles and assign permissions
+        // Create permissions only — roles are created per-business, not globally
         foreach ($roles as $roleName => $config) {
-            $this->command->info("Setting up {$roleName} role...");
+            $this->command->info("Setting up permissions for {$roleName} role template...");
 
-            // Create or update the role
-            $role = Role::firstOrCreate([
-                'name' => $roleName,
-                'guard_name' => 'api'
-            ]);
-
-            // Collect all permission objects
-            $permissions = [];
             foreach ($config['permissions'] as $permissionName) {
-                $permission = Permission::firstOrCreate([
+                Permission::firstOrCreate([
                     'name' => $permissionName,
                     'guard_name' => 'api'
                 ]);
-                $permissions[] = $permission;
             }
 
-            // Sync permissions to role
-            $role->syncPermissions($permissions);
-
-            $this->command->info("  ✓ {$roleName}: " . count($permissions) . " permissions assigned");
+            $this->command->info("  ✓ {$roleName}: " . count($config['permissions']) . " permissions registered");
         }
 
         $this->command->newLine();
         $this->command->info('═══════════════════════════════════════════════════════');
-        $this->command->info('Roles & Permissions Created Successfully!');
+        $this->command->info('Permissions Created Successfully!');
+        $this->command->info('Roles will be created per-business in BusinessSeeder.');
         $this->command->info('═══════════════════════════════════════════════════════');
         $this->command->newLine();
 
