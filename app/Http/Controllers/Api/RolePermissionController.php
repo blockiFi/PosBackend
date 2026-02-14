@@ -35,7 +35,7 @@ class RolePermissionController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -78,7 +78,7 @@ class RolePermissionController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -115,6 +115,9 @@ class RolePermissionController extends Controller
             ], 422);
         }
 
+        // Set team context so Spatie scopes its internal uniqueness check to this business
+        app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($businessId);
+
         $role = Role::create([
             'name' => $data['name'],
             'guard_name' => 'api',
@@ -141,7 +144,7 @@ class RolePermissionController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -198,7 +201,7 @@ class RolePermissionController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -244,6 +247,9 @@ class RolePermissionController extends Controller
             ], 422);
         }
 
+        // Set team context so Spatie scopes its internal checks to this business
+        app()[\Spatie\Permission\PermissionRegistrar::class]->setPermissionsTeamId($businessId);
+
         if (isset($data['name'])) {
             $role->name = $data['name'];
             $role->save();
@@ -269,7 +275,7 @@ class RolePermissionController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -328,7 +334,7 @@ class RolePermissionController extends Controller
     public function assignRoleToUser(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -446,7 +452,7 @@ class RolePermissionController extends Controller
     public function removeRoleFromUser(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -509,7 +515,7 @@ class RolePermissionController extends Controller
     public function getUserRoles(Request $request, int $userId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id')  || $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
