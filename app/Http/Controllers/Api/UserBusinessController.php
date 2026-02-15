@@ -19,7 +19,7 @@ class UserBusinessController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -73,7 +73,7 @@ class UserBusinessController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -171,7 +171,7 @@ class UserBusinessController extends Controller
     public function update(Request $request, int $userId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -251,7 +251,7 @@ class UserBusinessController extends Controller
     public function destroy(Request $request, int $userId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([
@@ -316,7 +316,7 @@ class UserBusinessController extends Controller
     public function show(Request $request, int $userId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (! $businessId) {
             return response()->json([

@@ -17,7 +17,7 @@ class ProductController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -101,7 +101,7 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -189,7 +189,7 @@ class ProductController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -233,7 +233,7 @@ class ProductController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -315,7 +315,7 @@ class ProductController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -360,7 +360,7 @@ class ProductController extends Controller
     public function addToBranch(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -466,7 +466,7 @@ class ProductController extends Controller
     public function removeFromBranch(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -537,7 +537,7 @@ class ProductController extends Controller
     public function updatePrice(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -630,7 +630,7 @@ class ProductController extends Controller
     public function getProductsByBranch(Request $request, int $branchId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([

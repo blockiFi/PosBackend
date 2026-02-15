@@ -15,7 +15,7 @@ class BatchController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json([
@@ -99,7 +99,7 @@ class BatchController extends Controller
     public function forProduct(Request $request, int $productId)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -165,7 +165,7 @@ class BatchController extends Controller
     public function nearExpiry(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -236,7 +236,7 @@ class BatchController extends Controller
     public function expired(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -309,7 +309,7 @@ class BatchController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -388,7 +388,7 @@ class BatchController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);

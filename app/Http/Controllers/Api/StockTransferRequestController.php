@@ -16,7 +16,7 @@ class StockTransferRequestController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -101,7 +101,7 @@ class StockTransferRequestController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -185,7 +185,7 @@ class StockTransferRequestController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -223,7 +223,7 @@ class StockTransferRequestController extends Controller
     public function approve(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -286,7 +286,7 @@ class StockTransferRequestController extends Controller
     public function reject(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -343,7 +343,7 @@ class StockTransferRequestController extends Controller
     public function confirm(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
@@ -409,7 +409,7 @@ class StockTransferRequestController extends Controller
     public function cancel(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->input('current_business_id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
         if (!$businessId) {
             return response()->json(['message' => 'Business context is required'], 400);

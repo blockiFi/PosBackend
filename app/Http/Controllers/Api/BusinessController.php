@@ -5,10 +5,15 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class BusinessController extends Controller
 {
@@ -111,11 +116,30 @@ class BusinessController extends Controller
             'is_active' => true,
         ]);
 
+        // Create default roles for the business
+        $roles = $this->createDefaultRoles($business);
+
+        // Assign the Owner role to the business creator
+        if (isset($roles['Owner'])) {
+            DB::table('model_has_roles')->insert([
+                'role_id' => $roles['Owner']->id,
+                'model_type' => User::class,
+                'model_id' => $user->id,
+                'business_id' => $business->id,
+            ]);
+            app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        }
+
         return response()->json([
             'message' => 'Business created',
             'data' => [
                 'business' => $business->fresh(),
                 'branch' => $branch,
+                'roles' => collect($roles)->map(fn ($role) => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'permissions' => $role->permissions->pluck('name'),
+                ]),
             ],
         ], 201);
     }
@@ -213,5 +237,67 @@ class BusinessController extends Controller
         $business->delete();
 
         return response()->json(['message' => 'Business deleted']);
+    }
+
+    /**
+     * Create the 4 default roles (Owner, Manager, Supervisor, Cashier) for a new business.
+     *
+     * @return array<string, Role>
+     */
+    private function createDefaultRoles(Business $business): array
+    {
+        app()[PermissionRegistrar::class]->setPermissionsTeamId($business->id);
+
+        $roleTemplates = [
+            'Owner' => Permission::where('guard_name', 'api')->pluck('name')->toArray(),
+            'Manager' => [
+                'manage-users', 'manage-branches', 'manage-settings', 'manage-roles',
+                'view products', 'create products', 'edit products', 'delete products',
+                'manage branch products', 'update product price', 'manage inventory', 'view inventory',
+                'view categories', 'create categories', 'edit categories', 'delete categories',
+                'view sales', 'create sales', 'manage sales', 'view customers', 'create customers',
+                'edit customers', 'view analytics', 'view reports', 'view financial reports',
+                'manage shifts', 'view all shifts', 'view user shift', 'close shift',
+                'approve refund', 'request refund', 'approve quick sale', 'request quick sale',
+                'manage transfers', 'use-pin-login',
+            ],
+            'Supervisor' => [
+                'view products', 'create products', 'edit products',
+                'manage branch products', 'manage inventory', 'view inventory',
+                'view categories', 'create categories', 'edit categories',
+                'view sales', 'create sales', 'view customers', 'create customers', 'edit customers',
+                'view analytics', 'view reports',
+                'manage shifts', 'view all shifts', 'view user shift', 'close shift',
+                'request refund', 'request quick sale', 'manage transfers', 'use-pin-login',
+            ],
+            'Cashier' => [
+                'view products', 'view inventory', 'view categories',
+                'view sales', 'create sales', 'view customers', 'create customers',
+                'view user shift', 'close shift',
+                'request refund', 'request quick sale', 'use-pin-login',
+            ],
+        ];
+
+        $roles = [];
+
+        foreach ($roleTemplates as $roleName => $permissionNames) {
+            $role = Role::query()->create([
+                'name' => $roleName,
+                'guard_name' => 'api',
+                'business_id' => $business->id,
+            ]);
+
+            $permissions = Permission::whereIn('name', $permissionNames)
+                ->where('guard_name', 'api')
+                ->get();
+
+            $role->syncPermissions($permissions);
+
+            $roles[$roleName] = $role;
+        }
+
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+        return $roles;
     }
 }
