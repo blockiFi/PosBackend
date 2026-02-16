@@ -65,7 +65,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('roles/{id}', [RolePermissionController::class, 'show']);
         Route::put('roles/{id}', [RolePermissionController::class, 'update']);
         Route::delete('roles/{id}', [RolePermissionController::class, 'destroy']);
-        
+
         // User role assignment routes
         Route::post('roles/assign', [RolePermissionController::class, 'assignRoleToUser']);
         Route::post('roles/remove', [RolePermissionController::class, 'removeRoleFromUser']);
@@ -95,7 +95,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('products/{id}/branches', [ProductController::class, 'addToBranch']);
         Route::delete('products/{id}/branches', [ProductController::class, 'removeFromBranch']);
         Route::patch('products/{id}/price', [ProductController::class, 'updatePrice']);
-        
+
         // Get products for a specific branch (with permission check)
         Route::get('branches/{branchId}/products', [ProductController::class, 'getProductsByBranch']);
 
@@ -103,6 +103,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('branch-products', [BranchProductController::class, 'index']);
         Route::get('branch-products/by-category', [BranchProductController::class, 'getByCategory']);
         Route::post('branch-products', [BranchProductController::class, 'store']);
+        Route::post('branch-products/assign-multiple', [BranchProductController::class, 'assignMultiple']);
         Route::get('branch-products/{id}', [BranchProductController::class, 'show']);
         Route::put('branch-products/{id}', [BranchProductController::class, 'update']);
         Route::delete('branch-products/{id}', [BranchProductController::class, 'destroy']);
@@ -210,7 +211,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
             Route::post('pull', [\App\Http\Controllers\ServerSyncController::class, 'pullFromCloud']);
             Route::get('status', [\App\Http\Controllers\ServerSyncController::class, 'status']);
             Route::get('health', [\App\Http\Controllers\ServerSyncController::class, 'health']);
-            
+
             // Cloud server endpoints (called by cloud server or for cloud server)
             Route::post('receive', [\App\Http\Controllers\ServerSyncController::class, 'receiveFromEdge']);
             Route::post('provide-changes', [\App\Http\Controllers\ServerSyncController::class, 'provideChangesToEdge']);

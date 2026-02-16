@@ -20,13 +20,13 @@ class BranchProductController extends Controller
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
         $branchId = $request->input('branch_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
         }
 
-        if (!$branchId) {
+        if (! $branchId) {
             return response()->json([
                 'message' => 'Branch ID is required',
             ], 400);
@@ -38,8 +38,14 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view products', 'api', $businessId) && ! $user->hasPermissionTo('view inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Verify branch belongs to business
@@ -47,7 +53,7 @@ class BranchProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
@@ -171,7 +177,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -183,8 +189,14 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $data = $request->all();
@@ -224,7 +236,7 @@ class BranchProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
@@ -233,7 +245,7 @@ class BranchProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
@@ -252,9 +264,9 @@ class BranchProductController extends Controller
         $shelfQty = $data['shelf_quantity'] ?? 0;
         $storeQty = $data['store_quantity'] ?? 0;
         $totalStock = $shelfQty + $storeQty;
-        
+
         // If stock_quantity is provided but not shelf/store, put all on shelf
-        if (isset($data['stock_quantity']) && !isset($data['shelf_quantity']) && !isset($data['store_quantity'])) {
+        if (isset($data['stock_quantity']) && ! isset($data['shelf_quantity']) && ! isset($data['store_quantity'])) {
             $shelfQty = $data['stock_quantity'];
             $totalStock = $data['stock_quantity'];
         }
@@ -293,14 +305,14 @@ class BranchProductController extends Controller
     }
 
     /**
-     * Get a specific branch product
+     * Assign multiple products to a branch using default product data
      */
-    public function show(Request $request, int $id)
+    public function assignMultiple(Request $request)
     {
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -312,14 +324,144 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $data = $request->all();
+        $validator = Validator::make($data, [
+            'branch_id' => ['required', 'integer', 'exists:branches,id'],
+            'product_ids' => ['required', 'array', 'min:1'],
+            'product_ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        // Verify branch belongs to business
+        $branch = Branch::where('id', $data['branch_id'])
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (! $branch) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        // Get all products that belong to the business
+        $products = Product::whereIn('id', $data['product_ids'])
+            ->where('business_id', $businessId)
+            ->get();
+
+        if ($products->count() !== count($data['product_ids'])) {
+            return response()->json([
+                'message' => 'Some products not found or do not belong to this business',
+            ], 422);
+        }
+
+        // Get existing branch products to skip duplicates
+        $existingBranchProducts = BranchProduct::where('branch_id', $data['branch_id'])
+            ->whereIn('product_id', $data['product_ids'])
+            ->pluck('product_id')
+            ->toArray();
+
+        $created = [];
+        $skipped = [];
+
+        foreach ($products as $product) {
+            // Skip if already assigned
+            if (in_array($product->id, $existingBranchProducts)) {
+                $skipped[] = [
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'reason' => 'Product already assigned to this branch',
+                ];
+
+                continue;
+            }
+
+            // Use default product data
+            $branchProduct = BranchProduct::create([
+                'branch_id' => $data['branch_id'],
+                'product_id' => $product->id,
+                'cost_price' => $product->base_cost_price,
+                'selling_price' => $product->base_selling_price,
+                'compare_price' => $product->base_selling_price,
+                'tax_rate' => $product->default_tax_rate,
+                'stock_quantity' => 0,
+                'shelf_quantity' => 0,
+                'store_quantity' => 0,
+                'low_stock_threshold' => $product->low_stock_threshold,
+                'allow_backorder' => false,
+                'is_available' => true,
+                'is_featured' => false,
+                'display_order' => 0,
+            ]);
+
+            $created[] = [
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'branch_product_id' => $branchProduct->id,
+            ];
+        }
+
+        return response()->json([
+            'message' => 'Products assigned to branch',
+            'data' => [
+                'branch_id' => $data['branch_id'],
+                'branch_name' => $branch->name,
+                'total_requested' => count($data['product_ids']),
+                'created' => count($created),
+                'skipped' => count($skipped),
+                'created_products' => $created,
+                'skipped_products' => $skipped,
+            ],
+        ], 201);
+    }
+
+    /**
+     * Get a specific branch product
+     */
+    public function show(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view products', 'api', $businessId) && ! $user->hasPermissionTo('view inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with(['product.category', 'branch'])
             ->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
@@ -341,7 +483,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -353,13 +495,19 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
@@ -407,7 +555,7 @@ class BranchProductController extends Controller
             'low_stock_threshold', 'allow_backorder',
             'reorder_point', 'reorder_quantity',
             'is_available', 'is_featured', 'display_order',
-            'bin_location', 'shelf_location', 'branch_meta_data'
+            'bin_location', 'shelf_location', 'branch_meta_data',
         ];
 
         foreach ($fillableFields as $field) {
@@ -440,7 +588,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -452,13 +600,19 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
@@ -482,7 +636,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -494,13 +648,19 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage inventory', 'api', $businessId) && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
@@ -546,13 +706,13 @@ class BranchProductController extends Controller
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
         $branchId = $request->input('branch_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
         }
 
-        if (!$branchId) {
+        if (! $branchId) {
             return response()->json([
                 'message' => 'Branch ID is required',
             ], 400);
@@ -564,8 +724,14 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Verify branch belongs to business
@@ -573,7 +739,7 @@ class BranchProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$branch) {
+        if (! $branch) {
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
@@ -633,7 +799,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -645,8 +811,14 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $data = $request->all();
@@ -669,11 +841,12 @@ class BranchProductController extends Controller
         foreach ($data['updates'] as $update) {
             $branchProduct = BranchProduct::with('branch')->find($update['id']);
 
-            if (!$branchProduct || $branchProduct->branch->business_id != $businessId) {
+            if (! $branchProduct || $branchProduct->branch->business_id != $businessId) {
                 $failed[] = [
                     'id' => $update['id'],
                     'reason' => 'Not found or access denied',
                 ];
+
                 continue;
             }
 
@@ -710,13 +883,13 @@ class BranchProductController extends Controller
         $categoryId = $request->input('category_id');
         $branchId = $request->input('branch_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
         }
 
-        if (!$categoryId) {
+        if (! $categoryId) {
             return response()->json([
                 'message' => 'Category ID is required',
             ], 400);
@@ -728,8 +901,14 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view products', 'api', $businessId) && ! $user->hasPermissionTo('view inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Get the category and verify it belongs to the business
@@ -737,13 +916,13 @@ class BranchProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$category) {
+        if (! $category) {
             return response()->json(['message' => 'Category not found'], 404);
         }
 
         // Get all descendant category IDs recursively
         $categoryIds = $this->getAllDescendantCategoryIds($category);
-        
+
         // Include the parent category itself
         array_unshift($categoryIds, $category->id);
 
@@ -766,7 +945,7 @@ class BranchProductController extends Controller
                 ->where('business_id', $businessId)
                 ->first();
 
-            if (!$branch) {
+            if (! $branch) {
                 return response()->json(['message' => 'Branch not found'], 404);
             }
 
@@ -843,17 +1022,17 @@ class BranchProductController extends Controller
     private function getAllDescendantCategoryIds(\App\Models\ProductCategory $category): array
     {
         $categoryIds = [];
-        
+
         $children = $category->children;
-        
+
         foreach ($children as $child) {
             $categoryIds[] = $child->id;
-            
+
             // Recursively get descendants of this child
             $childDescendants = $this->getAllDescendantCategoryIds($child);
             $categoryIds = array_merge($categoryIds, $childDescendants);
         }
-        
+
         return $categoryIds;
     }
 
@@ -865,7 +1044,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -877,13 +1056,19 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage inventory', 'api', $businessId) && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
@@ -938,7 +1123,7 @@ class BranchProductController extends Controller
         $user = $request->user();
         $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -950,13 +1135,19 @@ class BranchProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage inventory', 'api', $businessId) && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Branch product not found'], 404);
         }
 
