@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class SyncSession extends Model
 {
     use HasFactory;
+
     protected $fillable = [
         'session_id',
         'device_id',
@@ -26,7 +27,7 @@ class SyncSession extends Model
         'last_activity_at',
         'summary',
         'error_message',
-        'metadata'
+        'metadata',
     ];
 
     protected $casts = [
@@ -39,13 +40,13 @@ class SyncSession extends Model
         'conflicts_resolved' => 'integer',
         'errors_count' => 'integer',
         'summary' => 'array',
-        'metadata' => 'array'
+        'metadata' => 'array',
     ];
 
     // Relationships
     public function device(): BelongsTo
     {
-        return $this->belongsTo(DeviceRegistration::class, 'device_id', 'device_id');
+        return $this->belongsTo(DeviceRegistration::class, 'device_id', 'id');
     }
 
     public function business(): BelongsTo
@@ -80,7 +81,7 @@ class SyncSession extends Model
         $this->update([
             'status' => 'in_progress',
             'started_at' => now(),
-            'last_activity_at' => now()
+            'last_activity_at' => now(),
         ]);
     }
 
@@ -89,7 +90,7 @@ class SyncSession extends Model
         $this->update([
             'status' => $status,
             'completed_at' => now(),
-            'last_activity_at' => now()
+            'last_activity_at' => now(),
         ]);
     }
 

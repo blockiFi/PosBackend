@@ -31,6 +31,12 @@ class Sale extends Model
         'sale_type',
         'notes',
         'metadata',
+        'client_uuid',
+        'version',
+        'device_id',
+        'synced_at',
+        'sync_status',
+        'origin',
     ];
 
     protected $casts = [
@@ -127,7 +133,7 @@ class Sale extends Model
     {
         $this->subtotal = $this->items->sum('subtotal');
         $this->tax_amount = $this->items->sum('tax_amount');
-        
+
         // Calculate total: sum of item totals minus sale-level discount
         $itemsTotal = $this->items->sum('total');
         $this->total_amount = $itemsTotal - ($this->discount_amount ?? 0);
@@ -168,9 +174,9 @@ class Sale extends Model
 
     public function isRefundable(): bool
     {
-        return !$this->is_refunded 
-            && in_array($this->status, ['completed']) 
-            && !$this->trashed();
+        return ! $this->is_refunded
+            && in_array($this->status, ['completed'])
+            && ! $this->trashed();
     }
 
     public function hasPendingRefundRequest(): bool

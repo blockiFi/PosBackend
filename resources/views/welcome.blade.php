@@ -121,11 +121,32 @@ php artisan key:generate</code></pre>
             <h2><span class="emoji">📚</span>Documentation</h2>
             <h3>Main Documentation</h3>
             <ul>
-                <li><a href="/docs/API_DOCUMENTATION">API Documentation</a> - Complete API reference</li>
+                <li><a href="/docs/API_DOCUMENTATION">API Documentation</a> - Full reference with request/response schemas</li>
+                <li><a href="/docs/API_DOCUMENTATION#g-complete-api-route-reference">Complete API Route Reference</a> - Every route (method, path, description)</li>
                 <li><a href="/docs/ANALYTICS_API">Analytics API</a> - Analytics endpoints</li>
-                <li><a href="/docs/OFFLINE_SYNC_DOCUMENTATION">Offline Sync</a> - Sync system guide</li>
-                <li><a href="/docs/SERVER_TO_SERVER_SYNC_GUIDE">Server-to-Server Sync</a> - Multi-server setup</li>
+                <li><a href="/docs/OFFLINE_SYNC_DOCUMENTATION">Offline Sync</a> - Client device sync (register, bootstrap, pull, push)</li>
+                <li><a href="/docs/SERVER_TO_SERVER_SYNC_GUIDE">Server-to-Server Sync</a> - Edge ↔ Cloud sync (push, pull, receive, provide-changes)</li>
                 <li><a href="/docs/FRONTEND_INTEGRATION_GUIDE">Frontend Integration</a> - Implementation guide</li>
+                <li><a href="/docs/DATABASE_SEEDER_DOCUMENTATION">Database Seeder</a> - Seeding and test data</li>
+                <li><a href="/docs/POSTMAN_COLLECTION_DOCUMENTATION">Postman Collection</a> - API testing</li>
+            </ul>
+            <h3>API Coverage by Module</h3>
+            <p>All routes are documented in the API doc. Controllers and areas covered:</p>
+            <ul>
+                <li><strong>Auth:</strong> register, login, pin-login, pin/set, pin/remove, GET /user</li>
+                <li><strong>Business & Branches:</strong> CRUD businesses, CRUD branches, branches/{id}/products</li>
+                <li><strong>Roles & Users:</strong> permissions, roles (CRUD, add/remove permission), assign/remove role, users/{id}/roles, business-users (CRUD)</li>
+                <li><strong>Catalog:</strong> categories (CRUD, breadcrumb), products (CRUD, branches, price)</li>
+                <li><strong>Branch Products:</strong> list, by-category, CRUD, assign-multiple, stock, move-to-shelf/store, summary/stock, bulk-update</li>
+                <li><strong>Inventory:</strong> transactions (list, create, show), stock-summary</li>
+                <li><strong>Batches:</strong> list, near-expiry, expired, show, update, products/{id}/batches</li>
+                <li><strong>Customers & Payments:</strong> customers CRUD, payment-methods CRUD</li>
+                <li><strong>Sales:</strong> sales (list, create, show, addPayment, cancel)</li>
+                <li><strong>Shifts:</strong> list, open, current, show, sales, close, pause, resume, resolve-discrepancy</li>
+                <li><strong>Analytics:</strong> organization, branches, products, profit-loss, growth-trends</li>
+                <li><strong>Workflows:</strong> stock-transfer-requests (approve, reject, confirm, cancel), stock-writeoffs, refund-requests (approve, reject), quick-sales (approve, reject, end)</li>
+                <li><strong>Sync:</strong> register-device, bootstrap, pull, push, resolve-conflicts, status, heartbeat</li>
+                <li><strong>Server-Sync:</strong> push, pull, status, health, receive, provide-changes</li>
             </ul>
             <h3>Specific Features</h3>
             <ul>
@@ -134,6 +155,9 @@ php artisan key:generate</code></pre>
                 <li><a href="/docs/REFUND_REQUEST_WORKFLOW">Refund Request Workflow</a></li>
                 <li><a href="/docs/SALES_SHIFT_IMPLEMENTATION">Sales Shift Implementation</a></li>
                 <li><a href="/docs/PIN_LOGIN_REFERENCE">PIN Login System</a></li>
+                <li><a href="/docs/BRANCH_ACCESS_CONTROL">Branch Access Control</a></li>
+                <li><a href="/docs/BUSINESS_ISOLATION">Business Isolation</a></li>
+                <li><a href="/docs/SHELF_STORE_INVENTORY_SYSTEM">Shelf & Store Inventory</a></li>
             </ul>
         </div>
         <div class="section">
@@ -142,7 +166,7 @@ php artisan key:generate</code></pre>
             <pre><code>Authorization: Bearer {your-token}
 X-Business-Id: {business-id}</code></pre>
             <h4>Getting a Token</h4>
-            <pre><code>POST /api/auth/login
+            <pre><code>POST /api/login
 Content-Type: application/json
 
 {

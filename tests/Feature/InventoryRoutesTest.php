@@ -18,9 +18,13 @@ class InventoryRoutesTest extends TestCase
     use RefreshDatabase;
 
     protected $user;
+
     protected $business;
+
     protected $branch;
+
     protected $product;
+
     protected $role;
 
     protected function setUp(): void
@@ -28,7 +32,7 @@ class InventoryRoutesTest extends TestCase
         parent::setUp();
 
         $this->user = User::factory()->create();
-        
+
         $this->business = Business::create([
             'uuid' => \Str::uuid(),
             'owner_id' => $this->user->id,
@@ -95,7 +99,7 @@ class InventoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions?current_business_id=' . $this->business->id);
+            ->getJson('/api/inventory/transactions?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -106,16 +110,19 @@ class InventoryRoutesTest extends TestCase
                         'quantity',
                         'product_name',
                         'branch_name',
-                    ]
+                    ],
                 ],
-                'meta'
+                'meta',
             ]);
     }
 
     public function test_cannot_list_inventory_transactions_without_permission(): void
     {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions?current_business_id=' . $this->business->id);
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->getJson('/api/inventory/transactions?current_business_id='.$this->business->id);
 
         $response->assertStatus(403);
     }
@@ -137,16 +144,15 @@ class InventoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201)
             ->assertJson([
                 'message' => 'Inventory transaction created successfully',
-                'data' => [
-                    'type' => 'purchase',
-                    'quantity' => 50,
-                ]
             ]);
+
+        $this->assertEquals('purchase', $response->json('data.transaction.type'));
+        $this->assertEquals(50, $response->json('data.transaction.quantity'));
 
         $this->assertDatabaseHas('inventory_transactions', [
             'business_id' => $this->business->id,
@@ -166,6 +172,9 @@ class InventoryRoutesTest extends TestCase
 
     public function test_cannot_create_inventory_transaction_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $data = [
             'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
@@ -173,8 +182,8 @@ class InventoryRoutesTest extends TestCase
             'quantity' => 50,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403);
     }
@@ -202,7 +211,7 @@ class InventoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201);
 
@@ -235,7 +244,7 @@ class InventoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
             ->assertJsonFragment(['message' => 'Insufficient stock. Current stock: 10']);
@@ -274,7 +283,7 @@ class InventoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201);
 
@@ -315,14 +324,14 @@ class InventoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions/' . $transaction->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/inventory/transactions/'.$transaction->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJson([
                 'data' => [
                     'id' => $transaction->id,
                     'type' => 'purchase',
-                ]
+                ],
             ]);
     }
 
@@ -339,7 +348,7 @@ class InventoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/stock-summary?current_business_id=' . $this->business->id);
+            ->getJson('/api/inventory/stock-summary?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -350,8 +359,8 @@ class InventoryRoutesTest extends TestCase
                         'branch_id',
                         'branch_name',
                         'stock_quantity',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -374,7 +383,7 @@ class InventoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions?branch_id=' . $this->branch->id . '&current_business_id=' . $this->business->id);
+            ->getJson('/api/inventory/transactions?branch_id='.$this->branch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonCount(1, 'data');
@@ -423,16 +432,15 @@ class InventoryRoutesTest extends TestCase
 
         // Try to access with wrong business context
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions/' . $transaction->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/inventory/transactions/'.$transaction->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(404);
     }
 
     public function test_branch_manager_cannot_access_other_branch_inventory(): void
     {
-        $this->role->givePermissionTo('view inventory');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        setPermissionsTeamId($this->business->id);
+        $branchUser = User::factory()->create();
+        $branchUser->businesses()->attach($this->business->id, ['is_active' => true]);
 
         // Create second branch
         $otherBranch = Branch::create([
@@ -449,12 +457,11 @@ class InventoryRoutesTest extends TestCase
             'business_id' => $this->business->id,
         ]);
         $branchRole->givePermissionTo('view inventory');
-        
-        // Assign user to role only for main branch
+
         \DB::table('model_has_roles')->insert([
             'role_id' => $branchRole->id,
-            'model_type' => get_class($this->user),
-            'model_id' => $this->user->id,
+            'model_type' => User::class,
+            'model_id' => $branchUser->id,
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
         ]);
@@ -463,8 +470,8 @@ class InventoryRoutesTest extends TestCase
         setPermissionsTeamId($this->business->id);
 
         // Try to filter by other branch (should fail)
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/inventory/transactions?branch_id=' . $otherBranch->id . '&current_business_id=' . $this->business->id);
+        $response = $this->actingAs($branchUser, 'sanctum')
+            ->getJson('/api/inventory/transactions?branch_id='.$otherBranch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'You do not have access to this branch']);
@@ -477,7 +484,7 @@ class InventoryRoutesTest extends TestCase
         setPermissionsTeamId($this->business->id);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, []);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['branch_id', 'product_id', 'type', 'quantity']);
@@ -494,11 +501,20 @@ class InventoryRoutesTest extends TestCase
 
     public function test_user_with_adjust_inventory_can_create_adjustment(): void
     {
-        $this->role->givePermissionTo('adjust inventory');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        setPermissionsTeamId($this->business->id);
+        $adjustUser = User::factory()->create();
+        $adjustUser->businesses()->attach($this->business->id, ['is_active' => true]);
 
-        // Set initial stock
+        $adjustRole = Role::create([
+            'name' => 'Adjuster',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+        $adjustRole->givePermissionTo('adjust inventory');
+
+        setPermissionsTeamId($this->business->id);
+        $adjustUser->assignRole($adjustRole);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
         BranchProduct::create([
             'product_id' => $this->product->id,
             'branch_id' => $this->branch->id,
@@ -515,17 +531,14 @@ class InventoryRoutesTest extends TestCase
             'notes' => 'Stock count correction',
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($adjustUser, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201)
-            ->assertJson([
-                'message' => 'Inventory transaction created successfully',
-                'data' => [
-                    'type' => 'adjustment',
-                    'quantity' => 5,
-                ]
-            ]);
+            ->assertJson(['message' => 'Inventory transaction created successfully']);
+
+        $this->assertEquals('adjustment', $response->json('data.transaction.type'));
+        $this->assertEquals(5, $response->json('data.transaction.quantity'));
 
         $this->assertDatabaseHas('inventory_transactions', [
             'business_id' => $this->business->id,
@@ -535,7 +548,6 @@ class InventoryRoutesTest extends TestCase
             'quantity' => 5,
         ]);
 
-        // Verify stock updated
         $this->assertDatabaseHas('branch_products', [
             'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
@@ -545,9 +557,18 @@ class InventoryRoutesTest extends TestCase
 
     public function test_user_with_adjust_inventory_cannot_create_purchase(): void
     {
-        $this->role->givePermissionTo('adjust inventory');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        $adjustUser = User::factory()->create();
+        $adjustUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $adjustRole = Role::create([
+            'name' => 'Adjuster Only',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+        $adjustRole->givePermissionTo('adjust inventory');
         setPermissionsTeamId($this->business->id);
+        $adjustUser->assignRole($adjustRole);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         $data = [
             'branch_id' => $this->branch->id,
@@ -557,8 +578,8 @@ class InventoryRoutesTest extends TestCase
             'unit_cost' => 10.50,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($adjustUser, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'Unauthorized']);
@@ -571,9 +592,18 @@ class InventoryRoutesTest extends TestCase
 
     public function test_user_with_adjust_inventory_cannot_create_sale(): void
     {
-        $this->role->givePermissionTo('adjust inventory');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        $adjustUser = User::factory()->create();
+        $adjustUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $adjustRole = Role::create([
+            'name' => 'Sale Adj Role',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+        $adjustRole->givePermissionTo('adjust inventory');
         setPermissionsTeamId($this->business->id);
+        $adjustUser->assignRole($adjustRole);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         BranchProduct::create([
             'product_id' => $this->product->id,
@@ -588,8 +618,8 @@ class InventoryRoutesTest extends TestCase
             'quantity' => 25,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($adjustUser, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'Unauthorized']);
@@ -597,9 +627,18 @@ class InventoryRoutesTest extends TestCase
 
     public function test_user_with_adjust_inventory_cannot_create_transfer(): void
     {
-        $this->role->givePermissionTo('adjust inventory');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        $adjustUser = User::factory()->create();
+        $adjustUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $adjustRole = Role::create([
+            'name' => 'Transfer Adj Role',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+        $adjustRole->givePermissionTo('adjust inventory');
         setPermissionsTeamId($this->business->id);
+        $adjustUser->assignRole($adjustRole);
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         $secondBranch = Branch::create([
             'business_id' => $this->business->id,
@@ -622,8 +661,8 @@ class InventoryRoutesTest extends TestCase
             'related_branch_id' => $secondBranch->id,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($adjustUser, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'Unauthorized']);
@@ -643,28 +682,22 @@ class InventoryRoutesTest extends TestCase
             'store_quantity' => 0,
         ]);
 
-        // Note: For adjustments, negative values should be passed directly
-        // The normalizeQuantity method handles adjustments differently
         $data = [
             'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
             'type' => 'adjustment',
-            'quantity' => -5, // Negative for decrease
+            'quantity' => -5,
             'notes' => 'Damaged items removed',
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
-        $response->assertStatus(201)
-            ->assertJson([
-                'data' => [
-                    'type' => 'adjustment',
-                    'quantity' => -5,
-                ]
-            ]);
+        $response->assertStatus(201);
 
-        // Verify stock decreased
+        $this->assertEquals('adjustment', $response->json('data.transaction.type'));
+        $this->assertEquals(-5, $response->json('data.transaction.quantity'));
+
         $this->assertDatabaseHas('branch_products', [
             'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
@@ -688,7 +721,7 @@ class InventoryRoutesTest extends TestCase
 
         // Test positive adjustment
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, [
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, [
                 'branch_id' => $this->branch->id,
                 'product_id' => $this->product->id,
                 'type' => 'adjustment',
@@ -697,16 +730,16 @@ class InventoryRoutesTest extends TestCase
             ]);
 
         $response->assertStatus(201);
-        
+
         $branchProduct = BranchProduct::where('branch_id', $this->branch->id)
             ->where('product_id', $this->product->id)
             ->first();
-        
+
         $this->assertEquals(110, $branchProduct->stock_quantity);
 
         // Test negative adjustment
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/inventory/transactions?current_business_id=' . $this->business->id, [
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, [
                 'branch_id' => $this->branch->id,
                 'product_id' => $this->product->id,
                 'type' => 'adjustment',
@@ -715,7 +748,7 @@ class InventoryRoutesTest extends TestCase
             ]);
 
         $response->assertStatus(201);
-        
+
         $branchProduct->refresh();
         $this->assertEquals(95, $branchProduct->stock_quantity);
     }

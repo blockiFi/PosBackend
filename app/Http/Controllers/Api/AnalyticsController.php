@@ -3,32 +3,36 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Sale;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
+use App\Models\BranchProduct;
 use App\Models\Product;
+use App\Models\Sale;
 use App\Models\SaleItem;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Cache;
 use Carbon\Carbon;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class AnalyticsController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * Get organization-wide analytics
      */
     public function organizationAnalytics(Request $request)
     {
         $user = $request->user();
-        $businessId = $user->current_business_id;
+        $businessId = $request->current_business_id;
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context required'], 400);
         }
 
         // Check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view analytics')) {
+        if (! $user->hasPermissionTo('view analytics')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -43,13 +47,13 @@ class AnalyticsController extends Controller
         $comparePrevious = $request->input('compare_previous', true);
 
         [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
-        
+
         $cacheKey = "org_analytics_{$businessId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
-        
-        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($businessId, $startDate, $endDate, $comparePrevious) {
+
+        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($user, $businessId, $startDate, $endDate, $comparePrevious) {
             // Current period metrics
             $currentMetrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate);
-            
+
             $result = [
                 'period' => [
                     'start_date' => $startDate->format('Y-m-d'),
@@ -64,15 +68,17 @@ class AnalyticsController extends Controller
                 $days = $startDate->diffInDays($endDate) + 1;
                 $prevStartDate = $startDate->copy()->subDays($days);
                 $prevEndDate = $endDate->copy()->subDays($days);
-                
+
                 $previousMetrics = $this->calculatePeriodMetrics($businessId, $prevStartDate, $prevEndDate);
-                
+
                 $result['previous'] = $previousMetrics;
                 $result['comparison'] = $this->calculateComparison($currentMetrics, $previousMetrics);
             }
 
             // Branch contributions
-            $result['branch_contributions'] = $this->getBranchContributions($businessId, $startDate, $endDate);
+            // Scope branch contributions to permitted branches
+            $permittedBranches = $this->getPermittedBranches($user, $businessId);
+            $result['branch_contributions'] = $this->getBranchContributions($businessId, $startDate, $endDate, $permittedBranches);
 
             // Revenue trend (daily breakdown)
             $result['revenue_trend'] = $this->getRevenueTrend($businessId, $startDate, $endDate);
@@ -87,14 +93,14 @@ class AnalyticsController extends Controller
     public function branchAnalytics(Request $request)
     {
         $user = $request->user();
-        $businessId = $user->current_business_id;
+        $businessId = $request->current_business_id;
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context required'], 400);
         }
 
         setPermissionsTeamId($businessId);
-        
+
         $request->validate([
             'branch_id' => 'sometimes|exists:branches,id',
             'period' => 'sometimes|in:today,week,month,year,custom',
@@ -105,19 +111,25 @@ class AnalyticsController extends Controller
 
         // Determine branch access
         $branchId = $request->input('branch_id');
-        
+
         if ($branchId) {
             // Check if user has access to specific branch
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
             $branches = [$branchId];
         } else {
             // Get all permitted branches
-            if (!$user->hasPermissionTo('view analytics')) {
+            if (! $user->hasPermissionTo('view analytics')) {
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
-            $branches = $this->getPermittedBranches($user, $businessId);
+            $permittedBranches = $this->getPermittedBranches($user, $businessId);
+            // If empty collection, user has business-wide access - get all branches
+            if ($permittedBranches->isEmpty()) {
+                $branches = Branch::where('business_id', $businessId)->pluck('id')->toArray();
+            } else {
+                $branches = $permittedBranches->toArray();
+            }
         }
 
         $period = $request->input('period', 'month');
@@ -128,12 +140,12 @@ class AnalyticsController extends Controller
         $results = [];
         foreach ($branches as $branchId) {
             $cacheKey = "branch_analytics_{$branchId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
-            
+
             $branchData = Cache::remember($cacheKey, now()->addMinutes(15), function () use ($businessId, $branchId, $startDate, $endDate, $comparePrevious) {
                 $branch = Branch::find($branchId);
-                
+
                 $currentMetrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId);
-                
+
                 $data = [
                     'branch_id' => $branchId,
                     'branch_name' => $branch->name,
@@ -149,9 +161,9 @@ class AnalyticsController extends Controller
                     $days = $startDate->diffInDays($endDate) + 1;
                     $prevStartDate = $startDate->copy()->subDays($days);
                     $prevEndDate = $endDate->copy()->subDays($days);
-                    
+
                     $previousMetrics = $this->calculatePeriodMetrics($businessId, $prevStartDate, $prevEndDate, $branchId);
-                    
+
                     $data['previous'] = $previousMetrics;
                     $data['comparison'] = $this->calculateComparison($currentMetrics, $previousMetrics);
                 }
@@ -176,14 +188,14 @@ class AnalyticsController extends Controller
     public function productAnalytics(Request $request)
     {
         $user = $request->user();
-        $businessId = $user->current_business_id;
+        $businessId = $request->current_business_id;
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context required'], 400);
         }
 
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view analytics')) {
+        if (! $user->hasPermissionTo('view analytics')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -199,6 +211,12 @@ class AnalyticsController extends Controller
 
         $period = $request->input('period', 'month');
         $branchId = $request->input('branch_id');
+
+        // Verify branch access if branch_id provided
+        if ($branchId && ! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
         $limit = $request->input('limit', 20);
         $sortBy = $request->input('sort_by', 'revenue');
         $direction = $request->input('direction', 'desc');
@@ -211,6 +229,10 @@ class AnalyticsController extends Controller
             $query = SaleItem::query()
                 ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
                 ->join('products', 'sale_items.product_id', '=', 'products.id')
+                ->leftJoin('branch_products', function ($join) {
+                    $join->on('branch_products.product_id', '=', 'sale_items.product_id')
+                        ->on('branch_products.branch_id', '=', 'sales.branch_id');
+                })
                 ->where('sales.business_id', $businessId)
                 ->where('sales.status', 'completed')
                 ->whereBetween('sales.sale_date', [$startDate, $endDate]);
@@ -220,15 +242,15 @@ class AnalyticsController extends Controller
             }
 
             $products = $query->select(
-                    'sale_items.product_id',
-                    'products.name as product_name',
-                    'products.sku as product_sku',
-                    DB::raw('SUM(sale_items.quantity) as total_quantity'),
-                    DB::raw('SUM(sale_items.subtotal) as total_revenue'),
-                    DB::raw('SUM(sale_items.quantity * COALESCE(sale_items.cost_price, 0)) as total_cost'),
-                    DB::raw('SUM(sale_items.subtotal - (sale_items.quantity * COALESCE(sale_items.cost_price, 0))) as total_profit'),
-                    DB::raw('COUNT(DISTINCT sales.id) as transaction_count')
-                )
+                'sale_items.product_id',
+                'products.name as product_name',
+                'products.sku as product_sku',
+                DB::raw('SUM(sale_items.quantity) as total_quantity'),
+                DB::raw('SUM(sale_items.subtotal) as total_revenue'),
+                DB::raw('SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)) as total_cost'),
+                DB::raw('SUM(sale_items.subtotal - (sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0))) as total_profit'),
+                DB::raw('COUNT(DISTINCT sales.id) as transaction_count')
+            )
                 ->groupBy('sale_items.product_id', 'products.name', 'products.sku')
                 ->get()
                 ->map(function ($item) {
@@ -251,19 +273,26 @@ class AnalyticsController extends Controller
                 });
 
             // Sort
+            $sortKey = match ($sortBy) {
+                'quantity' => 'quantity_sold',
+                'margin' => 'margin_percentage',
+                default => $sortBy,
+            };
+
             $products = $products->sortBy([
-                [$sortBy === 'margin' ? 'margin_percentage' : $sortBy, $direction === 'desc' ? 'desc' : 'asc']
+                [$sortKey, $direction === 'desc' ? 'desc' : 'asc'],
             ])->values();
 
-            $totalRevenue = $products->sum(fn($p) => (float)$p['revenue']);
-            $totalCost = $products->sum(fn($p) => (float)$p['cost']);
-            $totalProfit = $products->sum(fn($p) => (float)$p['profit']);
+            $totalRevenue = $products->sum(fn ($p) => (float) $p['revenue']);
+            $totalCost = $products->sum(fn ($p) => (float) $p['cost']);
+            $totalProfit = $products->sum(fn ($p) => (float) $p['profit']);
 
             // Add contribution percentage
             $products = $products->map(function ($item) use ($totalRevenue) {
-                $item['contribution_percentage'] = $totalRevenue > 0 
-                    ? number_format(((float)$item['revenue'] / $totalRevenue) * 100, 2, '.', '')
+                $item['contribution_percentage'] = $totalRevenue > 0
+                    ? number_format(((float) $item['revenue'] / $totalRevenue) * 100, 2, '.', '')
                     : '0.00';
+
                 return $item;
             });
 
@@ -277,8 +306,8 @@ class AnalyticsController extends Controller
                     'total_revenue' => number_format($totalRevenue, 2, '.', ''),
                     'total_cost' => number_format($totalCost, 2, '.', ''),
                     'total_profit' => number_format($totalProfit, 2, '.', ''),
-                    'average_margin' => $totalRevenue > 0 
-                        ? number_format(($totalProfit / $totalRevenue) * 100, 2, '.', '') 
+                    'average_margin' => $totalRevenue > 0
+                        ? number_format(($totalProfit / $totalRevenue) * 100, 2, '.', '')
                         : '0.00',
                 ],
                 'top_products' => $products->take($limit)->values(),
@@ -293,14 +322,14 @@ class AnalyticsController extends Controller
     public function profitLoss(Request $request)
     {
         $user = $request->user();
-        $businessId = $user->current_business_id;
+        $businessId = $request->current_business_id;
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context required'], 400);
         }
 
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view financial reports')) {
+        if (! $user->hasPermissionTo('view financial reports')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -313,6 +342,11 @@ class AnalyticsController extends Controller
 
         $period = $request->input('period', 'month');
         $branchId = $request->input('branch_id');
+
+        // Verify branch access if branch_id provided
+        if ($branchId && ! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
 
         [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
 
@@ -328,18 +362,14 @@ class AnalyticsController extends Controller
             }
 
             // Revenue calculations
-            $totalRevenue = (float) $salesQuery->sum('final_total');
+            $totalRevenue = (float) $salesQuery->sum('total_amount');
             $totalDiscount = (float) $salesQuery->sum('discount_amount');
             $grossRevenue = $totalRevenue + $totalDiscount;
 
             // Cost calculations
             $salesWithItems = $salesQuery->with('items')->get();
             $totalCost = 0;
-            foreach ($salesWithItems as $sale) {
-                foreach ($sale->items as $item) {
-                    $totalCost += $item->quantity * ($item->cost_price ?? 0);
-                }
-            }
+            $totalCost = $this->calculateSalesCost($salesWithItems);
 
             // Profit calculations
             $grossProfit = $totalRevenue - $totalCost;
@@ -372,8 +402,8 @@ class AnalyticsController extends Controller
                 ],
                 'metrics' => [
                     'total_transactions' => $salesQuery->count(),
-                    'average_transaction_value' => $salesQuery->count() > 0 
-                        ? number_format($totalRevenue / $salesQuery->count(), 2, '.', '') 
+                    'average_transaction_value' => $salesQuery->count() > 0
+                        ? number_format($totalRevenue / $salesQuery->count(), 2, '.', '')
                         : '0.00',
                 ],
             ]);
@@ -386,14 +416,14 @@ class AnalyticsController extends Controller
     public function growthTrends(Request $request)
     {
         $user = $request->user();
-        $businessId = $user->current_business_id;
+        $businessId = $request->current_business_id;
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context required'], 400);
         }
 
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view analytics')) {
+        if (! $user->hasPermissionTo('view analytics')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -404,6 +434,12 @@ class AnalyticsController extends Controller
         ]);
 
         $branchId = $request->input('branch_id');
+
+        // Verify branch access if branch_id provided
+        if ($branchId && ! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
         $interval = $request->input('interval', 'monthly');
         $periods = $request->input('periods', 12);
 
@@ -411,12 +447,12 @@ class AnalyticsController extends Controller
 
         return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($businessId, $branchId, $interval, $periods) {
             $trends = [];
-            
+
             for ($i = $periods - 1; $i >= 0; $i--) {
                 [$startDate, $endDate] = $this->getIntervalDates($interval, $i);
-                
+
                 $metrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId);
-                
+
                 $trends[] = [
                     'period' => $startDate->format($interval === 'daily' ? 'Y-m-d' : ($interval === 'weekly' ? 'Y-W' : 'Y-m')),
                     'start_date' => $startDate->format('Y-m-d'),
@@ -435,7 +471,7 @@ class AnalyticsController extends Controller
                 if ($index > 0) {
                     $prevRevenue = (float) $trends[$index - 1]['revenue'];
                     $currentRevenue = (float) $trend['revenue'];
-                    $growth = $prevRevenue > 0 
+                    $growth = $prevRevenue > 0
                         ? number_format((($currentRevenue - $prevRevenue) / $prevRevenue) * 100, 2, '.', '')
                         : null;
                 }
@@ -453,6 +489,39 @@ class AnalyticsController extends Controller
 
     // Helper Methods
 
+    private function calculateSalesCost($sales): float
+    {
+        $totalCost = 0;
+
+        foreach ($sales as $sale) {
+            $productIds = $sale->items->pluck('product_id')->unique();
+
+            if ($productIds->isEmpty()) {
+                continue;
+            }
+
+            $branchCosts = BranchProduct::query()
+                ->where('branch_id', $sale->branch_id)
+                ->whereIn('product_id', $productIds)
+                ->pluck('cost_price', 'product_id');
+
+            $productCosts = Product::query()
+                ->whereIn('id', $productIds)
+                ->pluck('base_cost_price', 'id');
+
+            foreach ($sale->items as $item) {
+                $unitCost = $branchCosts->get($item->product_id);
+                if ($unitCost === null) {
+                    $unitCost = $productCosts->get($item->product_id, 0);
+                }
+
+                $totalCost += $item->quantity * $unitCost;
+            }
+        }
+
+        return $totalCost;
+    }
+
     private function calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId = null)
     {
         $query = Sale::where('business_id', $businessId)
@@ -464,16 +533,11 @@ class AnalyticsController extends Controller
         }
 
         $sales = $query->with('items')->get();
-        
-        $revenue = $sales->sum('final_total');
+
+        $revenue = $sales->sum('total_amount');
         $transactionCount = $sales->count();
-        
-        $cost = 0;
-        foreach ($sales as $sale) {
-            foreach ($sale->items as $item) {
-                $cost += $item->quantity * ($item->cost_price ?? 0);
-            }
-        }
+
+        $cost = $this->calculateSalesCost($sales);
 
         $profit = $revenue - $cost;
         $averageOrderValue = $transactionCount > 0 ? $revenue / $transactionCount : 0;
@@ -520,22 +584,32 @@ class AnalyticsController extends Controller
         if ($previous == 0) {
             return $current > 0 ? '100.00' : '0.00';
         }
-        
+
         $change = (($current - $previous) / abs($previous)) * 100;
+
         return number_format($change, 2, '.', '');
     }
 
     private function getTrend($changePercentage)
     {
         $change = (float) $changePercentage;
-        if ($change > 0) return 'up';
-        if ($change < 0) return 'down';
+        if ($change > 0) {
+            return 'up';
+        }
+        if ($change < 0) {
+            return 'down';
+        }
+
         return 'stable';
     }
 
-    private function getBranchContributions($businessId, $startDate, $endDate)
+    private function getBranchContributions($businessId, $startDate, $endDate, $permittedBranches = null)
     {
-        $branches = Branch::where('business_id', $businessId)->get();
+        $query = Branch::where('business_id', $businessId);
+        if ($permittedBranches !== null && $permittedBranches->isNotEmpty()) {
+            $query->whereIn('id', $permittedBranches);
+        }
+        $branches = $query->get();
         $contributions = [];
 
         $totalRevenue = 0;
@@ -576,10 +650,10 @@ class AnalyticsController extends Controller
         }
 
         $dailyRevenue = $query->select(
-                DB::raw('DATE(sale_date) as date'),
-                DB::raw('SUM(final_total) as revenue'),
-                DB::raw('COUNT(*) as transactions')
-            )
+            DB::raw('DATE(sale_date) as date'),
+            DB::raw('SUM(total_amount) as revenue'),
+            DB::raw('COUNT(*) as transactions')
+        )
             ->groupBy('date')
             ->orderBy('date')
             ->get()
@@ -597,7 +671,7 @@ class AnalyticsController extends Controller
     private function getDateRange($period, $customStart = null, $customEnd = null)
     {
         $endDate = Carbon::now();
-        
+
         switch ($period) {
             case 'today':
                 $startDate = Carbon::today();
@@ -646,25 +720,5 @@ class AnalyticsController extends Controller
         }
 
         return [$start, $end];
-    }
-
-    private function userHasBranchAccess($user, $businessId, $branchId)
-    {
-        // Check if user has manage analytics permission (full access)
-        setPermissionsTeamId($businessId);
-        if ($user->hasPermissionTo('view analytics')) {
-            return true;
-        }
-
-        // Otherwise check branch-specific permissions
-        // This would need to be implemented based on your branch access logic
-        return false;
-    }
-
-    private function getPermittedBranches($user, $businessId)
-    {
-        // Get all branches for the business
-        // In a real implementation, filter based on user's branch access
-        return Branch::where('business_id', $businessId)->pluck('id')->toArray();
     }
 }

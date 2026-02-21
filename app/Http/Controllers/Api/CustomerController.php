@@ -16,7 +16,18 @@ class CustomerController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view customers')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view customers')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -36,11 +47,11 @@ class CustomerController extends Controller
 
         if ($request->filled('search')) {
             $search = $request->search;
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('customer_code', 'like', "%{$search}%")
-                  ->orWhere('email', 'like', "%{$search}%")
-                  ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('customer_code', 'like', "%{$search}%")
+                    ->orWhere('email', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             });
         }
 
@@ -57,7 +68,18 @@ class CustomerController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('create customers')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create customers')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -100,12 +122,23 @@ class CustomerController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view customers')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view customers')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $customer = Customer::forBusiness($businessId)
-            ->with(['sales' => function($query) {
+            ->with(['sales' => function ($query) {
                 $query->latest()->limit(10);
             }])
             ->findOrFail($id);
@@ -113,15 +146,23 @@ class CustomerController extends Controller
         return response()->json($customer);
     }
 
-    /**
-     * Update a customer
-     */
     public function update(Request $request, $id)
     {
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('edit customers')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('edit customers')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -153,7 +194,18 @@ class CustomerController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('delete customers')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('delete customers')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -174,7 +226,7 @@ class CustomerController extends Controller
             ->first();
 
         $sequence = $lastCustomer ? (intval(substr($lastCustomer->customer_code, -6)) + 1) : 1;
-        
+
         return sprintf('%s-%06d', $prefix, $sequence);
     }
 }

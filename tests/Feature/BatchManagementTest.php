@@ -4,24 +4,26 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
-use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\ProductCategory;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Foundation\Testing\WithFaker;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
-use Carbon\Carbon;
 
 class BatchManagementTest extends TestCase
 {
     use RefreshDatabase, WithFaker;
 
     protected User $user;
+
     protected Business $business;
+
     protected Branch $branch;
+
     protected Product $product;
 
     protected function setUp(): void
@@ -32,7 +34,7 @@ class BatchManagementTest extends TestCase
         $this->user = User::factory()->create();
         $this->business = Business::factory()->create();
         $this->branch = Branch::factory()->create(['business_id' => $this->business->id]);
-        
+
         $category = ProductCategory::factory()->create(['business_id' => $this->business->id]);
         $this->product = Product::factory()->create([
             'business_id' => $this->business->id,
@@ -64,6 +66,9 @@ class BatchManagementTest extends TestCase
     /** @test */
     public function it_creates_batch_when_purchasing_product_with_expiry_date()
     {
+        $manufacturingDate = Carbon::now()->subMonths(2)->format('Y-m-d');
+        $expiryDate = Carbon::now()->addYear()->format('Y-m-d');
+
         $response = $this->actingAs($this->user)->postJson('/api/inventory/transactions', [
             'branch_id' => $this->branch->id,
             'product_id' => $this->product->id,
@@ -72,8 +77,8 @@ class BatchManagementTest extends TestCase
             'unit_cost' => 15.50,
             'batch_number' => 'BATCH-TEST-001',
             'lot_number' => 'LOT-2024-001',
-            'manufacturing_date' => '2024-01-01',
-            'expiry_date' => '2025-01-01',
+            'manufacturing_date' => $manufacturingDate,
+            'expiry_date' => $expiryDate,
             'supplier_name' => 'ABC Suppliers',
             'supplier_reference' => 'INV-12345',
         ], [
@@ -98,8 +103,8 @@ class BatchManagementTest extends TestCase
 
         $batch = ProductBatch::where('batch_number', 'BATCH-TEST-001')->first();
         $this->assertNotNull($batch);
-        $this->assertEquals('2024-01-01', $batch->manufacturing_date->format('Y-m-d'));
-        $this->assertEquals('2025-01-01', $batch->expiry_date->format('Y-m-d'));
+        $this->assertEquals($manufacturingDate, $batch->manufacturing_date->format('Y-m-d'));
+        $this->assertEquals($expiryDate, $batch->expiry_date->format('Y-m-d'));
     }
 
     /** @test */
@@ -304,7 +309,7 @@ class BatchManagementTest extends TestCase
             'status' => 'active',
         ]);
 
-        $response = $this->actingAs($this->user)->getJson('/api/batches?product_id=' . $this->product->id, [
+        $response = $this->actingAs($this->user)->getJson('/api/batches?product_id='.$this->product->id, [
             'X-Business-Id' => $this->business->id,
         ]);
 
@@ -424,7 +429,7 @@ class BatchManagementTest extends TestCase
 
         $response->assertStatus(200);
         $response->assertJsonCount(2, 'batches');
-        
+
         // Verify FEFO ordering (batch expiring soonest should be first)
         $response->assertJsonPath('batches.0.batch_number', 'BATCH-001');
         $response->assertJsonPath('batches.1.batch_number', 'BATCH-002');
@@ -486,7 +491,7 @@ class BatchManagementTest extends TestCase
         ]);
 
         $response->assertStatus(200);
-        
+
         $batch->refresh();
         $this->assertEquals('recalled', $batch->status);
         $this->assertArrayHasKey('update_notes', $batch->meta_data);

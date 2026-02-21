@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\{Business, PaymentMethod, User};
+use App\Models\Business;
+use App\Models\PaymentMethod;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\{Permission, Role};
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class PaymentMethodRoutesTest extends TestCase
@@ -12,7 +15,9 @@ class PaymentMethodRoutesTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Role $role;
 
     protected function setUp(): void
@@ -38,7 +43,7 @@ class PaymentMethodRoutesTest extends TestCase
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         setPermissionsTeamId($this->business->id);
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/payment-methods?current_business_id=' . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/payment-methods?current_business_id='.$this->business->id, [
             'name' => 'Credit Card',
             'type' => 'card',
         ]);
@@ -55,7 +60,7 @@ class PaymentMethodRoutesTest extends TestCase
 
         PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/payment-methods?current_business_id=' . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/payment-methods?current_business_id='.$this->business->id);
         $response->assertStatus(200)->assertJsonCount(1);
     }
 
@@ -67,7 +72,7 @@ class PaymentMethodRoutesTest extends TestCase
 
         $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/payment-methods/{$pm->id}?current_business_id=" . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/payment-methods/{$pm->id}?current_business_id=".$this->business->id, [
             'name' => 'Cash Payment',
         ]);
 
@@ -83,14 +88,17 @@ class PaymentMethodRoutesTest extends TestCase
 
         $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/payment-methods/{$pm->id}?current_business_id=" . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/payment-methods/{$pm->id}?current_business_id=".$this->business->id);
         $response->assertStatus(200);
         $this->assertSoftDeleted('payment_methods', ['id' => $pm->id]);
     }
 
     public function test_enforces_permissions(): void
     {
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/payment-methods?current_business_id=' . $this->business->id);
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')->getJson('/api/payment-methods?current_business_id='.$this->business->id);
         $response->assertStatus(403);
     }
 }

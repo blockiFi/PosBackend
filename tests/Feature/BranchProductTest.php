@@ -10,11 +10,14 @@ use App\Models\ProductCategory;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
+use Tests\Traits\SeedsPermissions;
 
 class BranchProductTest extends TestCase
 {
     use RefreshDatabase;
+    use SeedsPermissions;
 
     protected $user;
 
@@ -157,6 +160,65 @@ class BranchProductTest extends TestCase
         $this->assertEquals(60, $branchProduct->shelf_quantity);
         $this->assertEquals(100, $branchProduct->store_quantity);
         $this->assertEquals(160, $branchProduct->stock_quantity);
+    }
+
+    public function test_can_update_selling_price_with_permission()
+    {
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'stock_quantity' => 10,
+            'selling_price' => 29.99,
+        ]);
+
+        $response = $this->patchJson("/api/branch-products/{$branchProduct->id}/selling-price", [
+            'current_business_id' => $this->business->id,
+            'selling_price' => 39.99,
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJson(['message' => 'Selling price updated successfully'])
+            ->assertJsonPath('data.pricing.selling_price', '39.99');
+
+        $branchProduct->refresh();
+        $this->assertEquals(39.99, (float) $branchProduct->selling_price);
+    }
+
+    public function test_update_selling_price_requires_permission()
+    {
+        $this->seedAllPermissions();
+
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'stock_quantity' => 10,
+            'selling_price' => 29.99,
+        ]);
+
+        $staff = User::factory()->create();
+        $staff->businesses()->attach($this->business->id, ['is_active' => true]);
+        $role = Role::create(['name' => 'staff', 'guard_name' => 'api', 'business_id' => $this->business->id]);
+        $role->givePermissionTo('manage branch products');
+        \DB::table('model_has_roles')->insert([
+            'role_id' => $role->id,
+            'model_type' => User::class,
+            'model_id' => $staff->id,
+            'business_id' => $this->business->id,
+        ]);
+
+        $response = $this->actingAs($staff)->patchJson("/api/branch-products/{$branchProduct->id}/selling-price", [
+            'selling_price' => 39.99,
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertStatus(403)->assertJson(['message' => 'Unauthorized']);
     }
 
     public function test_move_to_shelf_success()
@@ -818,5 +880,4 @@ class BranchProductTest extends TestCase
             ->assertJsonPath('data.skipped_products.0.product_id', $product2->id)
             ->assertJsonPath('data.skipped_products.0.product_name', 'Product Two');
     }
-
 }

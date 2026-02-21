@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
@@ -16,6 +17,8 @@ use Str;
 
 class SaleController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List sales with filtering and pagination
      */
@@ -24,13 +27,23 @@ class SaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view sales')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view sales')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Get accessible branches
         $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
+
         $query = Sale::with(['customer', 'user', 'branch', 'items.product'])
             ->forBusiness($businessId);
 
@@ -42,7 +55,7 @@ class SaleController extends Controller
         // Apply filters
         if ($request->filled('branch_id')) {
             $branchId = $request->branch_id;
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'Unauthorized access to this branch'], 403);
             }
             $query->where('branch_id', $branchId);
@@ -69,7 +82,7 @@ class SaleController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('sale_number', 'like', '%' . $request->search . '%');
+            $query->where('sale_number', 'like', '%'.$request->search.'%');
         }
 
         $sales = $query->orderBy('sale_date', 'desc')->paginate(15);
@@ -85,7 +98,17 @@ class SaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('create sales')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create sales')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -109,7 +132,7 @@ class SaleController extends Controller
         ]);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
+        if (! $this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -122,7 +145,7 @@ class SaleController extends Controller
                 ->where('status', 'open')
                 ->first();
 
-            if (!$shift) {
+            if (! $shift) {
                 return response()->json(['message' => 'Invalid or closed shift'], 400);
             }
 
@@ -168,13 +191,13 @@ class SaleController extends Controller
             // Create sale items
             foreach ($validated['items'] as $itemData) {
                 $product = Product::findOrFail($itemData['product_id']);
-                
+
                 // Check stock availability
                 $branchProduct = BranchProduct::where('branch_id', $validated['branch_id'])
                     ->where('product_id', $product->id)
                     ->first();
 
-                if (!$branchProduct || $branchProduct->stock_quantity < $itemData['quantity']) {
+                if (! $branchProduct || $branchProduct->stock_quantity < $itemData['quantity']) {
                     throw new \Exception("Insufficient stock for product: {$product->name}");
                 }
 
@@ -193,7 +216,7 @@ class SaleController extends Controller
 
                 // Update stock and create inventory transaction
                 $branchProduct->decrement('stock_quantity', $itemData['quantity']);
-                
+
                 InventoryTransaction::create([
                     'uuid' => Str::uuid(),
                     'business_id' => $businessId,
@@ -216,7 +239,7 @@ class SaleController extends Controller
             $sale->save();
 
             // Create payments if provided
-            if (!empty($validated['payments'])) {
+            if (! empty($validated['payments'])) {
                 foreach ($validated['payments'] as $paymentData) {
                     Payment::create([
                         'sale_id' => $sale->id,
@@ -246,6 +269,7 @@ class SaleController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to create sale', 'error' => $e->getMessage()], 500);
         }
     }
@@ -258,7 +282,17 @@ class SaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view sales')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view sales')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -267,7 +301,7 @@ class SaleController extends Controller
             ->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -282,7 +316,17 @@ class SaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage sales')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage sales')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -296,7 +340,7 @@ class SaleController extends Controller
         $sale = Sale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -330,6 +374,7 @@ class SaleController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to add payment', 'error' => $e->getMessage()], 500);
         }
     }
@@ -342,14 +387,24 @@ class SaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage sales')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage sales')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $sale = Sale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -399,6 +454,7 @@ class SaleController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to cancel sale', 'error' => $e->getMessage()], 500);
         }
     }
@@ -416,22 +472,7 @@ class SaleController extends Controller
             ->first();
 
         $sequence = $lastSale ? (intval(substr($lastSale->sale_number, -4)) + 1) : 1;
-        
-        return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
-    }
 
-    /**
-     * Check if user has access to a specific branch
-     */
-    private function userHasBranchAccess($user, $businessId, $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        // Empty collection means user has access to all branches
-        if ($accessibleBranches->isEmpty()) {
-            return true;
-        }
-        
-        return $accessibleBranches->contains('id', $branchId);
+        return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
     }
 }

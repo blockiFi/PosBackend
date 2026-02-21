@@ -3,21 +3,24 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\ProductBatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class BatchController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List all batches with filtering
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -29,19 +32,19 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Get permitted branches
         $permittedBranches = $user->getBranchesInBusiness($businessId);
-        
+
         if ($permittedBranches->isEmpty()) {
             // User has business-wide access
             $query = ProductBatch::with(['product', 'branch'])
@@ -55,7 +58,11 @@ class BatchController extends Controller
 
         // Filters
         if ($request->has('branch_id')) {
-            $query->where('branch_id', $request->branch_id);
+            $branchId = (int) $request->branch_id;
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+            $query->where('branch_id', $branchId);
         }
 
         if ($request->has('product_id')) {
@@ -76,11 +83,11 @@ class BatchController extends Controller
         }
 
         if ($request->has('batch_number')) {
-            $query->where('batch_number', 'like', '%' . $request->batch_number . '%');
+            $query->where('batch_number', 'like', '%'.$request->batch_number.'%');
         }
 
         if ($request->has('lot_number')) {
-            $query->where('lot_number', 'like', '%' . $request->lot_number . '%');
+            $query->where('lot_number', 'like', '%'.$request->lot_number.'%');
         }
 
         // Sort
@@ -99,9 +106,9 @@ class BatchController extends Controller
     public function forProduct(Request $request, int $productId)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -111,13 +118,13 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -165,9 +172,9 @@ class BatchController extends Controller
     public function nearExpiry(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -177,13 +184,13 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -236,9 +243,9 @@ class BatchController extends Controller
     public function expired(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -248,13 +255,13 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -309,9 +316,9 @@ class BatchController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -321,13 +328,13 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -388,9 +395,9 @@ class BatchController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -400,13 +407,13 @@ class BatchController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('manage batches')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage batches')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -469,6 +476,7 @@ class BatchController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to update batch',
                 'error' => $e->getMessage(),

@@ -2,14 +2,14 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\Business;
+use App\Models\User;
 use App\Models\User_Business;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 class PinLoginTest extends TestCase
 {
@@ -18,7 +18,7 @@ class PinLoginTest extends TestCase
     public function test_user_can_login_with_valid_pin()
     {
         // Create the permission
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         // Create business and user
         $business = Business::factory()->create();
@@ -30,7 +30,7 @@ class PinLoginTest extends TestCase
         User_Business::create([
             'user_id' => $user->id,
             'business_id' => $business->id,
-            
+
         ]);
 
         // Create role and assign permission
@@ -96,7 +96,7 @@ class PinLoginTest extends TestCase
 
     public function test_authenticated_user_can_set_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -134,7 +134,7 @@ class PinLoginTest extends TestCase
 
     public function test_setting_pin_requires_password_verification()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -167,7 +167,7 @@ class PinLoginTest extends TestCase
 
     public function test_cannot_set_duplicate_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $existingUser = User::factory()->create([
             'pin_code' => '111111',
@@ -204,7 +204,7 @@ class PinLoginTest extends TestCase
 
     public function test_user_can_update_existing_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -240,7 +240,7 @@ class PinLoginTest extends TestCase
 
     public function test_authenticated_user_can_remove_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -277,7 +277,7 @@ class PinLoginTest extends TestCase
 
     public function test_removing_pin_requires_password()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -334,7 +334,7 @@ class PinLoginTest extends TestCase
         $response = $this->actingAs($user)->postJson('/api/pin/set', []);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['user_id', 'pin_code', 'password']);
+            ->assertJsonValidationErrors(['user_id', 'pin_code']);
     }
 
     public function test_unauthenticated_user_cannot_set_pin()
@@ -360,23 +360,22 @@ class PinLoginTest extends TestCase
 
     public function test_user_without_permission_cannot_set_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
             'password' => Hash::make('password123'),
         ]);
+        $otherUser = User::factory()->create();
 
         User_Business::create([
             'user_id' => $user->id,
             'business_id' => $business->id,
         ]);
 
-        // User has no permission
+        // User has no permission; setting another user's PIN requires manage-pin-codes
         $response = $this->actingAs($user)->postJson('/api/pin/set', [
-            'user_id' => 1,
-            'user_id' => $user->id,
-            'user_id' => $user->id,
+            'user_id' => $otherUser->id,
             'pin_code' => '123456',
             'password' => 'password123',
         ]);
@@ -389,7 +388,7 @@ class PinLoginTest extends TestCase
 
     public function test_user_without_permission_cannot_remove_pin()
     {
-        Permission::create(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -417,7 +416,7 @@ class PinLoginTest extends TestCase
 
     public function test_pin_login_is_case_sensitive_for_numeric()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -443,10 +442,10 @@ class PinLoginTest extends TestCase
 
     public function test_multiple_users_can_have_different_pins()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
-        
+
         $user1 = User::factory()->create(['pin_code' => '111111']);
         $user2 = User::factory()->create(['pin_code' => '222222']);
         $user3 = User::factory()->create(['pin_code' => '333333']);
@@ -479,7 +478,7 @@ class PinLoginTest extends TestCase
 
     public function test_pin_login_generates_valid_token()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([
@@ -503,7 +502,7 @@ class PinLoginTest extends TestCase
         $token = $response->json('token');
 
         // Use the token to access protected route
-        $userResponse = $this->withHeader('Authorization', 'Bearer ' . $token)
+        $userResponse = $this->withHeader('Authorization', 'Bearer '.$token)
             ->getJson('/api/user');
 
         $userResponse->assertStatus(200)
@@ -532,7 +531,7 @@ class PinLoginTest extends TestCase
     public function test_user_without_permission_cannot_login_with_pin()
     {
         // Create the permission but don't assign it to the user
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $user = User::factory()->create([
             'pin_code' => '123456',
@@ -550,7 +549,7 @@ class PinLoginTest extends TestCase
 
     public function test_user_with_permission_can_login_with_pin()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         // Create business and user
         $business = Business::factory()->create();
@@ -562,7 +561,7 @@ class PinLoginTest extends TestCase
         User_Business::create([
             'user_id' => $user->id,
             'business_id' => $business->id,
-            
+
         ]);
 
         // Create role and assign permission
@@ -587,7 +586,7 @@ class PinLoginTest extends TestCase
 
     public function test_permission_check_happens_after_pin_validation()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $user = User::factory()->create([
             'pin_code' => '123456',
@@ -607,10 +606,10 @@ class PinLoginTest extends TestCase
 
     public function test_multiple_users_with_permission_can_use_pin_login()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
-        
+
         $user1 = User::factory()->create(['pin_code' => '111111']);
         $user2 = User::factory()->create(['pin_code' => '222222']);
         $user3 = User::factory()->create(['pin_code' => '333333']);
@@ -643,7 +642,7 @@ class PinLoginTest extends TestCase
 
     public function test_revoking_permission_prevents_pin_login()
     {
-        Permission::create(['name' => 'use-pin-login', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
         $business = Business::factory()->create();
         $user = User::factory()->create([

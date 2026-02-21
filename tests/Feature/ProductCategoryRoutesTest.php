@@ -16,7 +16,9 @@ class ProductCategoryRoutesTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Role $role;
 
     protected function setUp(): void
@@ -69,15 +71,15 @@ class ProductCategoryRoutesTest extends TestCase
     public function test_can_list_categories_with_permission(): void
     {
         $this->role->givePermissionTo('view categories');
-        
+
         // Clear permission cache
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        
+
         // Set permissions team context before request
         setPermissionsTeamId($this->business->id);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories?current_business_id=' . $this->business->id);
+            ->getJson('/api/categories?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['data']);
@@ -85,8 +87,11 @@ class ProductCategoryRoutesTest extends TestCase
 
     public function test_cannot_list_categories_without_permission(): void
     {
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories?current_business_id=' . $this->business->id);
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->getJson('/api/categories?current_business_id='.$this->business->id);
 
         $response->assertStatus(403);
     }
@@ -104,7 +109,7 @@ class ProductCategoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/categories?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/categories?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -114,7 +119,7 @@ class ProductCategoryRoutesTest extends TestCase
                     'name',
                     'slug',
                     'description',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('product_categories', [
@@ -126,12 +131,15 @@ class ProductCategoryRoutesTest extends TestCase
 
     public function test_cannot_create_category_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $data = [
             'name' => 'Electronics',
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/categories?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->postJson('/api/categories?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403);
     }
@@ -156,7 +164,7 @@ class ProductCategoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/categories?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/categories?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201);
 
@@ -178,13 +186,13 @@ class ProductCategoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/categories?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/categories?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201)
             ->assertJson([
                 'data' => [
                     'slug' => 'home-garden',
-                ]
+                ],
             ]);
     }
 
@@ -201,14 +209,14 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJson([
                 'data' => [
                     'id' => $category->id,
                     'name' => 'Electronics',
-                ]
+                ],
             ]);
     }
 
@@ -230,7 +238,7 @@ class ProductCategoryRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->putJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id, $data);
+            ->putJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(200);
 
@@ -243,6 +251,9 @@ class ProductCategoryRoutesTest extends TestCase
 
     public function test_cannot_update_category_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $category = ProductCategory::create([
             'business_id' => $this->business->id,
             'name' => 'Electronics',
@@ -251,8 +262,8 @@ class ProductCategoryRoutesTest extends TestCase
 
         $data = ['name' => 'Updated Name'];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->putJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->putJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403);
     }
@@ -280,7 +291,7 @@ class ProductCategoryRoutesTest extends TestCase
         $data = ['parent_id' => $child->id];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->putJson('/api/categories/' . $parent->id . '?current_business_id=' . $this->business->id, $data);
+            ->putJson('/api/categories/'.$parent->id.'?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
             ->assertJson([
@@ -301,7 +312,7 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id);
+            ->deleteJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200);
 
@@ -312,14 +323,17 @@ class ProductCategoryRoutesTest extends TestCase
 
     public function test_cannot_delete_category_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $category = ProductCategory::create([
             'business_id' => $this->business->id,
             'name' => 'Electronics',
             'slug' => 'electronics',
         ]);
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->deleteJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(403);
     }
@@ -344,7 +358,7 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/categories/' . $parent->id . '?current_business_id=' . $this->business->id);
+            ->deleteJson('/api/categories/'.$parent->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(422)
             ->assertJson([
@@ -379,7 +393,7 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories/' . $child->id . '/breadcrumb?current_business_id=' . $this->business->id);
+            ->getJson('/api/categories/'.$child->id.'/breadcrumb?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonCount(3, 'data')
@@ -388,7 +402,7 @@ class ProductCategoryRoutesTest extends TestCase
                     'Electronics',
                     'Computers',
                     'Laptops',
-                ]
+                ],
             ]);
     }
 
@@ -412,7 +426,7 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories?current_business_id=' . $this->business->id);
+            ->getJson('/api/categories?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -421,8 +435,8 @@ class ProductCategoryRoutesTest extends TestCase
                         'id',
                         'name',
                         'children',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -439,7 +453,7 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories?flat=true&current_business_id=' . $this->business->id);
+            ->getJson('/api/categories?flat=true&current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -449,8 +463,8 @@ class ProductCategoryRoutesTest extends TestCase
                         'name',
                         'depth',
                         'has_children',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -487,9 +501,8 @@ class ProductCategoryRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/categories/' . $category->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/categories/'.$category->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(404);
     }
 }
-

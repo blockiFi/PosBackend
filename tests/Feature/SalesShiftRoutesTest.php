@@ -2,24 +2,26 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Business;
 use App\Models\Branch;
-use App\Models\SalesShift;
-use App\Models\Sale;
-use App\Models\PaymentMethod;
+use App\Models\Business;
 use App\Models\Customer;
+use App\Models\PaymentMethod;
+use App\Models\Sale;
+use App\Models\SalesShift;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 class SalesShiftRoutesTest extends TestCase
 {
     use RefreshDatabase;
 
     protected $user;
+
     protected $business;
+
     protected $branch;
 
     protected function setUp(): void
@@ -27,8 +29,8 @@ class SalesShiftRoutesTest extends TestCase
         parent::setUp();
 
         // Create permissions
-        Permission::create(['name' => 'view shifts', 'guard_name' => 'api']);
-        Permission::create(['name' => 'manage shifts', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view shifts', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage shifts', 'guard_name' => 'api']);
 
         // Create user
         $this->user = User::factory()->create();
@@ -82,7 +84,7 @@ class SalesShiftRoutesTest extends TestCase
                     'start_time',
                     'opening_balance',
                     'status',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('sales_shifts', [
@@ -117,12 +119,14 @@ class SalesShiftRoutesTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'message' => 'You already have an open shift',
+                'message' => 'You already have an active shift (open or paused). Please close or resume it before opening a new one.',
             ]);
     }
 
     public function test_can_close_shift_with_reconciliation()
     {
+        $this->user->update(['pin_code' => '123456']);
+
         // Create payment method
         $paymentMethod = PaymentMethod::create([
             'business_id' => $this->business->id,
@@ -175,6 +179,7 @@ class SalesShiftRoutesTest extends TestCase
         $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/close", [
             'actual_cash' => 248.00, // 100 opening + 150 sales - 2 shortage
             'closing_notes' => 'End of day',
+            'pin_code' => '123456',
         ], [
             'X-Business-Id' => $this->business->id,
         ]);
@@ -191,7 +196,7 @@ class SalesShiftRoutesTest extends TestCase
                     'variance',
                     'cash_sales',
                     'total_sales',
-                ]
+                ],
             ]);
 
         $shift->refresh();
@@ -203,8 +208,81 @@ class SalesShiftRoutesTest extends TestCase
         $this->assertNotNull($shift->end_time);
     }
 
+    public function test_close_shift_requires_pin()
+    {
+        $this->user->update(['pin_code' => '123456']);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(8),
+            'opening_balance' => 100.00,
+            'status' => 'open',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/close", [
+            'actual_cash' => 100.00,
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(422)->assertJsonValidationErrors(['pin_code']);
+    }
+
+    public function test_close_shift_rejects_invalid_pin()
+    {
+        $this->user->update(['pin_code' => '123456']);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(8),
+            'opening_balance' => 100.00,
+            'status' => 'open',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/close", [
+            'actual_cash' => 100.00,
+            'pin_code' => '999999',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(401)->assertJson(['message' => 'Invalid PIN code']);
+    }
+
+    public function test_close_shift_requires_user_to_have_pin_set()
+    {
+        $this->user->update(['pin_code' => null]);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(8),
+            'opening_balance' => 100.00,
+            'status' => 'open',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/close", [
+            'actual_cash' => 100.00,
+            'pin_code' => '123456',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(400)
+            ->assertJson([
+                'message' => 'PIN verification required to close a shift. Set a PIN in your account first.',
+            ]);
+    }
+
     public function test_cannot_close_already_closed_shift()
     {
+        $this->user->update(['pin_code' => '123456']);
+
         $shift = SalesShift::create([
             'shift_number' => 'SHIFT-20260125-0001',
             'business_id' => $this->business->id,
@@ -220,6 +298,7 @@ class SalesShiftRoutesTest extends TestCase
 
         $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/close", [
             'actual_cash' => 100.00,
+            'pin_code' => '123456',
         ], [
             'X-Business-Id' => $this->business->id,
         ]);
@@ -227,6 +306,122 @@ class SalesShiftRoutesTest extends TestCase
         $response->assertStatus(400)
             ->assertJson([
                 'message' => 'Shift is already closed',
+            ]);
+    }
+
+    public function test_can_pause_and_resume_shift()
+    {
+        $this->user->update(['pin_code' => '123456']);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(2),
+            'opening_balance' => 100.00,
+            'status' => 'open',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/pause", [], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Shift paused successfully',
+                'shift' => ['id' => $shift->id, 'status' => 'paused'],
+            ]);
+        $shift->refresh();
+        $this->assertEquals('paused', $shift->status);
+        $this->assertNotNull($shift->paused_at);
+
+        $response = $this->actingAs($this->user)->getJson('/api/shifts/current', [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(200)->assertJson(['id' => $shift->id, 'status' => 'paused']);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/resume", [
+            'pin_code' => '123456',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Shift resumed successfully',
+                'shift' => ['id' => $shift->id, 'status' => 'open'],
+            ]);
+        $shift->refresh();
+        $this->assertEquals('open', $shift->status);
+        $this->assertNull($shift->paused_at);
+    }
+
+    public function test_resume_shift_requires_pin()
+    {
+        $this->user->update(['pin_code' => '123456']);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(2),
+            'opening_balance' => 100.00,
+            'status' => 'paused',
+            'paused_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/resume", [], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(422)->assertJsonValidationErrors(['pin_code']);
+    }
+
+    public function test_resume_shift_rejects_invalid_pin()
+    {
+        $this->user->update(['pin_code' => '123456']);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(2),
+            'opening_balance' => 100.00,
+            'status' => 'paused',
+            'paused_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/resume", [
+            'pin_code' => '999999',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(401)->assertJson(['message' => 'Invalid PIN code']);
+    }
+
+    public function test_resume_shift_requires_user_to_have_pin_set()
+    {
+        $this->user->update(['pin_code' => null]);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-20260125-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now()->subHours(2),
+            'opening_balance' => 100.00,
+            'status' => 'paused',
+            'paused_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson("/api/shifts/{$shift->id}/resume", [
+            'pin_code' => '123456',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+        $response->assertStatus(400)
+            ->assertJson([
+                'message' => 'PIN verification required to resume a shift. Set a PIN in your account first.',
             ]);
     }
 
@@ -267,8 +462,8 @@ class SalesShiftRoutesTest extends TestCase
                         'start_time',
                         'user',
                         'branch',
-                    ]
-                ]
+                    ],
+                ],
             ]);
 
         $this->assertEquals(2, count($response->json('data')));
@@ -323,14 +518,15 @@ class SalesShiftRoutesTest extends TestCase
 
     public function test_shift_requires_permission()
     {
-        // Remove role and permissions from user
-        $this->user->roles()->detach();
-        $this->user->permissions()->detach();
-        
-        // Clear permission cache
+        // Use a non-owner user so owner bypass does not apply
+        $nonOwner = User::factory()->create();
+        $nonOwner->businesses()->attach($this->business->id);
+        setPermissionsTeamId($this->business->id);
+        $nonOwner->roles()->detach();
+        $nonOwner->permissions()->detach();
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        $response = $this->actingAs($this->user)->postJson('/api/shifts', [
+        $response = $this->actingAs($nonOwner)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
             'opening_balance' => 100.00,
         ], [

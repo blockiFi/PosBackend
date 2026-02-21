@@ -18,11 +18,11 @@ class SyncSessionTest extends TestCase
     {
         $device = DeviceRegistration::factory()->create();
         $session = SyncSession::factory()->create([
-            'device_id' => $device->device_id
+            'device_id' => $device->id,
         ]);
 
         $this->assertInstanceOf(DeviceRegistration::class, $session->device);
-        $this->assertEquals($device->device_id, $session->device->device_id);
+        $this->assertEquals($device->id, $session->device->id);
     }
 
     /** @test */
@@ -30,7 +30,7 @@ class SyncSessionTest extends TestCase
     {
         $business = Business::factory()->create();
         $session = SyncSession::factory()->create([
-            'business_id' => $business->id
+            'business_id' => $business->id,
         ]);
 
         $this->assertInstanceOf(Business::class, $session->business);
@@ -41,7 +41,7 @@ class SyncSessionTest extends TestCase
     {
         $user = User::factory()->create();
         $session = SyncSession::factory()->create([
-            'user_id' => $user->id
+            'user_id' => $user->id,
         ]);
 
         $this->assertInstanceOf(User::class, $session->user);
@@ -64,10 +64,10 @@ class SyncSessionTest extends TestCase
     public function it_can_scope_by_device()
     {
         $device = DeviceRegistration::factory()->create();
-        SyncSession::factory()->count(3)->create(['device_id' => $device->device_id]);
+        SyncSession::factory()->count(3)->create(['device_id' => $device->id]);
         SyncSession::factory()->count(2)->create();
 
-        $deviceSessions = SyncSession::forDevice($device->device_id)->get();
+        $deviceSessions = SyncSession::forDevice($device->id)->get();
 
         $this->assertCount(3, $deviceSessions);
     }
@@ -141,7 +141,7 @@ class SyncSessionTest extends TestCase
     {
         $session = SyncSession::factory()->create([
             'conflicts_detected' => 0,
-            'conflicts_resolved' => 0
+            'conflicts_resolved' => 0,
         ]);
 
         $session->recordConflict(true);
@@ -155,7 +155,7 @@ class SyncSessionTest extends TestCase
     {
         $session = SyncSession::factory()->create([
             'conflicts_detected' => 0,
-            'conflicts_resolved' => 0
+            'conflicts_resolved' => 0,
         ]);
 
         $session->recordConflict(false);

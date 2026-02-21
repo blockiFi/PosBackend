@@ -8,10 +8,10 @@ class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database.
-     * 
+     *
      * This is the master seeder that orchestrates all other seeders
      * in the correct order to ensure referential integrity.
-     * 
+     *
      * Execution order:
      * 1. Permissions & Roles (foundation for access control)
      * 2. Businesses & Branches (core business structure)
@@ -19,11 +19,11 @@ class DatabaseSeeder extends Seeder
      * 4. Inventory & Batches (stock management)
      * 5. Sales & Shifts (transaction data)
      * 6. Workflows (refunds, quick sales, transfers)
-     * 
+     *
      * Usage:
      *   php artisan db:seed                    # Run all seeders
      *   php artisan db:seed --class=SalesSeeder  # Run specific seeder
-     * 
+     *
      * To scale data volume:
      *   Update the $salesCount property in SalesSeeder
      *   Adjust product count in ProductSeeder::createProducts()
@@ -46,6 +46,7 @@ class DatabaseSeeder extends Seeder
             RefundPermissionSeeder::class,
             AdjustInventoryPermissionSeeder::class,
             AnalyticsPermissionSeeder::class,
+            BranchSyncPermissionSeeder::class,
             RolePermissionSeeder::class,
             RealisticRoleSeeder::class,  // Realistic role templates
         ]);
@@ -119,13 +120,13 @@ class DatabaseSeeder extends Seeder
             ]
         );
         $this->command->newLine();
-        
+
         $this->command->info('🔑 Demo Users:');
         $this->command->line('  Email: admin@acmeretail.com | Password: password');
         $this->command->line('  Email: john.manager@acmeretail.com | Password: password');
         $this->command->line('  Email: cashier1@acmeretail.com | Password: password');
         $this->command->newLine();
-        
+
         $this->command->info('💡 Tips:');
         $this->command->line('  • Use --class flag to run specific seeders');
         $this->command->line('  • Adjust SalesSeeder::$salesCount to generate more/less sales');

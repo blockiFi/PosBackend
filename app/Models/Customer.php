@@ -25,6 +25,11 @@ class Customer extends Model
         'loyalty_points',
         'metadata',
         'is_active',
+        'client_uuid',
+        'version',
+        'device_id',
+        'synced_at',
+        'sync_status',
     ];
 
     protected $casts = [
@@ -72,8 +77,10 @@ class Customer extends Model
     {
         if ($this->loyalty_points >= $points) {
             $this->decrement('loyalty_points', $points);
+
             return true;
         }
+
         return false;
     }
 

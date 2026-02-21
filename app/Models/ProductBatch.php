@@ -2,13 +2,13 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
-use Carbon\Carbon;
 
 class ProductBatch extends Model
 {
@@ -116,10 +116,10 @@ class ProductBatch extends Model
     {
         return $query->where(function ($q) {
             $q->where('status', 'expired')
-              ->orWhere(function ($q2) {
-                  $q2->where('expiry_date', '<', now())
-                     ->where('status', 'active');
-              });
+                ->orWhere(function ($q2) {
+                    $q2->where('expiry_date', '<', now())
+                        ->where('status', 'active');
+                });
         });
     }
 
@@ -143,43 +143,48 @@ class ProductBatch extends Model
     // Helper Methods
     public function isExpired(): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
+
         return Carbon::parse($this->expiry_date)->isPast();
     }
 
     public function isNearExpiry(int $days = 30): bool
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return false;
         }
         $expiryDate = Carbon::parse($this->expiry_date);
-        return $expiryDate->isFuture() && $expiryDate->diffInDays(now()) <= $days;
+        $referenceDate = now()->startOfDay();
+
+        return $expiryDate->greaterThan($referenceDate)
+            && $expiryDate->diffInDays($referenceDate, true) <= $days;
     }
 
     public function daysUntilExpiry(): ?int
     {
-        if (!$this->expiry_date) {
+        if (! $this->expiry_date) {
             return null;
         }
         $expiryDate = Carbon::parse($this->expiry_date);
         if ($expiryDate->isPast()) {
             return 0;
         }
-        return $expiryDate->diffInDays(now());
+
+        return $expiryDate->diffInDays(now()->startOfDay(), true);
     }
 
     public function canAllocate(int $quantity): bool
     {
-        return $this->status === 'active' 
-            && $this->current_quantity >= $quantity 
-            && !$this->isExpired();
+        return $this->status === 'active'
+            && $this->current_quantity >= $quantity
+            && ! $this->isExpired();
     }
 
     public function allocate(int $quantity): bool
     {
-        if (!$this->canAllocate($quantity)) {
+        if (! $this->canAllocate($quantity)) {
             return false;
         }
 
@@ -187,22 +192,24 @@ class ProductBatch extends Model
         if ($this->current_quantity <= 0) {
             $this->status = 'depleted';
         }
+
         return $this->save();
     }
 
     public function increaseQuantity(int $quantity): bool
     {
         $this->current_quantity += $quantity;
-        if ($this->status === 'depleted' && $this->current_quantity > 0 && !$this->isExpired()) {
+        if ($this->status === 'depleted' && $this->current_quantity > 0 && ! $this->isExpired()) {
             $this->status = 'active';
         }
+
         return $this->save();
     }
 
     public static function generateBatchNumber(): string
     {
         do {
-            $batchNumber = 'BATCH-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6));
+            $batchNumber = 'BATCH-'.now()->format('Ymd').'-'.strtoupper(Str::random(6));
         } while (static::where('batch_number', $batchNumber)->exists());
 
         return $batchNumber;

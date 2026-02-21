@@ -2,27 +2,31 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Business;
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductCategory;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\ProductCategory;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\Permission;
 use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
 
 class AnalyticsTest extends TestCase
 {
     use RefreshDatabase;
 
     protected $user;
+
     protected $business;
+
     protected $branch1;
+
     protected $branch2;
+
     protected $product1;
+
     protected $product2;
 
     protected function setUp(): void
@@ -51,19 +55,19 @@ class AnalyticsTest extends TestCase
             'business_id' => $this->business->id,
             'category_id' => $category->id,
             'name' => 'Product A',
+            'base_cost_price' => 60,
             'base_selling_price' => 100,
         ]);
         $this->product2 = Product::factory()->create([
             'business_id' => $this->business->id,
             'category_id' => $category->id,
             'name' => 'Product B',
+            'base_cost_price' => 30,
             'base_selling_price' => 50,
         ]);
 
-        // Create permissions
+        // Permissions are already seeded by TestCase::setUp()
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        Permission::create(['name' => 'view analytics', 'guard_name' => 'api']);
-        Permission::create(['name' => 'view financial reports', 'guard_name' => 'api']);
 
         // Set permissions team
         setPermissionsTeamId($this->business->id);
@@ -79,7 +83,7 @@ class AnalyticsTest extends TestCase
     {
         // Send request without authentication (system checks business context first, returns 400)
         $response = $this->getJson('/api/analytics/organization');
-        
+
         $response->assertStatus(400);
     }
 
@@ -89,7 +93,7 @@ class AnalyticsTest extends TestCase
         $this->user->update(['current_business_id' => null]);
 
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization');
-        
+
         $response->assertStatus(400)
             ->assertJson(['message' => 'Business context required']);
     }
@@ -103,7 +107,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(403);
     }
 
@@ -117,7 +121,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'period' => ['start_date', 'end_date', 'days'],
@@ -156,10 +160,10 @@ class AnalyticsTest extends TestCase
         // Create previous period sales (31 days ago for monthly comparison)
         $this->createSalesData($this->branch1, 5, 80, now()->subDays(35));
 
-        $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=month&compare_previous=true', [
+        $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=month&compare_previous=1', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'current',
@@ -186,7 +190,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson("/api/analytics/branches?branch_id={$this->branch1->id}&period=month", [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'branches' => [
@@ -215,7 +219,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/branches?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200);
 
         $data = $response->json();
@@ -232,18 +236,18 @@ class AnalyticsTest extends TestCase
             'product_id' => $this->product1->id,
             'product_name' => $this->product1->name,
             'quantity' => 1,
-            'price' => 100,
-            'cost_price' => 60,
+            'unit_price' => 100,
             'subtotal' => 100,
+            'total' => 100,
         ]);
         SaleItem::create([
             'sale_id' => $sale1->id,
             'product_id' => $this->product2->id,
             'product_name' => $this->product2->name,
             'quantity' => 1,
-            'price' => 50,
-            'cost_price' => 30,
+            'unit_price' => 50,
             'subtotal' => 50,
+            'total' => 50,
         ]);
 
         $sale2 = $this->createSale($this->branch1, 100);
@@ -252,15 +256,15 @@ class AnalyticsTest extends TestCase
             'product_id' => $this->product1->id,
             'product_name' => $this->product1->name,
             'quantity' => 1,
-            'price' => 100,
-            'cost_price' => 60,
+            'unit_price' => 100,
             'subtotal' => 100,
+            'total' => 100,
         ]);
 
         $response = $this->actingAs($this->user)->getJson('/api/analytics/products?period=month&limit=10', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'period',
@@ -290,7 +294,7 @@ class AnalyticsTest extends TestCase
 
         $data = $response->json();
         $this->assertEquals(2, $data['summary']['total_products']);
-        
+
         // Product 1 should be top (more revenue)
         $this->assertEquals($this->product1->id, $data['top_products'][0]['product_id']);
         $this->assertEquals(2, $data['top_products'][0]['quantity_sold']);
@@ -307,28 +311,28 @@ class AnalyticsTest extends TestCase
             'product_id' => $this->product1->id,
             'product_name' => $this->product1->name,
             'quantity' => 5,
-            'price' => 100,
-            'cost_price' => 60,
+            'unit_price' => 100,
             'subtotal' => 500,
+            'total' => 500,
         ]);
         SaleItem::create([
             'sale_id' => $sale->id,
             'product_id' => $this->product2->id,
             'product_name' => $this->product2->name,
             'quantity' => 10,
-            'price' => 50,
-            'cost_price' => 30,
+            'unit_price' => 50,
             'subtotal' => 500,
+            'total' => 500,
         ]);
 
         // Sort by quantity
         $response = $this->actingAs($this->user)->getJson('/api/analytics/products?period=month&sort_by=quantity&direction=desc', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200);
         $data = $response->json();
-        
+
         // Product 2 should be first (higher quantity)
         $this->assertEquals($this->product2->id, $data['top_products'][0]['product_id']);
         $this->assertEquals(10, $data['top_products'][0]['quantity_sold']);
@@ -344,15 +348,15 @@ class AnalyticsTest extends TestCase
             'product_id' => $this->product1->id,
             'product_name' => $this->product1->name,
             'quantity' => 10,
-            'price' => 100,
-            'cost_price' => 60,
+            'unit_price' => 100,
             'subtotal' => 1000,
+            'total' => 1000,
         ]);
 
         $response = $this->actingAs($this->user)->getJson('/api/analytics/profit-loss?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'period',
@@ -380,7 +384,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/profit-loss?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(403);
     }
 
@@ -395,7 +399,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/growth-trends?interval=monthly&periods=3', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'interval',
@@ -416,10 +420,10 @@ class AnalyticsTest extends TestCase
 
         $data = $response->json();
         $this->assertEquals(3, count($data['trends']));
-        
+
         // First period has no growth comparison
         $this->assertNull($data['trends'][0]['revenue_growth_percentage']);
-        
+
         // Second period should have growth
         $this->assertNotNull($data['trends'][1]['revenue_growth_percentage']);
     }
@@ -430,7 +434,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=invalid', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['period']);
     }
@@ -441,7 +445,7 @@ class AnalyticsTest extends TestCase
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=custom', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['start_date', 'end_date']);
     }
@@ -450,16 +454,16 @@ class AnalyticsTest extends TestCase
     public function it_handles_custom_date_range()
     {
         $this->createSalesData($this->branch1, 5, 100, now()->subDays(10));
-        
+
         $startDate = now()->subDays(15)->format('Y-m-d');
         $endDate = now()->subDays(5)->format('Y-m-d');
 
         $response = $this->actingAs($this->user)->getJson("/api/analytics/organization?period=custom&start_date={$startDate}&end_date={$endDate}", [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200);
-        
+
         $data = $response->json();
         $this->assertEquals($startDate, $data['period']['start_date']);
         $this->assertEquals($endDate, $data['period']['end_date']);
@@ -470,25 +474,27 @@ class AnalyticsTest extends TestCase
     {
         // Create completed sale
         $this->createSalesData($this->branch1, 5, 100);
-        
+
         // Create pending sale (should be excluded)
         $sale = Sale::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch1->id,
+            'user_id' => $this->user->id,
+            'sale_number' => 'SALE-PENDING-'.uniqid(),
             'sale_date' => now(),
             'status' => 'pending',
             'subtotal' => 100,
             'discount_amount' => 0,
-            'final_total' => 100,
+            'total_amount' => 100,
         ]);
 
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200);
         $data = $response->json();
-        
+
         // Should only count the 5 completed sales
         $this->assertEquals(5, $data['current']['transaction_count']);
     }
@@ -502,18 +508,18 @@ class AnalyticsTest extends TestCase
             'product_id' => $this->product1->id,
             'product_name' => $this->product1->name,
             'quantity' => 1,
-            'price' => 100,
-            'cost_price' => 60,
+            'unit_price' => 100,
             'subtotal' => 100,
+            'total' => 100,
         ]);
 
         $response = $this->actingAs($this->user)->getJson('/api/analytics/organization?period=month', [
             'X-Business-Id' => $this->business->id,
         ]);
-        
+
         $response->assertStatus(200);
         $data = $response->json();
-        
+
         // Revenue: 100, Cost: 60, Profit: 40, Margin: 40%
         $this->assertEquals('100.00', $data['current']['revenue']);
         $this->assertEquals('60.00', $data['current']['cost']);
@@ -525,16 +531,20 @@ class AnalyticsTest extends TestCase
 
     protected function createSalesData($branch, $count, $amount, $date = null)
     {
+        $product = $amount <= $this->product2->base_selling_price
+            ? $this->product2
+            : $this->product1;
+
         for ($i = 0; $i < $count; $i++) {
             $sale = $this->createSale($branch, $amount, 0, $date);
             SaleItem::create([
                 'sale_id' => $sale->id,
-                'product_id' => $this->product1->id,
-                'product_name' => $this->product1->name,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
                 'quantity' => 1,
-                'price' => $amount,
-                'cost_price' => $amount * 0.6,
+                'unit_price' => $amount,
                 'subtotal' => $amount,
+                'total' => $amount,
             ]);
         }
     }
@@ -545,12 +555,12 @@ class AnalyticsTest extends TestCase
             'business_id' => $this->business->id,
             'branch_id' => $branch->id,
             'user_id' => $this->user->id,
-            'sale_number' => 'SALE-' . uniqid(),
+            'sale_number' => 'SALE-'.uniqid(),
             'sale_date' => $date ?? now(),
             'status' => 'completed',
             'subtotal' => $amount + $discount,
             'discount_amount' => $discount,
-            'final_total' => $amount,
+            'total_amount' => $amount,
         ]);
     }
 }

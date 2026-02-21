@@ -4,9 +4,7 @@ namespace Tests\Unit\Sync;
 
 use App\Models\Business;
 use App\Models\ChangeLog;
-use App\Models\Customer;
 use App\Models\DeviceRegistration;
-use App\Models\Product;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -27,7 +25,7 @@ class ChangeLogTest extends TestCase
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $this->assertInstanceOf(Business::class, $log->business);
@@ -36,16 +34,17 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_belongs_to_a_user()
     {
+        $business = Business::factory()->create();
         $user = User::factory()->create();
         $log = ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
             'user_id' => $user->id,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $this->assertInstanceOf(User::class, $log->user);
@@ -56,14 +55,14 @@ class ChangeLogTest extends TestCase
     {
         $device = DeviceRegistration::factory()->create();
         $log = ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $device->business_id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
             'device_id' => $device->device_id,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $this->assertInstanceOf(DeviceRegistration::class, $log->device);
@@ -72,23 +71,24 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_scope_for_entity()
     {
+        $business = Business::factory()->create();
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'customers',
             'entity_id' => 2,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $productLogs = ChangeLog::forEntity('products')->get();
@@ -100,23 +100,24 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_scope_for_entity_with_id()
     {
+        $business = Business::factory()->create();
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 2,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $specificProductLogs = ChangeLog::forEntity('products', 1)->get();
@@ -128,25 +129,26 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_scope_to_unsynced()
     {
+        $business = Business::factory()->create();
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
             'synced' => false,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 2,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
             'synced' => true,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $unsyncedLogs = ChangeLog::unsynced()->get();
@@ -158,23 +160,24 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_scope_since_timestamp()
     {
+        $business = Business::factory()->create();
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()->subDay()
+            'changed_at' => now()->subDay(),
         ]);
         ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 2,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()->subHour()
+            'changed_at' => now()->subHour(),
         ]);
 
         $recentLogs = ChangeLog::since(now()->subHours(2))->get();
@@ -224,7 +227,7 @@ class ChangeLogTest extends TestCase
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()->subHour()
+            'changed_at' => now()->subHour(),
         ]);
         ChangeLog::create([
             'business_id' => $business->id,
@@ -233,7 +236,7 @@ class ChangeLogTest extends TestCase
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()->subMinutes(30)
+            'changed_at' => now()->subMinutes(30),
         ]);
 
         $changes = ChangeLog::getChangesSince($business->id, now()->subHours(2));
@@ -255,7 +258,7 @@ class ChangeLogTest extends TestCase
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
         ChangeLog::create([
             'business_id' => $business->id,
@@ -264,7 +267,7 @@ class ChangeLogTest extends TestCase
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $changes = ChangeLog::getChangesSince(
@@ -281,15 +284,16 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_get_entity_history()
     {
+        $business = Business::factory()->create();
         for ($i = 1; $i <= 5; $i++) {
             ChangeLog::create([
-                'business_id' => 1,
+                'business_id' => $business->id,
                 'entity_type' => 'products',
                 'entity_id' => 1,
                 'entity_uuid' => Str::uuid(),
                 'action' => 'updated',
                 'version' => $i,
-                'changed_at' => now()->addMinutes($i)
+                'changed_at' => now()->addMinutes($i),
             ]);
         }
 
@@ -302,15 +306,16 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_can_mark_as_synced()
     {
+        $business = Business::factory()->create();
         $log = ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'created',
             'version' => 1,
             'synced' => false,
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $this->assertFalse($log->synced);
@@ -323,15 +328,16 @@ class ChangeLogTest extends TestCase
     /** @test */
     public function it_casts_changes_to_array()
     {
+        $business = Business::factory()->create();
         $log = ChangeLog::create([
-            'business_id' => 1,
+            'business_id' => $business->id,
             'entity_type' => 'products',
             'entity_id' => 1,
             'entity_uuid' => Str::uuid(),
             'action' => 'updated',
             'version' => 1,
             'changes' => ['name' => ['old' => 'A', 'new' => 'B']],
-            'changed_at' => now()
+            'changed_at' => now(),
         ]);
 
         $this->assertIsArray($log->changes);

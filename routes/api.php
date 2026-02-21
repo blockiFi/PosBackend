@@ -106,6 +106,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('branch-products/assign-multiple', [BranchProductController::class, 'assignMultiple']);
         Route::get('branch-products/{id}', [BranchProductController::class, 'show']);
         Route::put('branch-products/{id}', [BranchProductController::class, 'update']);
+        Route::patch('branch-products/{id}/selling-price', [BranchProductController::class, 'updateSellingPrice']);
         Route::delete('branch-products/{id}', [BranchProductController::class, 'destroy']);
         Route::post('branch-products/{id}/stock', [BranchProductController::class, 'updateStock']);
         Route::post('branch-products/{id}/move-to-shelf', [BranchProductController::class, 'moveToShelf']);
@@ -147,6 +148,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('shifts/{id}', [SalesShiftController::class, 'show']);
         Route::get('shifts/{id}/sales', [SalesShiftController::class, 'sales']);
         Route::post('shifts/{id}/close', [SalesShiftController::class, 'close']);
+        Route::post('shifts/{id}/pause', [SalesShiftController::class, 'pause']);
+        Route::post('shifts/{id}/resume', [SalesShiftController::class, 'resume']);
         Route::post('shifts/{id}/resolve-discrepancy', [SalesShiftController::class, 'resolveDiscrepancy']);
 
         // Batch routes (require business context)

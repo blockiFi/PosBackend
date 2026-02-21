@@ -16,7 +16,18 @@ class PaymentMethodController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view payment methods')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view payment methods')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -39,7 +50,18 @@ class PaymentMethodController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage payment methods')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage payment methods')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -76,7 +98,18 @@ class PaymentMethodController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('view payment methods')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view payment methods')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -85,15 +118,23 @@ class PaymentMethodController extends Controller
         return response()->json($paymentMethod);
     }
 
-    /**
-     * Update a payment method
-     */
     public function update(Request $request, $id)
     {
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage payment methods')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage payment methods')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -123,7 +164,18 @@ class PaymentMethodController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage payment methods')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage payment methods')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

@@ -26,8 +26,10 @@
    - [Stock Write-off Module](#stock-write-off-module)
    - [Analytics Module](#analytics-module)
    - [Offline Synchronization Module](#offline-synchronization-module)
+   - [Server-to-Server Synchronization Module](#server-to-server-synchronization-module)
 5. [Error Handling](#error-handling)
 6. [Appendix](#appendix)
+   - [G. Complete API Route Reference](#g-complete-api-route-reference)
 
 ---
 
@@ -161,20 +163,18 @@ Authenticates user and returns access token.
 
 **POST** `/pin-login`
 
-Authenticates user using 4-6 digit PIN (for POS terminals).
+**Public.** Fast login with 6-digit PIN. User must have a PIN set and `use-pin-login` permission.
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| `email` | string | ✅ Yes | ❌ No | email, exists:users | User's email address |
-| `pin` | string | ✅ Yes | ❌ No | digits:4-6 | 4-6 digit PIN code |
+| `pin_code` | string | ✅ Yes | ❌ No | size:6, regex:/^[0-9]{6}$/ | Exactly 6 digits |
 
 **Request Example:**
 ```json
 {
-  "email": "john@example.com",
-  "pin": "1234"
+  "pin_code": "123456"
 }
 ```
 
@@ -184,9 +184,11 @@ Authenticates user using 4-6 digit PIN (for POS terminals).
   "user": {
     "id": 1,
     "name": "John Doe",
-    "email": "john@example.com"
+    "email": "john@example.com",
+    "businesses": []
   },
-  "token": "1|laravel_sanctum_token_here"
+  "token": "1|laravel_sanctum_token_here",
+  "token_type": "Bearer"
 }
 ```
 
@@ -194,9 +196,26 @@ Authenticates user using 4-6 digit PIN (for POS terminals).
 
 ### Protected Authentication Endpoints
 
-#### 4. Set PIN
+#### 4. Get Current User
+
+**GET** `/user`
+
+Returns the authenticated user. Requires Bearer token.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+```
+
+**Response:** `200 OK` — User model JSON.
+
+---
+
+#### 5. Set PIN
 
 **POST** `/pin/set`
+
+Set or update a user's PIN. If setting your own PIN, `password` is required. If setting another user's PIN, requires `manage-pin-codes` permission.
 
 **Headers:**
 ```
@@ -207,29 +226,33 @@ Authorization: Bearer {token}
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| `pin` | string | ✅ Yes | ❌ No | digits:4-6, confirmed | 4-6 digit PIN code |
-| `pin_confirmation` | string | ✅ Yes | ❌ No | must match pin | PIN confirmation |
+| `user_id` | integer | ✅ Yes | ❌ No | exists:users,id | Target user ID |
+| `pin_code` | string | ✅ Yes | ❌ No | size:6, regex:/^[0-9]{6}$/ | Exactly 6 digits |
+| `password` | string | Conditional | ❌ No | required when setting own PIN | Current password (when user_id = self) |
 
-**Request Example:**
+**Request Example (own PIN):**
 ```json
 {
-  "pin": "1234",
-  "pin_confirmation": "1234"
+  "user_id": 1,
+  "pin_code": "123456",
+  "password": "password123"
 }
 ```
 
 **Response:** `200 OK`
 ```json
 {
-  "message": "PIN set successfully"
+  "message": "PIN code set successfully"
 }
 ```
 
 ---
 
-#### 5. Remove PIN
+#### 6. Remove PIN
 
 **POST** `/pin/remove`
+
+Remove PIN from a user. Requires `manage-pin-codes` permission (or own PIN with password).
 
 **Headers:**
 ```
@@ -238,12 +261,10 @@ Authorization: Bearer {token}
 
 **Request Schema:**
 
-No request body required. Removes PIN for authenticated user.
-
-**Request Example:**
-```json
-{}
-```
+| Field | Type | Required | Nullable | Validation | Description |
+|-------|------|----------|----------|------------|-------------|
+| `user_id` | integer | ✅ Yes | ❌ No | exists:users,id | Target user ID |
+| `password` | string | Conditional | ❌ No | required when removing own PIN | Current password (when user_id = self) |
 
 **Response:** `200 OK`
 ```json
@@ -1045,6 +1066,28 @@ X-Business-Id: {business_id}
 ### 7. Add Permission to Role
 
 **POST** `/roles/addpermission`
+
+**Headers:**
+```
+Authorization: Bearer {token}
+X-Business-Id: {business_id}
+```
+
+**Request:**
+```json
+{
+  "role_id": 1,
+  "permission": "edit_product"
+}
+```
+
+**Response:** `200 OK`
+
+---
+
+### 7b. Remove Permission from Role
+
+**POST** `/roles/removepermission`
 
 **Headers:**
 ```
@@ -3085,7 +3128,46 @@ Returns all sales made during this shift.
 
 ---
 
-### 6. Close Shift
+### 6. Pause Shift
+
+**POST** `/shifts/{id}/pause`
+
+Pause an open shift. Requires `manage shifts` or be shift owner. Request body can include optional notes.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+X-Business-Id: {business_id}
+```
+
+**Response:** `200 OK`
+
+---
+
+### 7. Resume Shift
+
+**POST** `/shifts/{id}/resume`
+
+Resume a paused shift. Requires PIN code (6 digits) in body. User must have PIN set.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+X-Business-Id: {business_id}
+```
+
+**Request:**
+```json
+{
+  "pin_code": "123456"
+}
+```
+
+**Response:** `200 OK`
+
+---
+
+### 8. Close Shift
 
 **POST** `/shifts/{id}/close`
 
@@ -3135,7 +3217,7 @@ X-Business-Id: {business_id}
 
 ---
 
-### 7. Resolve Discrepancy
+### 9. Resolve Discrepancy
 
 **POST** `/shifts/{id}/resolve-discrepancy`
 
@@ -4925,6 +5007,80 @@ async function resolveConflicts(conflicts) {
 
 ---
 
+## Server-to-Server Synchronization Module
+
+Edge ↔ Cloud sync for multi-location deployments. All routes require `auth:sanctum` and `business.context` (X-Business-Id).
+
+### 1. Push to Cloud (Edge → Cloud)
+
+**POST** `/server-sync/push`
+
+Edge server pushes local changes to the cloud. Sends sales, customers, and other entities created/updated on the edge.
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {id}`
+
+**Request:** JSON body with session id, entities, and change payloads as defined by the server-sync protocol.
+
+**Response:** `200 OK` with accept/reject counts and mappings.
+
+---
+
+### 2. Pull from Cloud (Edge ← Cloud)
+
+**POST** `/server-sync/pull`
+
+Edge server pulls changes from the cloud since last sync.
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {id}`
+
+**Request:** `last_sync_at`, optional `entities`, limit.
+
+**Response:** `200 OK` with `changes` (created/updated/deleted per entity type).
+
+---
+
+### 3. Server-Sync Status
+
+**GET** `/server-sync/status`
+
+Returns sync status for the current business (pending counts, last sync times).
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {id}`
+
+**Response:** `200 OK`
+
+---
+
+### 4. Server-Sync Health
+
+**GET** `/server-sync/health`
+
+Health check for the server-sync service.
+
+**Response:** `200 OK`
+
+---
+
+### 5. Receive from Edge (Cloud)
+
+**POST** `/server-sync/receive`
+
+Cloud server receives data pushed by an edge server. Used internally by the sync flow.
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {id}`
+
+---
+
+### 6. Provide Changes to Edge (Cloud)
+
+**POST** `/server-sync/provide-changes`
+
+Cloud server provides changes to an edge server (pull response). Used internally by the sync flow.
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {id}`
+
+---
+
 ## Error Handling
 
 ### Standard Error Response
@@ -5235,6 +5391,151 @@ Planned webhook support for:
 
 ---
 
-**Last Updated:** February 8, 2026  
+### G. Complete API Route Reference
+
+Every API route. Base path: `/api`. All protected routes require `Authorization: Bearer {token}`. Routes under *Business context* also require `X-Business-Id` (or `business_id` query).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| **Public** | | |
+| POST | `register` | Register new user |
+| POST | `login` | Email/password login |
+| POST | `pin-login` | 6-digit PIN login (use-pin-login) |
+| **Auth only** | | |
+| GET | `user` | Current authenticated user |
+| POST | `pin/set` | Set/update PIN (user_id, pin_code, password if own) |
+| POST | `pin/remove` | Remove PIN (user_id, password if own) |
+| GET | `businesses` | List user's businesses |
+| POST | `businesses` | Create business |
+| GET | `permissions` | List all permissions (global) |
+| **Business context** | | |
+| GET | `businesses/{id}` | Get business |
+| PUT | `businesses/{id}` | Update business |
+| DELETE | `businesses/{id}` | Delete business |
+| GET | `branches` | List branches |
+| POST | `branches` | Create branch |
+| GET | `branches/{id}` | Get branch |
+| PUT | `branches/{id}` | Update branch |
+| DELETE | `branches/{id}` | Delete branch |
+| GET | `roles` | List roles |
+| POST | `roles` | Create role |
+| POST | `roles/addpermission` | Add permission to role |
+| POST | `roles/removepermission` | Remove permission from role |
+| GET | `roles/{id}` | Get role |
+| PUT | `roles/{id}` | Update role |
+| DELETE | `roles/{id}` | Delete role |
+| POST | `roles/assign` | Assign role to user |
+| POST | `roles/remove` | Remove role from user |
+| GET | `users/{userId}/roles` | Get user roles in business |
+| GET | `business-users` | List business users |
+| POST | `business-users` | Add user to business |
+| GET | `business-users/{userId}` | Get business user |
+| PUT | `business-users/{userId}` | Update business user |
+| DELETE | `business-users/{userId}` | Remove user from business |
+| GET | `categories` | List categories |
+| POST | `categories` | Create category |
+| GET | `categories/{id}` | Get category |
+| PUT | `categories/{id}` | Update category |
+| DELETE | `categories/{id}` | Delete category |
+| GET | `categories/{id}/breadcrumb` | Category breadcrumb |
+| GET | `products` | List products |
+| POST | `products` | Create product |
+| GET | `products/{id}` | Get product |
+| PUT | `products/{id}` | Update product |
+| DELETE | `products/{id}` | Delete product |
+| POST | `products/{id}/branches` | Add product to branch |
+| DELETE | `products/{id}/branches` | Remove product from branch |
+| PATCH | `products/{id}/price` | Update product price |
+| GET | `branches/{branchId}/products` | Products by branch |
+| GET | `branch-products` | List branch products |
+| GET | `branch-products/by-category` | Branch products by category |
+| POST | `branch-products` | Create branch product |
+| POST | `branch-products/assign-multiple` | Assign multiple products to branch |
+| GET | `branch-products/{id}` | Get branch product |
+| PUT | `branch-products/{id}` | Update branch product |
+| PATCH | `branch-products/{id}/selling-price` | Update selling price |
+| DELETE | `branch-products/{id}` | Delete branch product |
+| POST | `branch-products/{id}/stock` | Update stock (add/subtract/set) |
+| POST | `branch-products/{id}/move-to-shelf` | Move quantity to shelf |
+| POST | `branch-products/{id}/move-to-store` | Move quantity to store |
+| GET | `branch-products/summary/stock` | Stock summary |
+| POST | `branch-products/bulk-update` | Bulk update branch products |
+| GET | `inventory/transactions` | List inventory transactions |
+| POST | `inventory/transactions` | Create inventory transaction |
+| GET | `inventory/transactions/{id}` | Get transaction |
+| GET | `inventory/stock-summary` | Stock summary |
+| GET | `customers` | List customers |
+| POST | `customers` | Create customer |
+| GET | `customers/{id}` | Get customer |
+| PUT | `customers/{id}` | Update customer |
+| DELETE | `customers/{id}` | Delete customer |
+| GET | `payment-methods` | List payment methods |
+| POST | `payment-methods` | Create payment method |
+| GET | `payment-methods/{id}` | Get payment method |
+| PUT | `payment-methods/{id}` | Update payment method |
+| DELETE | `payment-methods/{id}` | Delete payment method |
+| GET | `sales` | List sales |
+| POST | `sales` | Create sale |
+| GET | `sales/{id}` | Get sale |
+| POST | `sales/{id}/payments` | Add payment to sale |
+| POST | `sales/{id}/cancel` | Cancel sale |
+| GET | `shifts` | List shifts |
+| POST | `shifts` | Open shift |
+| GET | `shifts/current` | Current open/paused shift |
+| GET | `shifts/{id}` | Get shift details |
+| GET | `shifts/{id}/sales` | Shift sales (paginated) |
+| POST | `shifts/{id}/close` | Close shift |
+| POST | `shifts/{id}/pause` | Pause shift |
+| POST | `shifts/{id}/resume` | Resume shift (pin_code required) |
+| POST | `shifts/{id}/resolve-discrepancy` | Resolve cash discrepancy |
+| GET | `batches` | List batches |
+| GET | `batches/near-expiry` | Near-expiry batches |
+| GET | `batches/expired` | Expired batches |
+| GET | `batches/{id}` | Get batch |
+| PATCH | `batches/{id}` | Update batch |
+| GET | `products/{id}/batches` | Batches for product |
+| GET | `analytics/organization` | Organization analytics |
+| GET | `analytics/branches` | Branch analytics |
+| GET | `analytics/products` | Product analytics |
+| GET | `analytics/profit-loss` | Profit & loss |
+| GET | `analytics/growth-trends` | Growth trends |
+| GET | `stock-transfer-requests` | List stock transfer requests |
+| POST | `stock-transfer-requests` | Create request |
+| GET | `stock-transfer-requests/{id}` | Get request |
+| POST | `stock-transfer-requests/{id}/approve` | Approve |
+| POST | `stock-transfer-requests/{id}/reject` | Reject |
+| POST | `stock-transfer-requests/{id}/confirm` | Confirm receipt |
+| POST | `stock-transfer-requests/{id}/cancel` | Cancel |
+| GET | `stock-writeoffs` | List stock write-offs |
+| POST | `stock-writeoffs` | Create write-off |
+| GET | `stock-writeoffs/{id}` | Get write-off |
+| GET | `refund-requests` | List refund requests |
+| POST | `refund-requests` | Create refund request |
+| GET | `refund-requests/{id}` | Get request |
+| POST | `refund-requests/{id}/approve` | Approve |
+| POST | `refund-requests/{id}/reject` | Reject |
+| GET | `quick-sales` | List quick sales |
+| POST | `quick-sales` | Request quick sale |
+| GET | `quick-sales/{id}` | Get quick sale |
+| POST | `quick-sales/{id}/approve` | Approve |
+| POST | `quick-sales/{id}/reject` | Reject |
+| POST | `quick-sales/{id}/end` | End active quick sale |
+| POST | `sync/register-device` | Register device (X-Device-Id) |
+| POST | `sync/bootstrap` | Bootstrap initial data |
+| POST | `sync/pull` | Pull changes since last_sync_at |
+| POST | `sync/push` | Push client changes |
+| POST | `sync/resolve-conflicts` | Resolve sync conflicts |
+| GET | `sync/status` | Sync status |
+| POST | `sync/heartbeat` | Heartbeat (X-Device-Id) |
+| POST | `server-sync/push` | Edge push to cloud |
+| POST | `server-sync/pull` | Edge pull from cloud |
+| GET | `server-sync/status` | Server-sync status |
+| GET | `server-sync/health` | Server-sync health |
+| POST | `server-sync/receive` | Cloud receive from edge |
+| POST | `server-sync/provide-changes` | Cloud provide changes to edge |
+
+---
+
+**Last Updated:** February 2026  
 **API Version:** 1.0  
 **Documentation Version:** 1.0

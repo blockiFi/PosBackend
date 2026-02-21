@@ -20,9 +20,13 @@ class BranchProductsListTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Branch $branch;
+
     private Branch $otherBranch;
+
     private Role $role;
 
     protected function setUp(): void
@@ -112,7 +116,7 @@ class BranchProductsListTest extends TestCase
                         'name',
                         'sku',
                         'branch_data',
-                    ]
+                    ],
                 ],
                 'branch' => ['id', 'name', 'code'],
                 'meta' => ['current_page', 'last_page', 'per_page', 'total', 'paginated'],
@@ -125,7 +129,15 @@ class BranchProductsListTest extends TestCase
     {
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        $response = $this->actingAs($this->user, 'sanctum')
+        // Create a non-owner user
+        $nonOwner = User::factory()->create();
+        User_Business::create([
+            'user_id' => $nonOwner->id,
+            'business_id' => $this->business->id,
+            'is_active' => true,
+        ]);
+
+        $response = $this->actingAs($nonOwner, 'sanctum')
             ->getJson("/api/branches/{$this->branch->id}/products?current_business_id={$this->business->id}");
 
         $response->assertStatus(403)
@@ -312,7 +324,7 @@ class BranchProductsListTest extends TestCase
             ->getJson("/api/branches/{$this->branch->id}/products?current_business_id={$this->business->id}&start_id={$startId}&paginated=false");
 
         $response->assertStatus(200);
-        
+
         $data = $response->json('data');
         $this->assertCount(6, $data); // Should return 6 products (5th to 10th)
         $this->assertGreaterThanOrEqual($startId, $data[0]['id']);
@@ -672,9 +684,9 @@ class BranchProductsListTest extends TestCase
                             'cost_price',
                             'stock_quantity',
                             'is_available',
-                        ]
-                    ]
-                ]
+                        ],
+                    ],
+                ],
             ])
             ->assertJsonPath('data.0.branch_data.selling_price', '150.00')
             ->assertJsonPath('data.0.branch_data.stock_quantity', 75);

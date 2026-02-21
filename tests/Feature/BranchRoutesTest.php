@@ -209,7 +209,7 @@ class BranchRoutesTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJson(['message' => 'Only business owners can create branches']);
+            ->assertJson(['message' => 'You do not have permission to create branches']);
 
         $this->assertDatabaseMissing('branches', [
             'code' => 'UNAUTH',
@@ -530,7 +530,7 @@ class BranchRoutesTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJson(['message' => 'Only business owners can update branches']);
+            ->assertJson(['message' => 'You do not have permission to update branches']);
 
         $this->assertDatabaseHas('branches', [
             'id' => $branch->id,
@@ -717,7 +717,7 @@ class BranchRoutesTest extends TestCase
             ->deleteJson("/api/branches/{$branch->id}");
 
         $response->assertStatus(403)
-            ->assertJson(['message' => 'Only business owners can delete branches']);
+            ->assertJson(['message' => 'You do not have permission to delete branches']);
 
         $this->assertDatabaseHas('branches', [
             'id' => $branch->id,

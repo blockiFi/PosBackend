@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Business;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class UserBusinessRoutesTest extends TestCase
@@ -12,8 +14,11 @@ class UserBusinessRoutesTest extends TestCase
     use RefreshDatabase;
 
     protected User $owner;
+
     protected User $otherUser;
+
     protected User $thirdUser;
+
     protected Business $business;
 
     protected function setUp(): void
@@ -95,6 +100,75 @@ class UserBusinessRoutesTest extends TestCase
             'user_id' => $this->otherUser->id,
             'business_id' => $this->business->id,
             'is_active' => true,
+        ]);
+    }
+
+    public function test_adding_new_user_returns_generated_password()
+    {
+        $response = $this->actingAs($this->owner)
+            ->postJson('/api/business-users', [
+                'email' => 'newuser@example.com',
+                'name' => 'New User',
+                'is_active' => true,
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.is_new_user', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'user' => ['id', 'name', 'email'],
+                    'password',
+                ],
+            ]);
+
+        $password = $response->json('data.password');
+        $this->assertNotEmpty($password);
+        $this->assertSame(16, strlen($password));
+
+        $user = User::where('email', 'newuser@example.com')->first();
+        $this->assertNotNull($user);
+        $this->assertTrue(Hash::check($password, $user->password));
+    }
+
+    public function test_owner_can_add_user_to_business_with_roles()
+    {
+        $role = Role::create([
+            'name' => 'staff',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+
+        $response = $this->actingAs($this->owner)
+            ->postJson('/api/business-users', [
+                'email' => $this->thirdUser->email,
+                'name' => $this->thirdUser->name,
+                'is_active' => true,
+                'role_ids' => [$role->id],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'message' => 'User added to business',
+                'data' => [
+                    'user' => [
+                        'id' => $this->thirdUser->id,
+                        'email' => $this->thirdUser->email,
+                    ],
+                    'roles' => [
+                        ['id' => $role->id, 'name' => 'staff'],
+                    ],
+                ],
+            ]);
+
+        $this->assertDatabaseHas('model_has_roles', [
+            'model_type' => User::class,
+            'model_id' => $this->thirdUser->id,
+            'role_id' => $role->id,
+            'business_id' => $this->business->id,
         ]);
     }
 

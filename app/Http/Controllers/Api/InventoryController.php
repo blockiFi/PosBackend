@@ -3,26 +3,29 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
+use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\ProductBatch;
-use App\Models\BranchProduct;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class InventoryController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List inventory transactions
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -34,13 +37,13 @@ class InventoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view inventory')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view inventory')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -50,14 +53,14 @@ class InventoryController extends Controller
         // Filter by branch (with access check)
         if ($request->has('branch_id')) {
             $branchId = $request->input('branch_id');
-            
+
             // Verify user has access to this branch
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json([
-                    'message' => 'You do not have access to this branch'
+                    'message' => 'You do not have access to this branch',
                 ], 403);
             }
-            
+
             $query->where('branch_id', $branchId);
         } else {
             // If no branch specified, filter by accessible branches
@@ -88,7 +91,7 @@ class InventoryController extends Controller
 
         // Filter by reference number
         if ($request->has('reference_number')) {
-            $query->where('reference_number', 'like', '%' . $request->input('reference_number') . '%');
+            $query->where('reference_number', 'like', '%'.$request->input('reference_number').'%');
         }
 
         $perPage = $request->input('per_page', 15);
@@ -115,9 +118,9 @@ class InventoryController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -129,34 +132,36 @@ class InventoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        
+
         // Get transaction type early for permission check
         $transactionType = $request->input('type');
-        
-        // Check permissions based on transaction type
-        $hasPermission = false;
-        if ($transactionType === 'adjustment') {
-            // For adjustments, allow either 'manage inventory' or 'adjust inventory' permission
-            $hasPermission = $user->hasPermissionTo('manage inventory') || $user->hasPermissionTo('adjust inventory');
-        } else {
-            // For other transaction types, require 'manage inventory' permission
-            $hasPermission = $user->hasPermissionTo('manage inventory');
+
+        // Check permissions based on transaction type (owners bypass permission check)
+        $hasPermission = $business->owner_id === $user->id;
+        if (! $hasPermission) {
+            if ($transactionType === 'adjustment') {
+                // For adjustments, allow either 'manage inventory' or 'adjust inventory' permission
+                $hasPermission = $user->hasPermissionTo('manage inventory') || $user->hasPermissionTo('adjust inventory');
+            } else {
+                // For other transaction types, require 'manage inventory' permission
+                $hasPermission = $user->hasPermissionTo('manage inventory');
+            }
         }
-        
-        if (!$hasPermission) {
+
+        if (! $hasPermission) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
-            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,' . $businessId],
-            'product_id' => ['required', 'integer', 'exists:products,id,business_id,' . $businessId],
+            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
+            'product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
             'type' => ['required', 'in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial'],
             'quantity' => ['required', 'integer', 'not_in:0'],
             'shelf_quantity' => ['nullable', 'integer', 'min:0'],
@@ -164,7 +169,7 @@ class InventoryController extends Controller
             'location' => ['nullable', 'in:shelf,store,both'],
             'unit_cost' => ['nullable', 'numeric', 'min:0'],
             'reference_number' => ['nullable', 'string', 'max:255'],
-            'related_branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'related_branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'notes' => ['nullable', 'string'],
             'meta_data' => ['nullable', 'array'],
             // Batch tracking fields (for purchases)
@@ -184,23 +189,23 @@ class InventoryController extends Controller
         }
 
         // Verify user has access to the branch
-        if (!$this->userHasBranchAccess($user, $businessId, $data['branch_id'])) {
+        if (! $this->userHasBranchAccess($user, $businessId, $data['branch_id'])) {
             return response()->json([
-                'message' => 'You do not have access to this branch'
+                'message' => 'You do not have access to this branch',
             ], 403);
         }
 
         // Verify related branch access for transfers
-        if (!empty($data['related_branch_id'])) {
-            if (!in_array($data['type'], ['transfer_out', 'transfer_in'])) {
+        if (! empty($data['related_branch_id'])) {
+            if (! in_array($data['type'], ['transfer_out', 'transfer_in'])) {
                 return response()->json([
-                    'message' => 'Related branch is only allowed for transfer transactions'
+                    'message' => 'Related branch is only allowed for transfer transactions',
                 ], 422);
             }
 
-            if (!$this->userHasBranchAccess($user, $businessId, $data['related_branch_id'])) {
+            if (! $this->userHasBranchAccess($user, $businessId, $data['related_branch_id'])) {
                 return response()->json([
-                    'message' => 'You do not have access to the related branch'
+                    'message' => 'You do not have access to the related branch',
                 ], 403);
             }
         }
@@ -219,7 +224,7 @@ class InventoryController extends Controller
 
             // Normalize quantity based on transaction type
             $normalizedQuantity = $this->normalizeQuantity($data['type'], $data['quantity']);
-            
+
             // Determine where to add/remove stock
             $location = $data['location'] ?? 'shelf'; // Default to shelf
             $shelfChange = 0;
@@ -251,24 +256,27 @@ class InventoryController extends Controller
             // Prevent negative stock for stock-out transactions
             if ($quantityAfter < 0 && in_array($data['type'], ['sale', 'transfer_out', 'damage'])) {
                 DB::rollBack();
+
                 return response()->json([
-                    'message' => 'Insufficient stock. Current stock: ' . $quantityBefore
+                    'message' => 'Insufficient stock. Current stock: '.$quantityBefore,
                 ], 422);
             }
 
             // Prevent negative shelf stock
             if ($shelfQuantityAfter < 0) {
                 DB::rollBack();
+
                 return response()->json([
-                    'message' => 'Insufficient shelf stock. Current shelf stock: ' . $shelfQuantityBefore
+                    'message' => 'Insufficient shelf stock. Current shelf stock: '.$shelfQuantityBefore,
                 ], 422);
             }
 
             // Prevent negative store stock
             if ($storeQuantityAfter < 0) {
                 DB::rollBack();
+
                 return response()->json([
-                    'message' => 'Insufficient store stock. Current store stock: ' . $storeQuantityBefore
+                    'message' => 'Insufficient store stock. Current store stock: '.$storeQuantityBefore,
                 ], 422);
             }
 
@@ -316,7 +324,7 @@ class InventoryController extends Controller
             }
 
             // Handle transfer - create corresponding transaction in related branch
-            if (in_array($data['type'], ['transfer_out', 'transfer_in']) && !empty($data['related_branch_id'])) {
+            if (in_array($data['type'], ['transfer_out', 'transfer_in']) && ! empty($data['related_branch_id'])) {
                 $this->createTransferPair($transaction, $data, $user, $businessId);
             }
 
@@ -328,7 +336,7 @@ class InventoryController extends Controller
                         'business_id' => $businessId,
                         'branch_id' => $data['branch_id'],
                         'product_id' => $data['product_id'],
-                        'batch_number' => $data['batch_number'] ?? 'BATCH-' . strtoupper(Str::random(8)),
+                        'batch_number' => $data['batch_number'] ?? 'BATCH-'.strtoupper(Str::random(8)),
                         'lot_number' => $data['lot_number'] ?? null,
                         'manufacturing_date' => $data['manufacturing_date'] ?? null,
                         'expiry_date' => $data['expiry_date'] ?? null,
@@ -345,24 +353,24 @@ class InventoryController extends Controller
                     $transaction->update(['batch_id' => $batch->id]);
                 } catch (\Exception $batchError) {
                     // Log batch creation error but don't fail the transaction
-                    \Log::warning("Failed to create batch for purchase transaction {$transaction->id}: " . $batchError->getMessage());
+                    \Log::warning("Failed to create batch for purchase transaction {$transaction->id}: ".$batchError->getMessage());
                 }
             }
 
             // Allocate batches for stock-out transactions using FEFO
             // Include negative adjustments (stock reductions)
-            $isStockOut = in_array($data['type'], ['sale', 'transfer_out', 'damage']) 
+            $isStockOut = in_array($data['type'], ['sale', 'transfer_out', 'damage'])
                 || ($data['type'] === 'adjustment' && $normalizedQuantity < 0);
-                
+
             if ($isStockOut && abs($normalizedQuantity) > 0) {
                 try {
                     $this->allocateBatchesForTransaction($transaction, $data['product_id'], $data['branch_id'], abs($normalizedQuantity));
                 } catch (\Exception $allocError) {
                     // Log allocation error but don't fail the transaction
-                    \Log::warning("Failed to allocate batches for transaction {$transaction->id}: " . $allocError->getMessage());
+                    \Log::warning("Failed to allocate batches for transaction {$transaction->id}: ".$allocError->getMessage());
                 }
             }
-            
+
             // For positive adjustments, create a batch to track the added stock
             if ($data['type'] === 'adjustment' && $normalizedQuantity > 0 && abs($normalizedQuantity) > 0) {
                 try {
@@ -371,7 +379,7 @@ class InventoryController extends Controller
                         'business_id' => $businessId,
                         'branch_id' => $data['branch_id'],
                         'product_id' => $data['product_id'],
-                        'batch_number' => 'ADJ-' . strtoupper(Str::random(8)),
+                        'batch_number' => 'ADJ-'.strtoupper(Str::random(8)),
                         'lot_number' => $data['lot_number'] ?? null,
                         'manufacturing_date' => $data['manufacturing_date'] ?? null,
                         'expiry_date' => $data['expiry_date'] ?? null,
@@ -388,7 +396,7 @@ class InventoryController extends Controller
                     $transaction->update(['batch_id' => $batch->id]);
                 } catch (\Exception $batchError) {
                     // Log batch creation error but don't fail the transaction
-                    \Log::warning("Failed to create batch for adjustment transaction {$transaction->id}: " . $batchError->getMessage());
+                    \Log::warning("Failed to create batch for adjustment transaction {$transaction->id}: ".$batchError->getMessage());
                 }
             }
 
@@ -423,9 +431,10 @@ class InventoryController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to create inventory transaction',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -436,9 +445,9 @@ class InventoryController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -450,13 +459,13 @@ class InventoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view inventory')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view inventory')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -465,14 +474,14 @@ class InventoryController extends Controller
             ->with(['product', 'branch', 'user', 'relatedBranch', 'relatedTransaction'])
             ->first();
 
-        if (!$transaction) {
+        if (! $transaction) {
             return response()->json(['message' => 'Transaction not found'], 404);
         }
 
         // Verify branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $transaction->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $transaction->branch_id)) {
             return response()->json([
-                'message' => 'You do not have access to this branch'
+                'message' => 'You do not have access to this branch',
             ], 403);
         }
 
@@ -487,9 +496,9 @@ class InventoryController extends Controller
     public function stockSummary(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -501,13 +510,13 @@ class InventoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view inventory')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view inventory')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -515,9 +524,9 @@ class InventoryController extends Controller
 
         if ($branchId) {
             // Verify user has access to this branch
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json([
-                    'message' => 'You do not have access to this branch'
+                    'message' => 'You do not have access to this branch',
                 ], 403);
             }
 
@@ -553,27 +562,6 @@ class InventoryController extends Controller
         return response()->json([
             'data' => $summary,
         ]);
-    }
-
-    /**
-     * Check if user has access to a specific branch
-     */
-    private function userHasBranchAccess($user, int $businessId, int $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        if ($accessibleBranches->isEmpty()) {
-            $hasBusinessWideRole = \DB::table('model_has_roles')
-                ->where('model_type', get_class($user))
-                ->where('model_id', $user->id)
-                ->where('business_id', $businessId)
-                ->whereNull('branch_id')
-                ->exists();
-            
-            return $hasBusinessWideRole;
-        }
-        
-        return $accessibleBranches->contains($branchId);
     }
 
     /**
@@ -626,7 +614,7 @@ class InventoryController extends Controller
             'related_branch_id' => $data['branch_id'],
             'related_transaction_id' => $originalTransaction->id,
             'reference_number' => $data['reference_number'] ?? null,
-            'notes' => 'Transfer from ' . ($data['type'] === 'transfer_out' ? 'branch' : 'to branch'),
+            'notes' => 'Transfer from '.($data['type'] === 'transfer_out' ? 'branch' : 'to branch'),
             'meta_data' => $data['meta_data'] ?? null,
         ]);
 
@@ -678,7 +666,7 @@ class InventoryController extends Controller
             $data['related_branch_name'] = $transaction->relatedBranch->name ?? null;
             $data['related_transaction_id'] = $transaction->related_transaction_id;
             $data['meta_data'] = $transaction->meta_data;
-            
+
             if ($transaction->relatedTransaction) {
                 $data['related_transaction'] = [
                     'id' => $transaction->relatedTransaction->id,
@@ -739,7 +727,7 @@ class InventoryController extends Controller
         }
 
         // Log warning if not fully allocated
-        if (!$result['fully_allocated']) {
+        if (! $result['fully_allocated']) {
             \Log::warning("Batch allocation incomplete for transaction {$transaction->id}", [
                 'product_id' => $productId,
                 'branch_id' => $branchId,

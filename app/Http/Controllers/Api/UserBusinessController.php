@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\Business;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -10,9 +11,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class UserBusinessController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List all users in a business
      */
@@ -35,6 +40,12 @@ class UserBusinessController extends Controller
 
         if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check permission - owner or user with manage-users permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Get all users in this business with their pivot data
@@ -101,6 +112,8 @@ class UserBusinessController extends Controller
             'email' => ['required', 'email'],
             'name' => ['required', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
+            'role_ids' => ['nullable', 'array'],
+            'role_ids.*' => ['integer', 'exists:roles,id'],
         ]);
 
         if ($validator->fails()) {
@@ -113,15 +126,16 @@ class UserBusinessController extends Controller
         // Check if user exists by email
         $targetUser = User::where('email', $data['email'])->first();
         $isNewUser = false;
+        $generatedPassword = null;
 
         if (! $targetUser) {
             // User doesn't exist, create new user with random password
-            $randomPassword = Str::random(16);
-            
+            $generatedPassword = Str::random(16);
+
             $targetUser = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
-                'password' => Hash::make($randomPassword),
+                'password' => Hash::make($generatedPassword),
             ]);
 
             $isNewUser = true;
@@ -145,23 +159,60 @@ class UserBusinessController extends Controller
             'updated_at' => now(),
         ]);
 
-        return response()->json([
-            'message' => $isNewUser 
-                ? 'New user created and added to business. User can reset password to login.' 
-                : 'User added to business',
-            'data' => [
-                'user' => [
-                    'id' => $targetUser->id,
-                    'name' => $targetUser->name,
-                    'email' => $targetUser->email,
-                ],
-                'business' => [
-                    'id' => $business->id,
-                    'name' => $business->name,
-                ],
-                'is_active' => $data['is_active'] ?? true,
-                'is_new_user' => $isNewUser,
+        $assignedRoles = [];
+        if (! empty($data['role_ids'])) {
+            $businessRoles = Role::where('business_id', $businessId)
+                ->where('guard_name', 'api')
+                ->whereIn('id', $data['role_ids'])
+                ->get();
+
+            foreach ($businessRoles as $role) {
+                $exists = DB::table('model_has_roles')
+                    ->where('model_type', User::class)
+                    ->where('model_id', $targetUser->id)
+                    ->where('role_id', $role->id)
+                    ->where('business_id', $businessId)
+                    ->exists();
+
+                if (! $exists) {
+                    DB::table('model_has_roles')->insert([
+                        'role_id' => $role->id,
+                        'model_type' => User::class,
+                        'model_id' => $targetUser->id,
+                        'business_id' => $businessId,
+                        'branch_id' => null,
+                    ]);
+                    $assignedRoles[] = ['id' => $role->id, 'name' => $role->name];
+                }
+            }
+
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
+        }
+
+        $responseData = [
+            'user' => [
+                'id' => $targetUser->id,
+                'name' => $targetUser->name,
+                'email' => $targetUser->email,
             ],
+            'business' => [
+                'id' => $business->id,
+                'name' => $business->name,
+            ],
+            'is_active' => $data['is_active'] ?? true,
+            'is_new_user' => $isNewUser,
+            'roles' => $assignedRoles,
+        ];
+
+        if ($isNewUser && $generatedPassword !== null) {
+            $responseData['password'] = $generatedPassword;
+        }
+
+        return response()->json([
+            'message' => $isNewUser
+                ? 'New user created and added to business. Share the password with the user for first login; they can reset it later.'
+                : 'User added to business',
+            'data' => $responseData,
         ], 201);
     }
 
@@ -332,6 +383,12 @@ class UserBusinessController extends Controller
 
         if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check permission - owner, manage-users, or viewing self
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users') && $user->id !== $userId) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $targetUser = $business->users()

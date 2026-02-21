@@ -25,7 +25,7 @@ class SyncSessionFactory extends Factory
 
         return [
             'session_id' => Str::uuid()->toString(),
-            'device_id' => DeviceRegistration::factory()->create()->device_id,
+            'device_id' => DeviceRegistration::factory(),
             'business_id' => Business::factory(),
             'user_id' => User::factory(),
             'direction' => fake()->randomElement(['pull', 'push', 'bidirectional']),
@@ -40,10 +40,10 @@ class SyncSessionFactory extends Factory
             'last_activity_at' => $completed,
             'summary' => [
                 'sales' => ['created' => 5, 'updated' => 2],
-                'customers' => ['created' => 3]
+                'customers' => ['created' => 3],
             ],
             'error_message' => null,
-            'metadata' => []
+            'metadata' => [],
         ];
     }
 

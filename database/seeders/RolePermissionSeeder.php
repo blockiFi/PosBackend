@@ -19,7 +19,7 @@ class RolePermissionSeeder extends Seeder
             'create-sales', 'view-sales', 'edit-sales', 'delete-sales', 'refund-sales',
 
             // Products
-            'create-products', 'view-products', 'edit-products', 'delete-products', 'manage branch products',
+            'create-products', 'view-products', 'edit-products', 'delete-products', 'manage branch products', 'set branch product selling price',
 
             // Inventory
             'manage-inventory', 'view-inventory', 'adjust-inventory',
@@ -44,6 +44,14 @@ class RolePermissionSeeder extends Seeder
 
             // Stock Write-offs
             'write off stock',
+
+            // Branch Management
+            'view-branches',
+            'manage-branches',
+
+            // Sync Operations
+            'manage server sync',
+            'sync data',
         ];
 
         foreach ($permissions as $permission) {
@@ -64,15 +72,21 @@ class RolePermissionSeeder extends Seeder
                 'create-customers', 'view-customers', 'edit-customers',
                 'view-reports', 'export-reports',
                 'manage-cash', 'open-register', 'close-register',
+                'view-branches', 'manage-branches',
+                'sync data',
             ],
             'cashier' => [
                 'create-sales', 'view-sales', 'refund-sales',
                 'view-products', 'view-customers', 'create-customers',
                 'open-register', 'close-register',
+                'view-branches',
+                'sync data',
             ],
             'staff' => [
                 'create-sales', 'view-sales',
                 'view-products', 'view-customers',
+                'view-branches',
+                'sync data',
             ],
         ];
 

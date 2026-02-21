@@ -3,23 +3,26 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Product;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
+use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class ProductController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List all products for a business
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -31,13 +34,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view products')) {
+        if (! $user->hasPermissionTo('view products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -64,14 +67,14 @@ class ProductController extends Controller
 
         if ($request->has('branch_id')) {
             $branchId = $request->input('branch_id');
-            
+
             // Verify user has access to this branch
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json([
-                    'message' => 'You do not have access to this branch'
+                    'message' => 'You do not have access to this branch',
                 ], 403);
             }
-            
+
             $query->whereHas('branchProducts', function ($q) use ($branchId) {
                 $q->where('branch_id', $branchId);
             });
@@ -101,9 +104,9 @@ class ProductController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -115,13 +118,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('create products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -130,7 +133,7 @@ class ProductController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:255', 'unique:products,sku'],
             'barcode' => ['nullable', 'string', 'max:255', 'unique:products,barcode'],
-            'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,' . $businessId],
+            'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
             'image' => ['nullable', 'string'],
             'base_cost_price' => ['nullable', 'numeric', 'min:0'],
@@ -189,9 +192,9 @@ class ProductController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -203,13 +206,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view products')) {
+        if (! $user->hasPermissionTo('view products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -218,12 +221,17 @@ class ProductController extends Controller
             ->with(['category', 'branchProducts.branch'])
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
+        $branchId = $request->input('branch_id');
+        if ($branchId && ! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
         return response()->json([
-            'data' => $this->formatProduct($product, $request->input('branch_id'), true),
+            'data' => $this->formatProduct($product, $branchId, true),
         ]);
     }
 
@@ -233,9 +241,9 @@ class ProductController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -247,13 +255,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('edit products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('edit products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -261,16 +269,16 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'sku' => ['sometimes', 'required', 'string', 'max:255', 'unique:products,sku,' . $id],
-            'barcode' => ['nullable', 'string', 'max:255', 'unique:products,barcode,' . $id],
-            'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,' . $businessId],
+            'sku' => ['sometimes', 'required', 'string', 'max:255', 'unique:products,sku,'.$id],
+            'barcode' => ['nullable', 'string', 'max:255', 'unique:products,barcode,'.$id],
+            'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
             'image' => ['nullable', 'string'],
             'base_cost_price' => ['nullable', 'numeric', 'min:0'],
@@ -315,9 +323,9 @@ class ProductController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -329,13 +337,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('delete products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('delete products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -343,7 +351,7 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
@@ -360,9 +368,9 @@ class ProductController extends Controller
     public function addToBranch(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -374,13 +382,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('manage branch products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage branch products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -388,13 +396,13 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
-            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'cost_price' => ['nullable', 'numeric', 'min:0'],
             'selling_price' => ['nullable', 'numeric', 'min:0'],
             'compare_price' => ['nullable', 'numeric', 'min:0'],
@@ -422,9 +430,9 @@ class ProductController extends Controller
         }
 
         // Verify user has access to this branch
-        if (!$this->userHasBranchAccess($user, $businessId, $data['branch_id'])) {
+        if (! $this->userHasBranchAccess($user, $businessId, $data['branch_id'])) {
             return response()->json([
-                'message' => 'You do not have access to this branch'
+                'message' => 'You do not have access to this branch',
             ], 403);
         }
 
@@ -466,9 +474,9 @@ class ProductController extends Controller
     public function removeFromBranch(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -480,13 +488,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('manage branch products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage branch products')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -494,12 +502,12 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
         $validator = Validator::make($request->all(), [
-            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
         ]);
 
         if ($validator->fails()) {
@@ -510,9 +518,9 @@ class ProductController extends Controller
         }
 
         // Verify user has access to this branch
-        if (!$this->userHasBranchAccess($user, $businessId, $request->input('branch_id'))) {
+        if (! $this->userHasBranchAccess($user, $businessId, $request->input('branch_id'))) {
             return response()->json([
-                'message' => 'You do not have access to this branch'
+                'message' => 'You do not have access to this branch',
             ], 403);
         }
 
@@ -520,7 +528,7 @@ class ProductController extends Controller
             ->where('branch_id', $request->input('branch_id'))
             ->delete();
 
-        if (!$deleted) {
+        if (! $deleted) {
             return response()->json(['message' => 'Product not found in this branch'], 404);
         }
 
@@ -537,9 +545,9 @@ class ProductController extends Controller
     public function updatePrice(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -551,13 +559,13 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('update product price')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('update product price')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -565,13 +573,13 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
         $validator = Validator::make($request->all(), [
             'selling_price' => ['required', 'numeric', 'min:0'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,'.$businessId],
         ]);
 
         if ($validator->fails()) {
@@ -586,9 +594,9 @@ class ProductController extends Controller
 
         if ($branchId) {
             // Verify user has access to this branch
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json([
-                    'message' => 'You do not have access to this branch'
+                    'message' => 'You do not have access to this branch',
                 ], 403);
             }
 
@@ -597,7 +605,7 @@ class ProductController extends Controller
                 ->where('branch_id', $branchId)
                 ->first();
 
-            if (!$branchProduct) {
+            if (! $branchProduct) {
                 return response()->json(['message' => 'Product not found in this branch'], 404);
             }
 
@@ -621,18 +629,15 @@ class ProductController extends Controller
     }
 
     /**
-     * Check if user has access to a specific branch
-     */
-    /**
      * Get products for a specific branch
      * Only permitted users with branch access can view products
      */
     public function getProductsByBranch(Request $request, int $branchId)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -644,15 +649,15 @@ class ProductController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check 'view products' permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('view products')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view products')) {
             return response()->json([
-                'message' => 'You do not have permission to view products'
+                'message' => 'You do not have permission to view products',
             ], 403);
         }
 
@@ -661,16 +666,16 @@ class ProductController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$branch) {
+        if (! $branch) {
             return response()->json([
-                'message' => 'Branch not found or does not belong to this business'
+                'message' => 'Branch not found or does not belong to this business',
             ], 404);
         }
 
         // Check if user has access to this specific branch
-        if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
             return response()->json([
-                'message' => 'You do not have access to this branch'
+                'message' => 'You do not have access to this branch',
             ], 403);
         }
 
@@ -695,14 +700,14 @@ class ProductController extends Controller
         if ($request->boolean('available_only', false)) {
             $query->whereHas('branchProducts', function ($q) use ($branchId) {
                 $q->where('branch_id', $branchId)
-                  ->where('is_available', true);
+                    ->where('is_available', true);
             });
         }
 
         if ($request->boolean('in_stock_only', false)) {
             $query->whereHas('branchProducts', function ($q) use ($branchId) {
                 $q->where('branch_id', $branchId)
-                  ->where('stock_quantity', '>', 0);
+                    ->where('stock_quantity', '>', 0);
             });
         }
 
@@ -726,10 +731,10 @@ class ProductController extends Controller
         // Check if unpaginated response is requested
         $paginated = $request->boolean('paginated', true);
 
-        if (!$paginated) {
+        if (! $paginated) {
             // Return all results without pagination
             $products = $query->get();
-            
+
             $data = $products->map(function ($product) use ($branchId) {
                 return $this->formatProduct($product, $branchId);
             });
@@ -756,7 +761,7 @@ class ProductController extends Controller
             return $this->formatProduct($product, $branchId);
         });
 
-        return response()->json([ 
+        return response()->json([
             'data' => $data,
             'branch' => [
                 'id' => $branch->id,
@@ -771,29 +776,6 @@ class ProductController extends Controller
                 'paginated' => true,
             ],
         ]);
-    }
-
-    private function userHasBranchAccess($user, int $businessId, int $branchId): bool
-    {
-        // Get all branches the user has access to in this business
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        // If user has no specific branch assignments, check if they have business-wide access
-        if ($accessibleBranches->isEmpty()) {
-            // Check if user has any business-wide role (no branch_id)
-            $hasBusinessWideRole = \DB::table('model_has_roles')
-                ->where('model_type', get_class($user))
-                ->where('model_id', $user->id)
-                ->where('business_id', $businessId)
-                ->whereNull('branch_id')
-                ->exists();
-            
-            // Users with business-wide roles have access to all branches
-            return $hasBusinessWideRole;
-        }
-        
-        // Check if the specific branch is in their accessible branches
-        return $accessibleBranches->contains($branchId);
     }
 
     /**
@@ -842,7 +824,7 @@ class ProductController extends Controller
             $branchProduct = BranchProduct::where('product_id', $product->id)
                 ->where('branch_id', $branchId)
                 ->first();
-                
+
             if ($branchProduct) {
                 $data['branch_data'] = [
                     'branch_id' => $branchProduct->branch_id,
@@ -878,7 +860,7 @@ class ProductController extends Controller
         } elseif ($detailed) {
             // Refresh branch products relationship to get latest data
             $product->load('branchProducts.branch');
-            
+
             // Include all branches data
             $data['branches'] = $product->branchProducts->map(function ($branchProduct) {
                 return [

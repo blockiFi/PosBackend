@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\SalesShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SalesShiftController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List shifts with filtering and statistics
      */
@@ -17,10 +20,20 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        $canViewAll = $user->hasPermissionTo('view all shifts');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canViewAll = $business->owner_id === $user->id || $user->hasPermissionTo('view all shifts');
         $canViewOwn = $user->hasPermissionTo('view user shift');
 
-        if (!$canViewAll && !$canViewOwn) {
+        if (! $canViewAll && ! $canViewOwn) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -28,14 +41,14 @@ class SalesShiftController extends Controller
             ->forBusiness($businessId);
 
         // If user can only view their own shifts, filter by user_id
-        if (!$canViewAll && $canViewOwn) {
+        if (! $canViewAll && $canViewOwn) {
             $query->where('user_id', $user->id);
         }
 
         // Filter by branch
         if ($request->filled('branch_id')) {
             $branchId = $request->branch_id;
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'Unauthorized access to this branch'], 403);
             }
             $query->where('branch_id', $branchId);
@@ -58,9 +71,9 @@ class SalesShiftController extends Controller
         // Filter by discrepancies
         if ($request->boolean('has_discrepancy')) {
             $query->where('status', 'closed')
-                  ->where(function ($q) {
-                      $q->whereRaw('ABS(variance) >= 0.01');
-                  });
+                ->where(function ($q) {
+                    $q->whereRaw('ABS(variance) >= 0.01');
+                });
         }
 
         // Date filtering
@@ -98,7 +111,17 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('create shift')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create shift')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -109,26 +132,26 @@ class SalesShiftController extends Controller
         ]);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
+        if (! $this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
-        // Business Rule: Each user can only have ONE active shift at a time across all branches
-        // However, a branch CAN have MULTIPLE active shifts (one per user/cashier)
-        $openShift = SalesShift::forBusiness($businessId)
+        // Business Rule: Each user can only have ONE active shift at a time (open or paused) across all branches
+        $activeShift = SalesShift::forBusiness($businessId)
             ->where('user_id', $user->id)
-            ->where('status', 'open')
+            ->active()
             ->first();
 
-        if ($openShift) {
+        if ($activeShift) {
             return response()->json([
-                'message' => 'You already have an open shift. Please close your current shift before opening a new one.',
+                'message' => 'You already have an active shift (open or paused). Please close or resume it before opening a new one.',
                 'current_shift' => [
-                    'id' => $openShift->id,
-                    'shift_number' => $openShift->shift_number,
-                    'branch_id' => $openShift->branch_id,
-                    'branch_name' => $openShift->branch->name ?? null,
-                    'opened_at' => $openShift->start_time->toIso8601String(),
+                    'id' => $activeShift->id,
+                    'shift_number' => $activeShift->shift_number,
+                    'branch_id' => $activeShift->branch_id,
+                    'branch_name' => $activeShift->branch->name ?? null,
+                    'status' => $activeShift->status,
+                    'opened_at' => $activeShift->start_time->toIso8601String(),
                 ],
             ], 400);
         }
@@ -157,6 +180,7 @@ class SalesShiftController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to open shift', 'error' => $e->getMessage()], 500);
         }
     }
@@ -169,27 +193,37 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        $canViewAll = $user->hasPermissionTo('view all shifts');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canViewAll = $business->owner_id === $user->id || $user->hasPermissionTo('view all shifts');
         $canViewOwn = $user->hasPermissionTo('view user shift');
 
-        if (!$canViewAll && !$canViewOwn) {
+        if (! $canViewAll && ! $canViewOwn) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $shift = SalesShift::with(['user', 'branch', 'sales' => function ($query) {
-                $query->with(['payments.paymentMethod', 'customer', 'items.product'])
-                      ->withTrashed(); // Include voided/cancelled sales
-            }])
+            $query->with(['payments.paymentMethod', 'customer', 'items.product'])
+                ->withTrashed(); // Include voided/cancelled sales
+        }])
             ->forBusiness($businessId)
             ->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // If user can only view their own shifts, verify ownership
-        if (!$canViewAll && $canViewOwn && $shift->user_id !== $user->id) {
+        if (! $canViewAll && $canViewOwn && $shift->user_id !== $user->id) {
             return response()->json(['message' => 'You can only view your own shifts'], 403);
         }
 
@@ -208,19 +242,30 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('close shift')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('close shift')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $validated = $request->validate([
             'actual_cash' => 'required|numeric|min:0',
             'closing_notes' => 'nullable|string',
+            'pin_code' => ['required', 'string', 'size:6', 'regex:/^[0-9]{6}$/'],
         ]);
 
         $shift = SalesShift::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -228,21 +273,31 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Shift is already closed'], 400);
         }
 
-        // Only the shift owner or someone with manage shifts permission can close
-        if ($shift->user_id !== $user->id && !$user->hasPermissionTo('manage shifts')) {
+        // Only the shift owner or someone with manage shifts permission (or owner) can close
+        if ($shift->user_id !== $user->id && $business->owner_id !== $user->id && ! $user->hasPermissionTo('manage shifts')) {
             return response()->json(['message' => 'You can only close your own shifts'], 403);
+        }
+
+        if (empty($user->pin_code)) {
+            return response()->json([
+                'message' => 'PIN verification required to close a shift. Set a PIN in your account first.',
+            ], 400);
+        }
+
+        if ($user->pin_code !== $validated['pin_code']) {
+            return response()->json(['message' => 'Invalid PIN code'], 401);
         }
 
         DB::beginTransaction();
         try {
             // Update sales metrics from actual sales
             $shift->updateSalesMetrics();
-            
+
             // Calculate expected cash and variance
             $shift->calculateExpectedCash();
             $shift->actual_cash = $validated['actual_cash'];
             $shift->calculateVariance();
-            
+
             $shift->end_time = now();
             $shift->closing_notes = $validated['closing_notes'] ?? null;
             $shift->status = 'closed';
@@ -257,26 +312,156 @@ class SalesShiftController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to close shift', 'error' => $e->getMessage()], 500);
         }
     }
 
     /**
-     * Get current open shift for user
+     * Pause an open shift (no sales allowed while paused)
+     */
+    public function pause(Request $request, $id)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create shift')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $shift = SalesShift::forBusiness($businessId)->findOrFail($id);
+
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        if ($shift->user_id !== $user->id && $business->owner_id !== $user->id && ! $user->hasPermissionTo('manage shifts')) {
+            return response()->json(['message' => 'You can only pause your own shifts'], 403);
+        }
+
+        if ($shift->status === 'closed') {
+            return response()->json(['message' => 'Cannot pause a closed shift'], 400);
+        }
+
+        if ($shift->status === 'paused') {
+            return response()->json(['message' => 'Shift is already paused'], 400);
+        }
+
+        $shift->status = 'paused';
+        $shift->paused_at = now();
+        $shift->save();
+
+        return response()->json([
+            'message' => 'Shift paused successfully',
+            'shift' => $shift->fresh(['user', 'branch']),
+        ]);
+    }
+
+    /**
+     * Resume a paused shift
+     */
+    public function resume(Request $request, $id)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create shift')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $shift = SalesShift::forBusiness($businessId)->findOrFail($id);
+
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        if ($shift->user_id !== $user->id && $business->owner_id !== $user->id && ! $user->hasPermissionTo('manage shifts')) {
+            return response()->json(['message' => 'You can only resume your own shifts'], 403);
+        }
+
+        if ($shift->status !== 'paused') {
+            return response()->json(['message' => 'Only a paused shift can be resumed'], 400);
+        }
+
+        $validated = $request->validate([
+            'pin_code' => ['required', 'string', 'size:6', 'regex:/^[0-9]{6}$/'],
+        ]);
+
+        if (empty($user->pin_code)) {
+            return response()->json([
+                'message' => 'PIN verification required to resume a shift. Set a PIN in your account first.',
+            ], 400);
+        }
+
+        if ($user->pin_code !== $validated['pin_code']) {
+            return response()->json(['message' => 'Invalid PIN code'], 401);
+        }
+
+        $shift->status = 'open';
+        $shift->paused_at = null;
+        $shift->save();
+
+        return response()->json([
+            'message' => 'Shift resumed successfully',
+            'shift' => $shift->fresh(['user', 'branch']),
+        ]);
+    }
+
+    /**
+     * Get current open or paused shift for user
      */
     public function current(Request $request)
     {
         $user = $request->user();
         $businessId = $request->current_business_id;
 
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view user shift') && ! $user->hasPermissionTo('view all shifts')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $shift = SalesShift::with(['user', 'branch'])
             ->forBusiness($businessId)
             ->where('user_id', $user->id)
-            ->where('status', 'open')
+            ->active()
             ->first();
 
-        if (!$shift) {
-            return response()->json(['message' => 'No open shift found'], 404);
+        if (! $shift) {
+            return response()->json(['message' => 'No active shift found (open or paused)'], 404);
+        }
+
+        // Verify branch access
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         return response()->json($shift);
@@ -290,7 +475,17 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('manage shifts')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage shifts')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -301,7 +496,7 @@ class SalesShiftController extends Controller
         $shift = SalesShift::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -330,6 +525,7 @@ class SalesShiftController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json(['message' => 'Failed to resolve discrepancy', 'error' => $e->getMessage()], 500);
         }
     }
@@ -342,22 +538,32 @@ class SalesShiftController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        $canViewAll = $user->hasPermissionTo('view all shifts');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canViewAll = $business->owner_id === $user->id || $user->hasPermissionTo('view all shifts');
         $canViewOwn = $user->hasPermissionTo('view user shift');
 
-        if (!$canViewAll && !$canViewOwn) {
+        if (! $canViewAll && ! $canViewOwn) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $shift = SalesShift::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // If user can only view their own shifts, verify ownership
-        if (!$canViewAll && $canViewOwn && $shift->user_id !== $user->id) {
+        if (! $canViewAll && $canViewOwn && $shift->user_id !== $user->id) {
             return response()->json(['message' => 'You can only view your own shifts'], 403);
         }
 
@@ -378,7 +584,7 @@ class SalesShiftController extends Controller
         // Filter by payment method if provided
         if ($request->filled('payment_method')) {
             $query->whereHas('payments.paymentMethod', function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->payment_method . '%');
+                $q->where('name', 'like', '%'.$request->payment_method.'%');
             });
         }
 
@@ -431,7 +637,7 @@ class SalesShiftController extends Controller
             ->first();
 
         $sequence = $lastShift ? (intval(substr($lastShift->shift_number, -4)) + 1) : 1;
-        
+
         return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
     }
 
@@ -444,24 +650,24 @@ class SalesShiftController extends Controller
         $cashSales = $shift->cash_sales ?? 0;
         $cardSales = $shift->card_sales ?? 0;
         $transactionsCount = $shift->transactions_count ?? 0;
-        
+
         // Calculate average basket value
-        $averageBasketValue = $transactionsCount > 0 
-            ? round($totalSales / $transactionsCount, 2) 
+        $averageBasketValue = $transactionsCount > 0
+            ? round($totalSales / $transactionsCount, 2)
             : 0;
 
         // Calculate payment method breakdown
-        $posPercentage = $totalSales > 0 
-            ? round(($cardSales / $totalSales) * 100, 2) 
+        $posPercentage = $totalSales > 0
+            ? round(($cardSales / $totalSales) * 100, 2)
             : 0;
-        $cashPercentage = $totalSales > 0 
-            ? round(($cashSales / $totalSales) * 100, 2) 
+        $cashPercentage = $totalSales > 0
+            ? round(($cashSales / $totalSales) * 100, 2)
             : 0;
 
         // Determine reconciliation status
         $variance = $shift->variance ?? 0;
         $hasDiscrepancy = abs($variance) >= 0.01;
-        $reconciliationStatus = !$hasDiscrepancy ? 'balanced' : ($shift->discrepancy_resolved ? 'resolved' : 'discrepancy');
+        $reconciliationStatus = ! $hasDiscrepancy ? 'balanced' : ($shift->discrepancy_resolved ? 'resolved' : 'discrepancy');
 
         // Calculate shift duration
         $startTime = $shift->start_time;
@@ -502,17 +708,18 @@ class SalesShiftController extends Controller
      */
     private function enrichShiftWithSalesDetails($shift)
     {
-        if (!$shift->relationLoaded('sales')) {
+        if (! $shift->relationLoaded('sales')) {
             return $shift;
         }
 
         $sales = $shift->sales;
-        $activeSales = $sales->filter(fn($sale) => !$sale->trashed());
-        $voidedSales = $sales->filter(fn($sale) => $sale->trashed());
+        $activeSales = $sales->filter(fn ($sale) => ! $sale->trashed());
+        $voidedSales = $sales->filter(fn ($sale) => $sale->trashed());
 
         // Categorize sales by payment method
         $salesByPaymentMethod = $activeSales->map(function ($sale) {
             $paymentMethods = $sale->payments->pluck('paymentMethod.name')->unique()->join(', ');
+
             return [
                 'id' => $sale->id,
                 'sale_number' => $sale->sale_number,
@@ -531,6 +738,7 @@ class SalesShiftController extends Controller
         // Add voided sales
         $voidedSalesData = $voidedSales->map(function ($sale) {
             $paymentMethods = $sale->payments->pluck('paymentMethod.name')->unique()->join(', ');
+
             return [
                 'id' => $sale->id,
                 'sale_number' => $sale->sale_number,
@@ -575,20 +783,5 @@ class SalesShiftController extends Controller
         ];
 
         return $shift;
-    }
-
-    /**
-     * Check if user has access to a specific branch
-     */
-    private function userHasBranchAccess($user, $businessId, $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        // Empty collection means user has access to all branches
-        if ($accessibleBranches->isEmpty()) {
-            return true;
-        }
-        
-        return $accessibleBranches->contains('id', $branchId);
     }
 }

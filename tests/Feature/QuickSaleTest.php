@@ -19,10 +19,15 @@ class QuickSaleTest extends TestCase
     use RefreshDatabase;
 
     private User $requester;
+
     private User $approver;
+
     private User $regularUser;
+
     private Business $business;
+
     private Branch $branch;
+
     private Product $product;
 
     protected function setUp(): void
@@ -38,8 +43,8 @@ class QuickSaleTest extends TestCase
         ]);
 
         // Create permissions for api guard
-        Permission::create(['name' => 'request quick sale', 'guard_name' => 'api']);
-        Permission::create(['name' => 'approve quick sale', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'request quick sale', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'approve quick sale', 'guard_name' => 'api']);
 
         // Create roles
         $requesterRole = Role::create([
@@ -194,7 +199,7 @@ class QuickSaleTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'message' => 'A pending quick sale request already exists for this product in this branch'
+                'message' => 'A pending quick sale request already exists for this product in this branch',
             ]);
     }
 
@@ -388,7 +393,7 @@ class QuickSaleTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'message' => 'Another quick sale is already scheduled for this product during the selected time period'
+                'message' => 'Another quick sale is already scheduled for this product during the selected time period',
             ]);
     }
 
@@ -677,7 +682,7 @@ class QuickSaleTest extends TestCase
         $branchProduct = BranchProduct::where('product_id', $this->product->id)
             ->where('branch_id', $this->branch->id)
             ->first();
-        
+
         $branchProduct->update([
             'discount_type' => 'percentage',
             'discount_amount' => 20,

@@ -97,7 +97,7 @@ The API will be available at `http://localhost:8000/api`
 
 Comprehensive documentation is available in the repository:
 
-- **[API Documentation](API_DOCUMENTATION.md)** - Complete API reference with all endpoints
+- **[API Documentation](API_DOCUMENTATION.md)** - Complete API reference with all endpoints (includes [Complete Route Reference](API_DOCUMENTATION.md#g-complete-api-route-reference))
 - **[Analytics API](ANALYTICS_API.md)** - Analytics and reporting endpoints
 - **[Offline Sync Documentation](OFFLINE_SYNC_DOCUMENTATION.md)** - Synchronization system guide
 - **[Server-to-Server Sync](SERVER_TO_SERVER_SYNC_GUIDE.md)** - Multi-server sync setup
@@ -126,7 +126,7 @@ X-Business-Id: {business-id}
 
 ### Getting a Token
 ```bash
-POST /api/auth/login
+POST /api/login
 Content-Type: application/json
 
 {
@@ -134,6 +134,8 @@ Content-Type: application/json
   "password": "password"
 }
 ```
+
+For a complete list of every API route and controller capability, see **[API Documentation → Appendix G: Complete API Route Reference](API_DOCUMENTATION.md#g-complete-api-route-reference)**.
 
 ## 🧪 Testing
 

@@ -2,9 +2,16 @@
 
 namespace Tests\Feature;
 
-use App\Models\{Branch, BranchProduct, Business, Customer, PaymentMethod, Product, Sale, User};
+use App\Models\Branch;
+use App\Models\BranchProduct;
+use App\Models\Business;
+use App\Models\PaymentMethod;
+use App\Models\Product;
+use App\Models\Sale;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\{Permission, Role};
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class SaleRoutesTest extends TestCase
@@ -12,9 +19,13 @@ class SaleRoutesTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Branch $branch;
+
     private Role $role;
+
     private Product $product;
 
     protected function setUp(): void
@@ -51,7 +62,7 @@ class SaleRoutesTest extends TestCase
 
         $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
             'branch_id' => $this->branch->id,
             'items' => [['product_id' => $this->product->id, 'quantity' => 5, 'unit_price' => 100, 'tax_rate' => 10]],
             'payments' => [['payment_method_id' => $pm->id, 'amount' => 550]],
@@ -72,7 +83,7 @@ class SaleRoutesTest extends TestCase
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         setPermissionsTeamId($this->business->id);
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
             'branch_id' => $this->branch->id,
             'items' => [['product_id' => $this->product->id, 'quantity' => 1000, 'unit_price' => 100]],
         ]);
@@ -91,10 +102,10 @@ class SaleRoutesTest extends TestCase
             'branch_id' => $this->branch->id, 'user_id' => $this->user->id, 'sale_date' => now(),
             'subtotal' => 100, 'total_amount' => 100, 'status' => 'completed', 'payment_status' => 'paid']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/sales?current_business_id=' . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/sales?current_business_id='.$this->business->id);
         $response->assertStatus(200)->assertJsonStructure(['data']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->getJson("/api/sales/{$sale->id}?current_business_id=" . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->getJson("/api/sales/{$sale->id}?current_business_id=".$this->business->id);
         $response->assertStatus(200)->assertJson(['id' => $sale->id]);
     }
 
@@ -104,7 +115,7 @@ class SaleRoutesTest extends TestCase
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         setPermissionsTeamId($this->business->id);
 
-        $createResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id=' . $this->business->id, [
+        $createResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
             'branch_id' => $this->branch->id,
             'items' => [['product_id' => $this->product->id, 'quantity' => 10, 'unit_price' => 100]],
         ]);
@@ -112,14 +123,17 @@ class SaleRoutesTest extends TestCase
         $sale = Sale::latest()->first();
         $this->assertEquals(90, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson("/api/sales/{$sale->id}/cancel?current_business_id=" . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->postJson("/api/sales/{$sale->id}/cancel?current_business_id=".$this->business->id);
         $response->assertStatus(200);
         $this->assertEquals(100, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
     }
 
     public function test_enforces_permissions(): void
     {
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/sales?current_business_id=' . $this->business->id);
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')->getJson('/api/sales?current_business_id='.$this->business->id);
         $response->assertStatus(403);
     }
 }

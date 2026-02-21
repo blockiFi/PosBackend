@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
-use App\Models\PaymentMethod;
 use App\Models\Business;
+use App\Models\PaymentMethod;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 class PaymentMethodFactory extends Factory
@@ -15,7 +15,7 @@ class PaymentMethodFactory extends Factory
         return [
             'business_id' => Business::factory(),
             'name' => fake()->randomElement(['Cash', 'Credit Card', 'Debit Card', 'Mobile Money', 'Bank Transfer']),
-            'type' => fake()->randomElement(['cash', 'card', 'digital', 'other']),
+            'type' => fake()->randomElement(['cash', 'card', 'mobile_money', 'bank_transfer', 'cheque', 'other']),
             'description' => fake()->optional(0.5)->sentence(),
             'account_details' => [],
             'is_active' => true,
@@ -45,7 +45,7 @@ class PaymentMethodFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'name' => 'Mobile Money',
-            'type' => 'digital',
+            'type' => 'mobile_money',
             'sort_order' => 3,
         ]);
     }

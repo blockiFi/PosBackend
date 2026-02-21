@@ -2,28 +2,33 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
-use App\Models\Business;
 use App\Models\Branch;
-use App\Models\Product;
 use App\Models\BranchProduct;
+use App\Models\Business;
 use App\Models\Customer;
 use App\Models\PaymentMethod;
+use App\Models\Product;
 use App\Models\SalesShift;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Tests\TestCase;
 
 class SaleShiftIntegrationTest extends TestCase
 {
     use RefreshDatabase;
 
     protected $user;
+
     protected $business;
+
     protected $branch;
+
     protected $product;
+
     protected $customer;
+
     protected $paymentMethod;
 
     protected function setUp(): void
@@ -31,10 +36,10 @@ class SaleShiftIntegrationTest extends TestCase
         parent::setUp();
 
         // Create permissions
-        Permission::create(['name' => 'create sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'view sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'manage sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'view shifts', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'create sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view shifts', 'guard_name' => 'api']);
 
         // Create user
         $this->user = User::factory()->create();
@@ -121,7 +126,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -159,7 +164,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -184,7 +189,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -221,7 +226,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -273,7 +278,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -324,7 +329,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -360,7 +365,7 @@ class SaleShiftIntegrationTest extends TestCase
                     'product_id' => $this->product->id,
                     'quantity' => 2,
                     'unit_price' => 100,
-                ]
+                ],
             ],
         ], [
             'X-Business-Id' => $this->business->id,

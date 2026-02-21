@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\StockWriteoff;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class StockWriteoffController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List all stock write-offs
      */
@@ -31,12 +32,17 @@ class StockWriteoffController extends Controller
         $user = auth()->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('write off stock')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Verify user has access to the business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Verify user has access to the business
-        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('write off stock')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -46,9 +52,9 @@ class StockWriteoffController extends Controller
         // Filter by branch if provided
         if ($request->filled('branch_id')) {
             $branchId = $request->branch_id;
-            
+
             // Verify user has access to this branch
-            if (!$this->userHasBranchAccess($user, $branchId, $businessId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'You do not have access to this branch'], 403);
             }
 
@@ -92,18 +98,23 @@ class StockWriteoffController extends Controller
         $businessId = $request->current_business_id;
         $branchId = $request->branch_id;
 
-        // Check permission
-        if (!$user->hasPermissionTo('write off stock')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Verify user has access to the business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Verify user has access to the business
-        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+        // Check permission
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('write off stock')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         // Verify user has access to this branch
-        if (!$this->userHasBranchAccess($user, $branchId, $businessId)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -115,12 +126,12 @@ class StockWriteoffController extends Controller
             })
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json([
                 'message' => 'The given data was invalid.',
                 'errors' => [
-                    'sku' => ['Product not found with this SKU or barcode']
-                ]
+                    'sku' => ['Product not found with this SKU or barcode'],
+                ],
             ], 422);
         }
 
@@ -129,12 +140,12 @@ class StockWriteoffController extends Controller
             ->where('product_id', $product->id)
             ->first();
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json([
                 'message' => 'The given data was invalid.',
                 'errors' => [
-                    'sku' => ['Product not available in this branch']
-                ]
+                    'sku' => ['Product not available in this branch'],
+                ],
             ], 422);
         }
 
@@ -144,9 +155,9 @@ class StockWriteoffController extends Controller
                 'message' => 'The given data was invalid.',
                 'errors' => [
                     'quantity' => [
-                        "Insufficient stock on shelf. Available: {$branchProduct->shelf_quantity}, Requested: {$request->quantity}"
-                    ]
-                ]
+                        "Insufficient stock on shelf. Available: {$branchProduct->shelf_quantity}, Requested: {$request->quantity}",
+                    ],
+                ],
             ], 422);
         }
 
@@ -156,10 +167,10 @@ class StockWriteoffController extends Controller
             $shelfQuantityBefore = $branchProduct->shelf_quantity;
             $storeQuantityBefore = $branchProduct->store_quantity;
             $totalQuantityBefore = $shelfQuantityBefore + $storeQuantityBefore;
-            
+
             // Reduce shelf quantity
             $branchProduct->updateShelfQuantity($request->quantity, 'subtract');
-            
+
             // Refresh to get updated quantities
             $branchProduct->refresh();
             $shelfQuantityAfter = $branchProduct->shelf_quantity;
@@ -195,7 +206,7 @@ class StockWriteoffController extends Controller
                 'quantity_after' => $totalQuantityAfter,
                 'shelf_quantity_after' => $shelfQuantityAfter,
                 'store_quantity_after' => $storeQuantityAfter,
-                'reference_number' => 'WO-' . str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
+                'reference_number' => 'WO-'.str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
                 'notes' => $request->reason,
             ]);
 
@@ -206,7 +217,7 @@ class StockWriteoffController extends Controller
 
         return response()->json([
             'message' => 'Stock written off successfully',
-            'data' => $writeoff
+            'data' => $writeoff,
         ], 201);
     }
 
@@ -222,12 +233,17 @@ class StockWriteoffController extends Controller
         $user = auth()->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('write off stock')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        // Verify user has access to the business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Verify user has access to the business
-        if (!$user->businesses()->where('businesses.id', $businessId)->exists()) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('write off stock')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -235,34 +251,11 @@ class StockWriteoffController extends Controller
             ->where('business_id', $businessId)
             ->findOrFail($id);
 
+        // Verify branch access
+        if (! $this->userHasBranchAccess($user, $businessId, $writeoff->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
         return response()->json(['data' => $writeoff]);
-    }
-
-    /**
-     * Check if user has access to a branch
-     */
-    private function userHasBranchAccess($user, $branchId, $businessId): bool
-    {
-        // Check if branch belongs to the business
-        $branch = \App\Models\Branch::where('id', $branchId)
-            ->where('business_id', $businessId)
-            ->first();
-
-        if (!$branch) {
-            return false;
-        }
-
-        // Get user's roles for this business with branch restrictions
-        $userRoles = $user->roles()
-            ->where('roles.business_id', $businessId)
-            ->get();
-
-        // If user has any business-wide role (no branch_id), they have access to all branches
-        if ($userRoles->where('pivot.branch_id', null)->count() > 0) {
-            return true;
-        }
-
-        // Check if user has a role specifically for this branch
-        return $userRoles->where('pivot.branch_id', $branchId)->count() > 0;
     }
 }

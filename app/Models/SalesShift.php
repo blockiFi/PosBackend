@@ -28,6 +28,7 @@ class SalesShift extends Model
         'transactions_count',
         'variance',
         'status',
+        'paused_at',
         'opening_notes',
         'closing_notes',
         'metadata',
@@ -52,6 +53,7 @@ class SalesShift extends Model
         'metadata' => 'array',
         'discrepancy_resolved' => 'boolean',
         'discrepancy_resolved_at' => 'datetime',
+        'paused_at' => 'datetime',
     ];
 
     // Relationships
@@ -106,6 +108,17 @@ class SalesShift extends Model
         return $query->where('status', 'closed');
     }
 
+    public function scopePaused($query)
+    {
+        return $query->where('status', 'paused');
+    }
+
+    /** Shifts that are open or paused (not closed) */
+    public function scopeActive($query)
+    {
+        return $query->whereIn('status', ['open', 'paused']);
+    }
+
     public function scopeDateRange($query, $startDate, $endDate)
     {
         return $query->whereBetween('start_time', [$startDate, $endDate]);
@@ -134,6 +147,17 @@ class SalesShift extends Model
         return $this->status === 'closed';
     }
 
+    public function isPaused(): bool
+    {
+        return $this->status === 'paused';
+    }
+
+    /** Shift can accept new sales only when open (not paused) */
+    public function canAcceptSales(): bool
+    {
+        return $this->status === 'open';
+    }
+
     public function hasVariance(): bool
     {
         return abs($this->variance) > 0.01;
@@ -143,23 +167,23 @@ class SalesShift extends Model
     {
         // This should be called when closing the shift
         $sales = $this->sales()->where('status', 'completed')->get();
-        
+
         $this->total_sales = $sales->sum('total_amount');
         $this->transactions_count = $sales->count();
-        
+
         // Calculate by payment method
-        $this->cash_sales = $sales->sum(function($sale) {
-            return $sale->payments()->whereHas('paymentMethod', function($q) {
+        $this->cash_sales = $sales->sum(function ($sale) {
+            return $sale->payments()->whereHas('paymentMethod', function ($q) {
                 $q->where('type', 'cash');
             })->sum('amount');
         });
-        
-        $this->card_sales = $sales->sum(function($sale) {
-            return $sale->payments()->whereHas('paymentMethod', function($q) {
+
+        $this->card_sales = $sales->sum(function ($sale) {
+            return $sale->payments()->whereHas('paymentMethod', function ($q) {
                 $q->where('type', 'card');
             })->sum('amount');
         });
-        
+
         $this->other_sales = $this->total_sales - $this->cash_sales - $this->card_sales;
     }
 }

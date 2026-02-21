@@ -4,12 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
-use App\Models\Customer;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
-use App\Models\Product;
 use App\Models\Sale;
-use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,10 +19,15 @@ class ShiftSalesDetailsTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Branch $branch;
+
     private SalesShift $shift;
+
     private PaymentMethod $cashMethod;
+
     private PaymentMethod $cardMethod;
 
     protected function setUp(): void
@@ -44,14 +46,14 @@ class ShiftSalesDetailsTest extends TestCase
         $this->user = User::factory()->create();
         $this->user->businesses()->attach($this->business->id, ['is_active' => true]);
 
-        // Create permission and role
-        Permission::create(['name' => 'view shifts', 'guard_name' => 'api']);
+        // Create permission and role (controller checks 'view all shifts' or 'view user shift')
+        Permission::firstOrCreate(['name' => 'view all shifts', 'guard_name' => 'api']);
         $role = Role::create([
             'name' => 'Manager',
             'guard_name' => 'api',
             'business_id' => $this->business->id,
         ]);
-        $role->givePermissionTo('view shifts');
+        $role->givePermissionTo('view all shifts');
 
         // Assign role to user
         \Illuminate\Support\Facades\DB::table('model_has_roles')->insert([
@@ -92,7 +94,7 @@ class ShiftSalesDetailsTest extends TestCase
     public function test_shift_details_include_duration(): void
     {
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id, [
+            ->getJson('/api/shifts/'.$this->shift->id, [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -123,11 +125,11 @@ class ShiftSalesDetailsTest extends TestCase
         // Refresh shift to load sales
         $this->shift->load(['sales' => function ($query) {
             $query->with(['payments.paymentMethod', 'customer', 'items.product'])
-                  ->withTrashed();
+                ->withTrashed();
         }]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id, [
+            ->getJson('/api/shifts/'.$this->shift->id, [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -158,7 +160,7 @@ class ShiftSalesDetailsTest extends TestCase
         $sale = $this->createSale(150.00, $this->cashMethod, 'SALE-001');
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id, [
+            ->getJson('/api/shifts/'.$this->shift->id, [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -176,13 +178,13 @@ class ShiftSalesDetailsTest extends TestCase
     {
         // Create active sale
         $activeSale = $this->createSale(150.00, $this->cashMethod, 'SALE-001');
-        
+
         // Create and void a sale
         $voidedSale = $this->createSale(200.00, $this->cardMethod, 'SALE-002');
         $voidedSale->delete(); // Soft delete to void
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id, [
+            ->getJson('/api/shifts/'.$this->shift->id, [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -208,7 +210,7 @@ class ShiftSalesDetailsTest extends TestCase
         }
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id . '/sales', [
+            ->getJson('/api/shifts/'.$this->shift->id.'/sales', [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -229,7 +231,7 @@ class ShiftSalesDetailsTest extends TestCase
         // Create active sales
         $this->createSale(100.00, $this->cashMethod, 'SALE-001');
         $this->createSale(150.00, $this->cardMethod, 'SALE-002');
-        
+
         // Create and void sales
         $voidedSale1 = $this->createSale(200.00, $this->cashMethod, 'SALE-003');
         $voidedSale1->delete();
@@ -238,16 +240,16 @@ class ShiftSalesDetailsTest extends TestCase
 
         // Filter for active sales only
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id . '/sales?status=active', [
+            ->getJson('/api/shifts/'.$this->shift->id.'/sales?status=active', [
                 'X-Business-Id' => $this->business->id,
             ]);
 
         $response->assertStatus(200);
         $this->assertEquals(2, count($response->json('data')));
-        
+
         // Filter for voided sales only
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id . '/sales?status=voided', [
+            ->getJson('/api/shifts/'.$this->shift->id.'/sales?status=voided', [
                 'X-Business-Id' => $this->business->id,
             ]);
 
@@ -265,13 +267,13 @@ class ShiftSalesDetailsTest extends TestCase
         $this->createSale(200.00, $this->cardMethod, 'SALE-003');
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id . '/sales?payment_method=Cash', [
+            ->getJson('/api/shifts/'.$this->shift->id.'/sales?payment_method=Cash', [
                 'X-Business-Id' => $this->business->id,
             ]);
 
         $response->assertStatus(200);
         $this->assertEquals(2, count($response->json('data')));
-        
+
         foreach ($response->json('data') as $sale) {
             $this->assertStringContainsString('Cash', $sale['payment_methods'][0]['method']);
         }
@@ -282,12 +284,12 @@ class ShiftSalesDetailsTest extends TestCase
         $sale = $this->createSale(100.00, $this->cashMethod, 'SALE-001');
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $this->shift->id . '/sales', [
+            ->getJson('/api/shifts/'.$this->shift->id.'/sales', [
                 'X-Business-Id' => $this->business->id,
             ]);
 
         $response->assertStatus(200);
-        
+
         $saleData = $response->json('data.0');
         $this->assertArrayHasKey('payment_methods', $saleData);
         $this->assertCount(1, $saleData['payment_methods']);
@@ -297,8 +299,8 @@ class ShiftSalesDetailsTest extends TestCase
 
     private function createSale(float $amount, PaymentMethod $paymentMethod, ?string $saleNumber = null): Sale
     {
-        $saleNumber = $saleNumber ?? 'SALE-' . uniqid();
-        
+        $saleNumber = $saleNumber ?? 'SALE-'.uniqid();
+
         $sale = Sale::create([
             'sale_number' => $saleNumber,
             'business_id' => $this->business->id,

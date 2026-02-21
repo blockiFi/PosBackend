@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\Business;
 use Illuminate\Http\Request;
@@ -11,6 +12,8 @@ use Illuminate\Support\Str;
 
 class BranchController extends Controller
 {
+    use HasBranchAccess;
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -32,12 +35,18 @@ class BranchController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
+        // Check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view-branches') && $business->owner_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         // Get user's accessible branches
         $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
+
         // If user has specific branch assignments, only show those branches
         $query = Branch::where('business_id', $businessId);
-        
+
         if ($accessibleBranches->isNotEmpty()) {
             $query->whereIn('id', $accessibleBranches);
         }
@@ -89,9 +98,10 @@ class BranchController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check if user is owner (only owners can create branches)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can create branches'], 403);
+        // Check if user is owner or has manage-branches permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-branches')) {
+            return response()->json(['message' => 'You do not have permission to create branches'], 403);
         }
 
         $data = $request->all();
@@ -172,6 +182,12 @@ class BranchController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
+        // Check permission
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('view-branches') && $business->owner_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $branch = Branch::where('id', $id)
             ->where('business_id', $businessId)
             ->first();
@@ -182,7 +198,7 @@ class BranchController extends Controller
 
         // Check if user has access to this specific branch
         $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        if ($accessibleBranches->isNotEmpty() && !$accessibleBranches->contains($id)) {
+        if ($accessibleBranches->isNotEmpty() && ! $accessibleBranches->contains($id)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -237,9 +253,15 @@ class BranchController extends Controller
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
-        // Check if user is owner (only owners can update branches)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can update branches'], 403);
+        // Check if user is owner or has manage-branches permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-branches')) {
+            return response()->json(['message' => 'You do not have permission to update branches'], 403);
+        }
+
+        // Verify branch access
+        if (! $this->userHasBranchAccess($user, $businessId, $id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         $data = $request->all();
@@ -312,9 +334,15 @@ class BranchController extends Controller
             return response()->json(['message' => 'Branch not found'], 404);
         }
 
-        // Check if user is owner (only owners can delete branches)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can delete branches'], 403);
+        // Check if user is owner or has manage-branches permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-branches')) {
+            return response()->json(['message' => 'You do not have permission to delete branches'], 403);
+        }
+
+        // Verify branch access
+        if (! $this->userHasBranchAccess($user, $businessId, $id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         // Prevent deletion of main branch

@@ -19,8 +19,11 @@ class ProductRoutesTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Branch $branch;
+
     private Role $role;
 
     protected function setUp(): void
@@ -86,7 +89,7 @@ class ProductRoutesTest extends TestCase
         setPermissionsTeamId($this->business->id);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products?current_business_id=' . $this->business->id);
+            ->getJson('/api/products?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure(['data', 'meta']);
@@ -95,7 +98,7 @@ class ProductRoutesTest extends TestCase
     public function test_cannot_list_products_without_permission(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products?current_business_id=' . $this->business->id);
+            ->getJson('/api/products?current_business_id='.$this->business->id);
 
         $response->assertStatus(403);
     }
@@ -115,7 +118,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(201)
             ->assertJsonStructure([
@@ -125,7 +128,7 @@ class ProductRoutesTest extends TestCase
                     'uuid',
                     'name',
                     'sku',
-                ]
+                ],
             ]);
 
         $this->assertDatabaseHas('products', [
@@ -137,14 +140,17 @@ class ProductRoutesTest extends TestCase
 
     public function test_cannot_create_product_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $data = [
             'name' => 'Test Product',
             'sku' => 'TEST-001',
             'base_selling_price' => 99.99,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->postJson('/api/products?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403);
     }
@@ -164,14 +170,14 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJson([
                 'data' => [
                     'id' => $product->id,
                     'name' => 'Test Product',
-                ]
+                ],
             ]);
     }
 
@@ -195,7 +201,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->putJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id, $data);
+            ->putJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(200);
 
@@ -208,6 +214,9 @@ class ProductRoutesTest extends TestCase
 
     public function test_cannot_update_product_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $product = Product::create([
             'uuid' => \Str::uuid(),
             'business_id' => $this->business->id,
@@ -218,8 +227,8 @@ class ProductRoutesTest extends TestCase
 
         $data = ['name' => 'Updated Name'];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->putJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->putJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403);
     }
@@ -239,7 +248,7 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id);
+            ->deleteJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200);
 
@@ -250,6 +259,9 @@ class ProductRoutesTest extends TestCase
 
     public function test_cannot_delete_product_without_permission(): void
     {
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
         $product = Product::create([
             'uuid' => \Str::uuid(),
             'business_id' => $this->business->id,
@@ -258,8 +270,8 @@ class ProductRoutesTest extends TestCase
             'base_selling_price' => 99.99,
         ]);
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id);
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')
+            ->deleteJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(403);
     }
@@ -286,7 +298,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products/' . $product->id . '/branches?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products/'.$product->id.'/branches?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(200);
 
@@ -319,7 +331,7 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/products/' . $product->id . '/branches?branch_id=' . $this->branch->id . '&current_business_id=' . $this->business->id);
+            ->deleteJson('/api/products/'.$product->id.'/branches?branch_id='.$this->branch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(200);
 
@@ -360,10 +372,10 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products?category_id=' . $category->id . '&current_business_id=' . $this->business->id);
+            ->getJson('/api/products?category_id='.$category->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(200);
-        
+
         $data = $response->json('data');
         $this->assertCount(1, $data);
         $this->assertEquals('Product 1', $data[0]['name']);
@@ -392,10 +404,10 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products?search=Laptop&current_business_id=' . $this->business->id);
+            ->getJson('/api/products?search=Laptop&current_business_id='.$this->business->id);
 
         $response->assertStatus(200);
-        
+
         $data = $response->json('data');
         $this->assertCount(1, $data);
         $this->assertEquals('Laptop Computer', $data[0]['name']);
@@ -424,7 +436,7 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products/' . $product->id . '?branch_id=' . $this->branch->id . '&current_business_id=' . $this->business->id);
+            ->getJson('/api/products/'.$product->id.'?branch_id='.$this->branch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -435,8 +447,8 @@ class ProductRoutesTest extends TestCase
                         'stock_quantity',
                         'is_available',
                         'is_in_stock',
-                    ]
-                ]
+                    ],
+                ],
             ]);
     }
 
@@ -475,7 +487,7 @@ class ProductRoutesTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products/' . $product->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/products/'.$product->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(404);
     }
@@ -491,7 +503,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['name', 'sku', 'base_selling_price']);
@@ -518,7 +530,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['sku']);
@@ -526,9 +538,8 @@ class ProductRoutesTest extends TestCase
 
     public function test_user_cannot_add_product_to_branch_without_access(): void
     {
-        $this->role->givePermissionTo('manage branch products');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        setPermissionsTeamId($this->business->id);
+        $branchUser = User::factory()->create();
+        $branchUser->businesses()->attach($this->business->id, ['is_active' => true]);
 
         // Create another branch
         $otherBranch = Branch::create([
@@ -553,12 +564,11 @@ class ProductRoutesTest extends TestCase
             'business_id' => $this->business->id,
         ]);
         $branchRole->givePermissionTo('manage branch products');
-        
-        // Assign user to role only for main branch
-        \DB::table('model_has_roles')->insert([
+
+        DB::table('model_has_roles')->insert([
             'role_id' => $branchRole->id,
-            'model_type' => get_class($this->user),
-            'model_id' => $this->user->id,
+            'model_type' => User::class,
+            'model_id' => $branchUser->id,
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
         ]);
@@ -573,8 +583,8 @@ class ProductRoutesTest extends TestCase
             'stock_quantity' => 100,
         ];
 
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products/' . $product->id . '/branches?current_business_id=' . $this->business->id, $data);
+        $response = $this->actingAs($branchUser, 'sanctum')
+            ->postJson('/api/products/'.$product->id.'/branches?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'You do not have access to this branch']);
@@ -601,7 +611,7 @@ class ProductRoutesTest extends TestCase
             'business_id' => $this->business->id,
         ]);
         $branchRole->givePermissionTo('edit products');
-        
+
         // Assign user to role for main branch
         \DB::table('model_has_roles')->insert([
             'role_id' => $branchRole->id,
@@ -622,16 +632,15 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products/' . $product->id . '/branches?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products/'.$product->id.'/branches?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(200);
     }
 
     public function test_user_cannot_remove_product_from_branch_without_access(): void
     {
-        $this->role->givePermissionTo('manage branch products');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        setPermissionsTeamId($this->business->id);
+        $branchUser = User::factory()->create();
+        $branchUser->businesses()->attach($this->business->id, ['is_active' => true]);
 
         // Create another branch
         $otherBranch = Branch::create([
@@ -662,12 +671,11 @@ class ProductRoutesTest extends TestCase
             'business_id' => $this->business->id,
         ]);
         $branchRole->givePermissionTo('manage branch products');
-        
-        // Assign user to role only for main branch
-        \DB::table('model_has_roles')->insert([
+
+        DB::table('model_has_roles')->insert([
             'role_id' => $branchRole->id,
-            'model_type' => get_class($this->user),
-            'model_id' => $this->user->id,
+            'model_type' => User::class,
+            'model_id' => $branchUser->id,
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
         ]);
@@ -676,8 +684,8 @@ class ProductRoutesTest extends TestCase
         setPermissionsTeamId($this->business->id);
 
         // Try to remove product from other branch (should fail)
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->deleteJson('/api/products/' . $product->id . '/branches?branch_id=' . $otherBranch->id . '&current_business_id=' . $this->business->id);
+        $response = $this->actingAs($branchUser, 'sanctum')
+            ->deleteJson('/api/products/'.$product->id.'/branches?branch_id='.$otherBranch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'You do not have access to this branch']);
@@ -685,9 +693,8 @@ class ProductRoutesTest extends TestCase
 
     public function test_user_cannot_filter_products_by_inaccessible_branch(): void
     {
-        $this->role->givePermissionTo('view products');
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-        setPermissionsTeamId($this->business->id);
+        $branchUser = User::factory()->create();
+        $branchUser->businesses()->attach($this->business->id, ['is_active' => true]);
 
         // Create another branch
         $otherBranch = Branch::create([
@@ -704,12 +711,11 @@ class ProductRoutesTest extends TestCase
             'business_id' => $this->business->id,
         ]);
         $branchRole->givePermissionTo('view products');
-        
-        // Assign user to role only for main branch
-        \DB::table('model_has_roles')->insert([
+
+        DB::table('model_has_roles')->insert([
             'role_id' => $branchRole->id,
-            'model_type' => get_class($this->user),
-            'model_id' => $this->user->id,
+            'model_type' => User::class,
+            'model_id' => $branchUser->id,
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
         ]);
@@ -718,8 +724,8 @@ class ProductRoutesTest extends TestCase
         setPermissionsTeamId($this->business->id);
 
         // Try to filter by other branch (should fail)
-        $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/products?branch_id=' . $otherBranch->id . '&current_business_id=' . $this->business->id);
+        $response = $this->actingAs($branchUser, 'sanctum')
+            ->getJson('/api/products?branch_id='.$otherBranch->id.'&current_business_id='.$this->business->id);
 
         $response->assertStatus(403)
             ->assertJson(['message' => 'You do not have access to this branch']);
@@ -755,7 +761,7 @@ class ProductRoutesTest extends TestCase
         ];
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->postJson('/api/products/' . $product->id . '/branches?current_business_id=' . $this->business->id, $data);
+            ->postJson('/api/products/'.$product->id.'/branches?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(200);
     }

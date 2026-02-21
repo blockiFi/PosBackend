@@ -2,8 +2,8 @@
 
 namespace Tests\Unit\Sync;
 
-use App\Models\Business;
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\DeviceRegistration;
 use App\Models\SyncSession;
 use App\Models\User;
@@ -19,7 +19,7 @@ class DeviceRegistrationTest extends TestCase
     {
         $business = Business::factory()->create();
         $device = DeviceRegistration::factory()->create([
-            'business_id' => $business->id
+            'business_id' => $business->id,
         ]);
 
         $this->assertInstanceOf(Business::class, $device->business);
@@ -31,7 +31,7 @@ class DeviceRegistrationTest extends TestCase
     {
         $branch = Branch::factory()->create();
         $device = DeviceRegistration::factory()->create([
-            'branch_id' => $branch->id
+            'branch_id' => $branch->id,
         ]);
 
         $this->assertInstanceOf(Branch::class, $device->branch);
@@ -43,7 +43,7 @@ class DeviceRegistrationTest extends TestCase
     {
         $user = User::factory()->create();
         $device = DeviceRegistration::factory()->create([
-            'user_id' => $user->id
+            'user_id' => $user->id,
         ]);
 
         $this->assertInstanceOf(User::class, $device->user);
@@ -55,7 +55,7 @@ class DeviceRegistrationTest extends TestCase
     {
         $device = DeviceRegistration::factory()->create();
         SyncSession::factory()->count(3)->create([
-            'device_id' => $device->device_id
+            'device_id' => $device->id,
         ]);
 
         $this->assertCount(3, $device->syncSessions);
@@ -92,14 +92,13 @@ class DeviceRegistrationTest extends TestCase
     public function it_can_update_last_seen()
     {
         $device = DeviceRegistration::factory()->create([
-            'last_seen_at' => now()->subHour()
+            'last_seen_at' => now()->subHour(),
         ]);
 
         $oldLastSeen = $device->last_seen_at;
-        $device->updateLastSeen('192.168.1.100');
+        $device->updateLastSeen();
 
         $this->assertNotEquals($oldLastSeen, $device->fresh()->last_seen_at);
-        $this->assertEquals('192.168.1.100', $device->fresh()->ip_address);
     }
 
     /** @test */
@@ -107,7 +106,7 @@ class DeviceRegistrationTest extends TestCase
     {
         $device = DeviceRegistration::factory()->create([
             'total_syncs' => 5,
-            'last_sync_at' => now()->subDay()
+            'last_sync_at' => now()->subDay(),
         ]);
 
         $oldSyncCount = $device->total_syncs;
@@ -133,8 +132,8 @@ class DeviceRegistrationTest extends TestCase
         $device = DeviceRegistration::factory()->create([
             'capabilities' => [
                 'offline_mode' => true,
-                'auto_sync' => false
-            ]
+                'auto_sync' => false,
+            ],
         ]);
 
         $this->assertTrue($device->hasCapability('offline_mode'));
@@ -146,7 +145,7 @@ class DeviceRegistrationTest extends TestCase
     public function it_casts_capabilities_to_array()
     {
         $device = DeviceRegistration::factory()->create([
-            'capabilities' => ['offline_mode' => true]
+            'capabilities' => ['offline_mode' => true],
         ]);
 
         $this->assertIsArray($device->capabilities);
@@ -156,7 +155,7 @@ class DeviceRegistrationTest extends TestCase
     public function it_casts_metadata_to_array()
     {
         $device = DeviceRegistration::factory()->create([
-            'metadata' => ['key' => 'value']
+            'metadata' => ['key' => 'value'],
         ]);
 
         $this->assertIsArray($device->metadata);

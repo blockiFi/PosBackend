@@ -2,9 +2,12 @@
 
 namespace Tests\Feature;
 
-use App\Models\{Business, Customer, User};
+use App\Models\Business;
+use App\Models\Customer;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Spatie\Permission\Models\{Permission, Role};
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class CustomerRoutesTest extends TestCase
@@ -12,7 +15,9 @@ class CustomerRoutesTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Role $role;
 
     protected function setUp(): void
@@ -38,7 +43,7 @@ class CustomerRoutesTest extends TestCase
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         setPermissionsTeamId($this->business->id);
 
-        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/customers?current_business_id=' . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/customers?current_business_id='.$this->business->id, [
             'name' => 'John Doe',
             'email' => 'john@example.com',
             'phone' => '1234567890',
@@ -57,7 +62,7 @@ class CustomerRoutesTest extends TestCase
 
         Customer::create(['business_id' => $this->business->id, 'customer_code' => 'CUST-001', 'name' => 'Test Customer']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/customers?current_business_id=' . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/customers?current_business_id='.$this->business->id);
         $response->assertStatus(200)->assertJsonStructure(['data']);
     }
 
@@ -69,7 +74,7 @@ class CustomerRoutesTest extends TestCase
 
         $customer = Customer::create(['business_id' => $this->business->id, 'customer_code' => 'CUST-001', 'name' => 'Old Name']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/customers/{$customer->id}?current_business_id=" . $this->business->id, [
+        $response = $this->actingAs($this->user, 'sanctum')->putJson("/api/customers/{$customer->id}?current_business_id=".$this->business->id, [
             'name' => 'New Name',
         ]);
 
@@ -85,14 +90,17 @@ class CustomerRoutesTest extends TestCase
 
         $customer = Customer::create(['business_id' => $this->business->id, 'customer_code' => 'CUST-001', 'name' => 'Test']);
 
-        $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/customers/{$customer->id}?current_business_id=" . $this->business->id);
+        $response = $this->actingAs($this->user, 'sanctum')->deleteJson("/api/customers/{$customer->id}?current_business_id=".$this->business->id);
         $response->assertStatus(200);
         $this->assertSoftDeleted('customers', ['id' => $customer->id]);
     }
 
     public function test_enforces_permissions(): void
     {
-        $response = $this->actingAs($this->user, 'sanctum')->getJson('/api/customers?current_business_id=' . $this->business->id);
+        $unprivilegedUser = User::factory()->create();
+        $unprivilegedUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $response = $this->actingAs($unprivilegedUser, 'sanctum')->getJson('/api/customers?current_business_id='.$this->business->id);
         $response->assertStatus(403);
     }
 }

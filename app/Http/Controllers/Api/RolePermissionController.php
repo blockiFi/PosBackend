@@ -13,10 +13,31 @@ use Spatie\Permission\Models\Role;
 
 class RolePermissionController extends Controller
 {
+    use \App\Http\Traits\HasBranchAccess;
+
     // ==================== Permissions ====================
 
     public function listPermissions(Request $request)
     {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        if ($businessId) {
+            setPermissionsTeamId($businessId);
+            $business = $user->businesses()
+                ->where('businesses.id', $businessId)
+                ->wherePivot('is_active', true)
+                ->first();
+
+            if (! $business) {
+                return response()->json(['message' => 'Business not found or access denied'], 404);
+            }
+
+            if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+        }
+
         $permissions = Permission::where('guard_name', 'api')
             ->orderBy('name')
             ->get()
@@ -51,6 +72,12 @@ class RolePermissionController extends Controller
 
         if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check if user is owner or has manage-roles permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $roles = Role::where('guard_name', 'api')
@@ -159,13 +186,19 @@ class RolePermissionController extends Controller
         }
 
         // Verify user has access to this business
-         $business = $user->businesses()
+        $business = $user->businesses()
             ->where('businesses.id', $businessId)
             ->wherePivot('is_active', true)
             ->first();
 
         if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check if user is owner or has manage-roles permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $role = Role::where('id', $id)
@@ -323,7 +356,7 @@ class RolePermissionController extends Controller
         DB::table('role_has_permissions')
             ->where('role_id', $role->id)
             ->delete();
-        
+
         // Clear permission cache before deletion
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
@@ -358,8 +391,8 @@ class RolePermissionController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check if user is owner or has manage-roles permission
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles', 'api', $businessId)) {
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
             return response()->json(['message' => 'You do not have permission to assign roles'], 403);
         }
 
@@ -405,6 +438,9 @@ class RolePermissionController extends Controller
             $branch = $business->branches()->where('id', $data['branch_id'])->first();
             if (! $branch) {
                 return response()->json(['message' => 'Branch not found or does not belong to this business'], 422);
+            }
+            if (! $this->userHasBranchAccess($user, $businessId, (int) $data['branch_id'])) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
             }
         }
 
@@ -539,6 +575,12 @@ class RolePermissionController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
+        // Check if user is owner or has manage-roles permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
         $targetUser = User::findOrFail($userId);
 
         // Verify target user is a member of the business
@@ -597,13 +639,36 @@ class RolePermissionController extends Controller
         ]);
     }
 
-
-public function addPermissionToRole(Request $request)
+    public function addPermissionToRole(Request $request)
     {
-        $data = $request->all();
-       
-        $validator = Validator::make($data, [
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
 
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check if user is owner or has manage-roles permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+            return response()->json(['message' => 'You do not have permission to manage role permissions'], 403);
+        }
+
+        $data = $request->all();
+
+        $validator = Validator::make($data, [
             'role_id' => ['required', 'integer', 'exists:roles,id'],
             'permission_name' => ['required', 'array'],
             'permission_name.*' => ['required', 'string', 'exists:permissions,name,guard_name,api'],
@@ -616,12 +681,14 @@ public function addPermissionToRole(Request $request)
             ], 422);
         }
 
+        // Scope role to business to prevent cross-business access
         $role = Role::where('id', $data['role_id'])
             ->where('guard_name', 'api')
+            ->where('business_id', $businessId)
             ->first();
 
         if (! $role) {
-            return response()->json(['message' => 'Role not found'], 404);
+            return response()->json(['message' => 'Role not found in this business'], 404);
         }
 
         $permissions = Permission::whereIn('name', $data['permission_name'])
@@ -631,12 +698,12 @@ public function addPermissionToRole(Request $request)
         if ($permissions->isEmpty()) {
             return response()->json(['message' => 'No valid permissions found'], 404);
         }
-         
-        if($role->hasAllPermissions($permissions)){
+
+        if ($role->hasAllPermissions($permissions)) {
             return response()->json(['message' => 'Role already has the specified permissions'], 422);
         }
         $role->givePermissionTo($permissions);
-         
+
         return response()->json([
             'message' => 'Permissions added to role',
             'data' => [
@@ -656,8 +723,33 @@ public function addPermissionToRole(Request $request)
 
     public function removePermissionFromRole(Request $request)
     {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check if user is owner or has manage-roles permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-roles')) {
+            return response()->json(['message' => 'You do not have permission to manage role permissions'], 403);
+        }
+
         $data = $request->all();
-       
+
         $validator = Validator::make($data, [
             'role_id' => ['required', 'integer', 'exists:roles,id'],
             'permission_name' => ['required', 'array'],
@@ -671,12 +763,14 @@ public function addPermissionToRole(Request $request)
             ], 422);
         }
 
+        // Scope role to business to prevent cross-business access
         $role = Role::where('id', $data['role_id'])
             ->where('guard_name', 'api')
+            ->where('business_id', $businessId)
             ->first();
 
         if (! $role) {
-            return response()->json(['message' => 'Role not found'], 404);
+            return response()->json(['message' => 'Role not found in this business'], 404);
         }
 
         $permissions = Permission::whereIn('name', $data['permission_name'])
@@ -696,7 +790,7 @@ public function addPermissionToRole(Request $request)
             }
         }
 
-        if (!$hasAnyPermission) {
+        if (! $hasAnyPermission) {
             return response()->json(['message' => 'Role does not have any of the specified permissions'], 422);
         }
 
@@ -704,7 +798,7 @@ public function addPermissionToRole(Request $request)
 
         // Clear permission cache
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
-         
+
         return response()->json([
             'message' => 'Permissions removed from role',
             'data' => [

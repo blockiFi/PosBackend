@@ -11,7 +11,7 @@ class RealisticRoleSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     * 
+     *
      * Creates realistic role templates with proper permission boundaries:
      * - Owner: System-wide control
      * - Manager: Approvals and operations management
@@ -94,6 +94,14 @@ class RealisticRoleSeeder extends Seeder
                     // Authentication
                     'use-pin-login',
                     'manage-pin-codes',
+
+                    // Branch Management
+                    'view-branches',
+                    'manage-branches',
+
+                    // Sync Operations
+                    'manage server sync',
+                    'sync data',
                 ],
             ],
 
@@ -154,6 +162,13 @@ class RealisticRoleSeeder extends Seeder
 
                     // Authentication
                     'use-pin-login',
+
+                    // Branch Management
+                    'view-branches',
+                    'manage-branches',
+
+                    // Sync Operations
+                    'sync data',
                 ],
             ],
 
@@ -196,6 +211,12 @@ class RealisticRoleSeeder extends Seeder
 
                     // Authentication
                     'use-pin-login',
+
+                    // Branch Management
+                    'view-branches',
+
+                    // Sync Operations
+                    'sync data',
                 ],
             ],
 
@@ -234,6 +255,12 @@ class RealisticRoleSeeder extends Seeder
 
                     // Authentication
                     'use-pin-login',
+
+                    // Branch Management
+                    'view-branches',
+
+                    // Sync Operations
+                    'sync data',
                 ],
             ],
         ];
@@ -245,11 +272,11 @@ class RealisticRoleSeeder extends Seeder
             foreach ($config['permissions'] as $permissionName) {
                 Permission::firstOrCreate([
                     'name' => $permissionName,
-                    'guard_name' => 'api'
+                    'guard_name' => 'api',
                 ]);
             }
 
-            $this->command->info("  ✓ {$roleName}: " . count($config['permissions']) . " permissions registered");
+            $this->command->info("  ✓ {$roleName}: ".count($config['permissions']).' permissions registered');
         }
 
         $this->command->newLine();
@@ -271,12 +298,12 @@ class RealisticRoleSeeder extends Seeder
         foreach ($roles as $roleName => $config) {
             $this->command->info("📋 {$roleName}");
             $this->command->info("   {$config['description']}");
-            $this->command->info("   Permissions: " . count($config['permissions']));
-            
+            $this->command->info('   Permissions: '.count($config['permissions']));
+
             // Highlight key capabilities
             $capabilities = $this->getKeyCapabilities($roleName, $config['permissions']);
-            if (!empty($capabilities)) {
-                $this->command->info("   Key Access:");
+            if (! empty($capabilities)) {
+                $this->command->info('   Key Access:');
                 foreach ($capabilities as $capability) {
                     $this->command->info("     • {$capability}");
                 }
@@ -299,10 +326,10 @@ class RealisticRoleSeeder extends Seeder
         $capabilities = [];
 
         // Check for approval permissions
-        $approvals = array_filter($permissions, fn($p) => str_contains($p, 'approve'));
-        if (!empty($approvals)) {
-            $capabilities[] = 'Can approve: ' . implode(', ', array_map(
-                fn($p) => str_replace('approve ', '', $p),
+        $approvals = array_filter($permissions, fn ($p) => str_contains($p, 'approve'));
+        if (! empty($approvals)) {
+            $capabilities[] = 'Can approve: '.implode(', ', array_map(
+                fn ($p) => str_replace('approve ', '', $p),
                 $approvals
             ));
         }
@@ -323,7 +350,7 @@ class RealisticRoleSeeder extends Seeder
         // Check for shift management
         if (in_array('manage shifts', $permissions)) {
             $capabilities[] = 'Full shift management';
-        } elseif (in_array('view user shift', $permissions) && !in_array('view all shifts', $permissions)) {
+        } elseif (in_array('view user shift', $permissions) && ! in_array('view all shifts', $permissions)) {
             $capabilities[] = 'Own shift access only';
         }
 

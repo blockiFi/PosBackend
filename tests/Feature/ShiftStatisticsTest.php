@@ -4,8 +4,6 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
-use App\Models\PaymentMethod;
-use App\Models\Sale;
 use App\Models\SalesShift;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,8 +16,11 @@ class ShiftStatisticsTest extends TestCase
     use RefreshDatabase;
 
     private User $user;
+
     private Business $business;
+
     private Branch $branch;
+
     private SalesShift $shift;
 
     protected function setUp(): void
@@ -38,14 +39,14 @@ class ShiftStatisticsTest extends TestCase
         $this->user = User::factory()->create();
         $this->user->businesses()->attach($this->business->id, ['is_active' => true]);
 
-        // Create permission and role
-        Permission::create(['name' => 'view shifts', 'guard_name' => 'api']);
+        // Create permission and role (controller checks 'view all shifts' or 'view user shift')
+        Permission::firstOrCreate(['name' => 'view all shifts', 'guard_name' => 'api']);
         $role = Role::create([
             'name' => 'Manager',
             'guard_name' => 'api',
             'business_id' => $this->business->id,
         ]);
-        $role->givePermissionTo('view shifts');
+        $role->givePermissionTo('view all shifts');
 
         // Assign role to user
         \Illuminate\Support\Facades\DB::table('model_has_roles')->insert([
@@ -112,7 +113,7 @@ class ShiftStatisticsTest extends TestCase
             ]);
 
         $shiftData = $response->json('data.0');
-        
+
         // Verify statistics calculations
         $this->assertEquals(1000.00, $shiftData['statistics']['gross_sales']);
         $this->assertEquals(20, $shiftData['statistics']['total_transactions']);
@@ -150,7 +151,7 @@ class ShiftStatisticsTest extends TestCase
             ]);
 
         $response->assertStatus(200);
-        
+
         $shifts = $response->json('data');
         // The shift from setUp and todayShift should both be today
         $this->assertGreaterThanOrEqual(1, count($shifts));
@@ -186,7 +187,7 @@ class ShiftStatisticsTest extends TestCase
             ]);
 
         $response->assertStatus(200);
-        
+
         $shiftNumbers = collect($response->json('data'))->pluck('shift_number')->toArray();
         $this->assertContains($this->shift->shift_number, $shiftNumbers);
         $this->assertContains($recentShift->shift_number, $shiftNumbers);
@@ -220,7 +221,7 @@ class ShiftStatisticsTest extends TestCase
             ]);
 
         $response->assertStatus(200);
-        
+
         $shiftNumbers = collect($response->json('data'))->pluck('shift_number')->toArray();
         $this->assertContains($shift1->shift_number, $shiftNumbers);
         $this->assertContains($shift2->shift_number, $shiftNumbers);
@@ -248,13 +249,13 @@ class ShiftStatisticsTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->user)
-            ->getJson('/api/shifts/' . $shiftWithVariance->id, [
+            ->getJson('/api/shifts/'.$shiftWithVariance->id, [
                 'X-Business-Id' => $this->business->id,
             ]);
 
         $response->assertStatus(200)
             ->assertJsonPath('statistics.reconciliation_status', 'discrepancy');
-        
+
         $this->assertEquals(-20.0, $response->json('statistics.variance'));
     }
 }

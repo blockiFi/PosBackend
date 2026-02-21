@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\RefundRequest;
@@ -13,6 +14,8 @@ use Str;
 
 class RefundRequestController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List refund requests with filtering
      */
@@ -21,11 +24,22 @@ class RefundRequestController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        // Check permissions
-        $canRequest = $user->hasPermissionTo('request refund');
-        $canApprove = $user->hasPermissionTo('approve refund');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
 
-        if (!$canRequest && !$canApprove) {
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check permissions
+        setPermissionsTeamId($businessId);
+        $canRequest = $user->hasPermissionTo('request refund');
+        $canApprove = $business->owner_id === $user->id || $user->hasPermissionTo('approve refund');
+
+        if (! $canRequest && ! $canApprove) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -34,7 +48,7 @@ class RefundRequestController extends Controller
             'sale.customer',
             'sale.branch',
             'requestedBy',
-            'reviewedBy'
+            'reviewedBy',
         ])->forBusiness($businessId);
 
         // Filter by accessible branches
@@ -44,7 +58,7 @@ class RefundRequestController extends Controller
         }
 
         // If user can only request (not approve), show only their requests
-        if ($canRequest && !$canApprove) {
+        if ($canRequest && ! $canApprove) {
             $query->where('requested_by', $user->id);
         }
 
@@ -55,7 +69,7 @@ class RefundRequestController extends Controller
 
         if ($request->filled('branch_id')) {
             $branchId = $request->branch_id;
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'Unauthorized access to this branch'], 403);
             }
             $query->where('branch_id', $branchId);
@@ -78,7 +92,18 @@ class RefundRequestController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('request refund')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('request refund')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -93,24 +118,24 @@ class RefundRequestController extends Controller
             ->findOrFail($validated['sale_id']);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate sale is refundable
-        if (!$sale->isRefundable()) {
+        if (! $sale->isRefundable()) {
             return response()->json([
                 'message' => 'Sale is not eligible for refund',
-                'reason' => $sale->is_refunded 
-                    ? 'Sale has already been refunded' 
-                    : ($sale->trashed() ? 'Sale has been deleted' : 'Sale status does not allow refund')
+                'reason' => $sale->is_refunded
+                    ? 'Sale has already been refunded'
+                    : ($sale->trashed() ? 'Sale has been deleted' : 'Sale status does not allow refund'),
             ], 400);
         }
 
         // Check for duplicate pending requests
         if ($sale->hasPendingRefundRequest()) {
             return response()->json([
-                'message' => 'A pending refund request already exists for this sale'
+                'message' => 'A pending refund request already exists for this sale',
             ], 400);
         }
 
@@ -135,9 +160,10 @@ class RefundRequestController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to create refund request',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -150,10 +176,21 @@ class RefundRequestController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        $canRequest = $user->hasPermissionTo('request refund');
-        $canApprove = $user->hasPermissionTo('approve refund');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
 
-        if (!$canRequest && !$canApprove) {
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        $canRequest = $user->hasPermissionTo('request refund');
+        $canApprove = $business->owner_id === $user->id || $user->hasPermissionTo('approve refund');
+
+        if (! $canRequest && ! $canApprove) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -163,16 +200,16 @@ class RefundRequestController extends Controller
             'sale.customer',
             'sale.branch',
             'requestedBy',
-            'reviewedBy'
+            'reviewedBy',
         ])->forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // If user can only request (not approve), they can only view their own requests
-        if ($canRequest && !$canApprove && $refundRequest->requested_by !== $user->id) {
+        if ($canRequest && ! $canApprove && $refundRequest->requested_by !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -187,7 +224,18 @@ class RefundRequestController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('approve refund')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve refund')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -196,22 +244,22 @@ class RefundRequestController extends Controller
             ->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate request is pending
-        if (!$refundRequest->isPending()) {
+        if (! $refundRequest->isPending()) {
             return response()->json([
                 'message' => 'Only pending refund requests can be approved',
-                'current_status' => $refundRequest->status
+                'current_status' => $refundRequest->status,
             ], 400);
         }
 
         // Prevent self-approval
         if ($refundRequest->requested_by === $user->id) {
             return response()->json([
-                'message' => 'You cannot approve your own refund request'
+                'message' => 'You cannot approve your own refund request',
             ], 403);
         }
 
@@ -263,15 +311,16 @@ class RefundRequestController extends Controller
                 'refund_request' => $refundRequest->fresh([
                     'sale',
                     'requestedBy',
-                    'reviewedBy'
+                    'reviewedBy',
                 ]),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to process refund',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -284,7 +333,18 @@ class RefundRequestController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('approve refund')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve refund')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -295,22 +355,22 @@ class RefundRequestController extends Controller
         $refundRequest = RefundRequest::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $refundRequest->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate request is pending
-        if (!$refundRequest->isPending()) {
+        if (! $refundRequest->isPending()) {
             return response()->json([
                 'message' => 'Only pending refund requests can be rejected',
-                'current_status' => $refundRequest->status
+                'current_status' => $refundRequest->status,
             ], 400);
         }
 
         // Prevent self-rejection
         if ($refundRequest->requested_by === $user->id) {
             return response()->json([
-                'message' => 'You cannot reject your own refund request'
+                'message' => 'You cannot reject your own refund request',
             ], 403);
         }
 
@@ -325,31 +385,17 @@ class RefundRequestController extends Controller
                 'refund_request' => $refundRequest->fresh([
                     'sale',
                     'requestedBy',
-                    'reviewedBy'
+                    'reviewedBy',
                 ]),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to reject refund request',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * Check if user has access to a specific branch
-     */
-    private function userHasBranchAccess($user, $businessId, $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        // Empty collection means user has access to all branches
-        if ($accessibleBranches->isEmpty()) {
-            return true;
-        }
-        
-        return $accessibleBranches->contains('id', $branchId);
     }
 }

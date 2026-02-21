@@ -97,6 +97,12 @@ class DeviceRegistration extends Model
 
     public function hasCapability(string $capability): bool
     {
-        return in_array($capability, $this->capabilities ?? []);
+        $capabilities = $this->capabilities ?? [];
+
+        if (array_key_exists($capability, $capabilities)) {
+            return (bool) $capabilities[$capability];
+        }
+
+        return false;
     }
 }

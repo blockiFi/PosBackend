@@ -16,9 +16,9 @@ class ProductCategoryController extends Controller
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -30,12 +30,13 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check permission
-        if (!$user->hasPermissionTo('view categories', 'api')) {
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view categories', 'api')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -56,9 +57,9 @@ class ProductCategoryController extends Controller
             if ($parentId !== null) {
                 $query->where('parent_id', $parentId);
             }
-            
+
             $categories = $query->orderBy('sort_order')->orderBy('name')->get();
-            
+
             $data = $categories->map(function ($category) use ($withProducts) {
                 return $this->formatCategory($category, $withProducts);
             });
@@ -68,7 +69,7 @@ class ProductCategoryController extends Controller
                 ->orderBy('sort_order')
                 ->orderBy('name')
                 ->get();
-            
+
             $data = $categories->map(function ($category) use ($withProducts) {
                 return $this->formatCategoryWithChildren($category, $withProducts);
             });
@@ -83,9 +84,9 @@ class ProductCategoryController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -97,22 +98,22 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('create categories')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create categories')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['nullable', 'string', 'max:255', 'unique:product_categories,slug,NULL,id,business_id,' . $businessId],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:product_categories,slug,NULL,id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
-            'parent_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,' . $businessId],
+            'parent_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'image' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],
@@ -129,22 +130,22 @@ class ProductCategoryController extends Controller
         // Auto-generate slug if not provided
         if (empty($data['slug'])) {
             $data['slug'] = Str::slug($data['name']);
-            
+
             // Ensure unique slug
             $baseSlug = $data['slug'];
             $counter = 1;
             while (ProductCategory::where('business_id', $businessId)
                 ->where('slug', $data['slug'])
                 ->exists()) {
-                $data['slug'] = $baseSlug . '-' . $counter;
+                $data['slug'] = $baseSlug.'-'.$counter;
                 $counter++;
             }
         }
 
         // Validate parent doesn't create circular reference
-        if (!empty($data['parent_id'])) {
+        if (! empty($data['parent_id'])) {
             $parent = ProductCategory::find($data['parent_id']);
-            if (!$parent || $parent->business_id != $businessId) {
+            if (! $parent || $parent->business_id != $businessId) {
                 return response()->json([
                     'message' => 'Invalid parent category',
                 ], 422);
@@ -175,9 +176,9 @@ class ProductCategoryController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -189,12 +190,13 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check permission
-        if (!$user->hasPermissionTo('view categories', 'api')) {
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view categories', 'api')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -202,7 +204,7 @@ class ProductCategoryController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$category) {
+        if (! $category) {
             return response()->json(['message' => 'Category not found'], 404);
         }
 
@@ -224,9 +226,9 @@ class ProductCategoryController extends Controller
     public function update(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -238,13 +240,13 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('edit categories')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('edit categories')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -252,16 +254,16 @@ class ProductCategoryController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$category) {
+        if (! $category) {
             return response()->json(['message' => 'Category not found'], 404);
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'slug' => ['sometimes', 'string', 'max:255', 'unique:product_categories,slug,' . $id . ',id,business_id,' . $businessId],
+            'slug' => ['sometimes', 'string', 'max:255', 'unique:product_categories,slug,'.$id.',id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
-            'parent_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,' . $businessId],
+            'parent_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'image' => ['nullable', 'string'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],
@@ -285,7 +287,7 @@ class ProductCategoryController extends Controller
 
             if ($data['parent_id']) {
                 $parent = ProductCategory::find($data['parent_id']);
-                if (!$parent || $parent->business_id != $businessId) {
+                if (! $parent || $parent->business_id != $businessId) {
                     return response()->json([
                         'message' => 'Invalid parent category',
                     ], 422);
@@ -302,7 +304,7 @@ class ProductCategoryController extends Controller
         }
 
         // Auto-generate slug if name changed and slug not provided
-        if (isset($data['name']) && !isset($data['slug'])) {
+        if (isset($data['name']) && ! isset($data['slug'])) {
             $newSlug = Str::slug($data['name']);
             if ($newSlug !== $category->slug) {
                 $baseSlug = $newSlug;
@@ -311,7 +313,7 @@ class ProductCategoryController extends Controller
                     ->where('slug', $newSlug)
                     ->where('id', '!=', $id)
                     ->exists()) {
-                    $newSlug = $baseSlug . '-' . $counter;
+                    $newSlug = $baseSlug.'-'.$counter;
                     $counter++;
                 }
                 $data['slug'] = $newSlug;
@@ -320,8 +322,8 @@ class ProductCategoryController extends Controller
 
         $category->update(array_filter($data, function ($key) {
             return in_array($key, [
-                'name', 'slug', 'description', 'parent_id', 
-                'image', 'sort_order', 'is_active', 'meta_data'
+                'name', 'slug', 'description', 'parent_id',
+                'image', 'sort_order', 'is_active', 'meta_data',
             ]);
         }, ARRAY_FILTER_USE_KEY));
 
@@ -337,9 +339,9 @@ class ProductCategoryController extends Controller
     public function destroy(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -351,13 +353,13 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('delete categories')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('delete categories')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -365,7 +367,7 @@ class ProductCategoryController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$category) {
+        if (! $category) {
             return response()->json(['message' => 'Category not found'], 404);
         }
 
@@ -400,9 +402,9 @@ class ProductCategoryController extends Controller
     public function breadcrumb(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json([
                 'message' => 'Business context is required',
             ], 400);
@@ -414,12 +416,13 @@ class ProductCategoryController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check permission
-        if (!$user->hasPermissionTo('view categories', 'api')) {
+        // Set permission context and check permission
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view categories', 'api')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -427,7 +430,7 @@ class ProductCategoryController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$category) {
+        if (! $category) {
             return response()->json(['message' => 'Category not found'], 404);
         }
 
@@ -484,7 +487,7 @@ class ProductCategoryController extends Controller
     private function formatCategoryWithChildren(ProductCategory $category, bool $withProducts = false): array
     {
         $data = $this->formatCategory($category, $withProducts);
-        
+
         $children = $category->children()
             ->orderBy('sort_order')
             ->orderBy('name')

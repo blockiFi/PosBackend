@@ -22,9 +22,9 @@ class RolePermissionRoutesTest extends TestCase
     public function test_authenticated_user_can_list_permissions()
     {
         // Create some permissions
-        Permission::create(['name' => 'create-sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'view-sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'manage-roles', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'create-sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view-sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-roles', 'guard_name' => 'api']);
 
         $user = User::create([
             'name' => 'Test User',
@@ -36,10 +36,11 @@ class RolePermissionRoutesTest extends TestCase
 
         $response = $this->getJson('/api/permissions');
 
+        $data = $response->json('data');
         $response->assertStatus(200)
-            ->assertJsonStructure(['data' => [['id', 'name']]])
-            ->assertJsonCount(3, 'data')
-            ->assertJsonFragment(['name' => 'create-sales'])
+            ->assertJsonStructure(['data' => [['id', 'name']]]);
+        $this->assertGreaterThanOrEqual(3, count($data));
+        $response->assertJsonFragment(['name' => 'create-sales'])
             ->assertJsonFragment(['name' => 'view-sales'])
             ->assertJsonFragment(['name' => 'manage-roles']);
     }
@@ -158,8 +159,8 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $permission1 = Permission::create(['name' => 'create-sales', 'guard_name' => 'api']);
-        $permission2 = Permission::create(['name' => 'view-sales', 'guard_name' => 'api']);
+        $permission1 = Permission::firstOrCreate(['name' => 'create-sales', 'guard_name' => 'api']);
+        $permission2 = Permission::firstOrCreate(['name' => 'view-sales', 'guard_name' => 'api']);
 
         $owner->businesses()->attach($business->id, [
             'is_active' => true,
@@ -373,7 +374,7 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $permission = Permission::create(['name' => 'create-sales', 'guard_name' => 'api']);
+        $permission = Permission::firstOrCreate(['name' => 'create-sales', 'guard_name' => 'api']);
 
         $role = Role::create([
             'name' => 'Sales Role',
@@ -443,9 +444,9 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $permission1 = Permission::create(['name' => 'create-sales', 'guard_name' => 'api']);
-        $permission2 = Permission::create(['name' => 'view-sales', 'guard_name' => 'api']);
-        $permission3 = Permission::create(['name' => 'edit-sales', 'guard_name' => 'api']);
+        $permission1 = Permission::firstOrCreate(['name' => 'create-sales', 'guard_name' => 'api']);
+        $permission2 = Permission::firstOrCreate(['name' => 'view-sales', 'guard_name' => 'api']);
+        $permission3 = Permission::firstOrCreate(['name' => 'edit-sales', 'guard_name' => 'api']);
 
         $role = Role::create([
             'name' => 'Original Role',
@@ -746,7 +747,7 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $manageRolesPermission = Permission::create(['name' => 'manage-roles', 'guard_name' => 'api']);
+        $manageRolesPermission = Permission::firstOrCreate(['name' => 'manage-roles', 'guard_name' => 'api']);
         $role = Role::create([
             'name' => 'Manager',
             'guard_name' => 'api',
@@ -840,7 +841,7 @@ class RolePermissionRoutesTest extends TestCase
         ]);
 
         // Create manage-roles permission (needed for the check, even though user doesn't have it)
-        Permission::create(['name' => 'manage-roles', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-roles', 'guard_name' => 'api']);
 
         Sanctum::actingAs($staff);
 
@@ -1086,7 +1087,7 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $manageRolesPermission = Permission::create(['name' => 'manage-roles', 'guard_name' => 'api']);
+        $manageRolesPermission = Permission::firstOrCreate(['name' => 'manage-roles', 'guard_name' => 'api']);
         $role = Role::create([
             'name' => 'Manager',
             'guard_name' => 'api',
@@ -1186,7 +1187,7 @@ class RolePermissionRoutesTest extends TestCase
         ]);
 
         // Create manage-roles permission (needed for the check)
-        Permission::create(['name' => 'manage-roles', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'manage-roles', 'guard_name' => 'api']);
 
         // Assign role first using direct DB insertion
         DB::table('model_has_roles')->insert([
@@ -1242,8 +1243,8 @@ class RolePermissionRoutesTest extends TestCase
             'currency' => 'USD',
         ]);
 
-        $permission1 = Permission::create(['name' => 'create-sales', 'guard_name' => 'api']);
-        $permission2 = Permission::create(['name' => 'view-sales', 'guard_name' => 'api']);
+        $permission1 = Permission::firstOrCreate(['name' => 'create-sales', 'guard_name' => 'api']);
+        $permission2 = Permission::firstOrCreate(['name' => 'view-sales', 'guard_name' => 'api']);
 
         $role1 = Role::create([
             'name' => 'Manager',

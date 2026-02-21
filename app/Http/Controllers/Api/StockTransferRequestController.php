@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\StockTransferRequest;
 use Illuminate\Http\Request;
@@ -10,15 +11,17 @@ use Illuminate\Support\Facades\Validator;
 
 class StockTransferRequestController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List stock transfer requests
      */
     public function index(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -28,18 +31,19 @@ class StockTransferRequestController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context
         setPermissionsTeamId($businessId);
 
-        // Check if user can view requests (either requester or approver)
-        $canView = $user->hasPermissionTo('request stock transfer') || 
-                   $user->hasPermissionTo('approve stock transfer');
+        // Check if user can view requests (either requester or approver, or owner)
+        $canView = $business->owner_id === $user->id ||
+                    $user->hasPermissionTo('request stock transfer') ||
+                    $user->hasPermissionTo('approve stock transfer');
 
-        if (!$canView) {
+        if (! $canView) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -49,13 +53,19 @@ class StockTransferRequestController extends Controller
         // Filters
         if ($request->has('branch_id')) {
             $branchId = $request->input('branch_id');
-            
+
             // Check branch access
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'You do not have access to this branch'], 403);
             }
-            
+
             $query->where('branch_id', $branchId);
+        } else {
+            // Scope to user's permitted branches
+            $permittedBranches = $this->getPermittedBranches($user, $businessId);
+            if ($permittedBranches->isNotEmpty()) {
+                $query->whereIn('branch_id', $permittedBranches);
+            }
         }
 
         if ($request->has('status')) {
@@ -85,7 +95,7 @@ class StockTransferRequestController extends Controller
         $requests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         return response()->json([
-            'data' => $requests->map(fn($r) => $this->formatRequest($r)),
+            'data' => $requests->map(fn ($r) => $this->formatRequest($r)),
             'meta' => [
                 'current_page' => $requests->currentPage(),
                 'last_page' => $requests->lastPage(),
@@ -101,9 +111,9 @@ class StockTransferRequestController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
         }
 
@@ -113,18 +123,18 @@ class StockTransferRequestController extends Controller
             ->wherePivot('is_active', true)
             ->first();
 
-        if (!$business) {
+        if (! $business) {
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('request stock transfer')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('request stock transfer')) {
             return response()->json(['message' => 'You do not have permission to request stock transfers'], 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,' . $businessId],
+            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'branch_product_id' => ['required', 'integer', 'exists:branch_products,id'],
             'quantity_requested' => ['required', 'integer', 'min:1'],
             'reason' => ['nullable', 'string', 'max:500'],
@@ -139,7 +149,7 @@ class StockTransferRequestController extends Controller
         }
 
         // Verify branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $request->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $request->branch_id)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -148,7 +158,7 @@ class StockTransferRequestController extends Controller
             ->where('branch_id', $request->branch_id)
             ->first();
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Product not found in this branch'], 404);
         }
 
@@ -185,10 +195,20 @@ class StockTransferRequestController extends Controller
     public function show(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         $transferRequest = StockTransferRequest::where('id', $id)
@@ -196,20 +216,26 @@ class StockTransferRequestController extends Controller
             ->with(['branch', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy'])
             ->first();
 
-        if (!$transferRequest) {
+        if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
         // Set permission context
         setPermissionsTeamId($businessId);
 
-        // Check if user can view (requester, approver, or has branch access)
+        // Check if user can view (requester, approver, or owner)
         $canView = $transferRequest->requested_by === $user->id ||
+                   $business->owner_id === $user->id ||
                    $user->hasPermissionTo('approve stock transfer') ||
                    $user->hasPermissionTo('request stock transfer');
 
-        if (!$canView) {
+        if (! $canView) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        // Verify branch access
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         return response()->json([
@@ -223,15 +249,25 @@ class StockTransferRequestController extends Controller
     public function approve(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('approve stock transfer')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve stock transfer')) {
             return response()->json(['message' => 'You do not have permission to approve stock transfers'], 403);
         }
 
@@ -241,12 +277,12 @@ class StockTransferRequestController extends Controller
             ->lockForUpdate()
             ->first();
 
-        if (!$transferRequest) {
+        if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -286,15 +322,25 @@ class StockTransferRequestController extends Controller
     public function reject(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if (!$user->hasPermissionTo('approve stock transfer')) {
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve stock transfer')) {
             return response()->json(['message' => 'You do not have permission to reject stock transfers'], 403);
         }
 
@@ -303,12 +349,12 @@ class StockTransferRequestController extends Controller
             ->lockForUpdate()
             ->first();
 
-        if (!$transferRequest) {
+        if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -343,10 +389,20 @@ class StockTransferRequestController extends Controller
     public function confirm(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         // Set permission context
@@ -358,25 +414,26 @@ class StockTransferRequestController extends Controller
             ->lockForUpdate()
             ->first();
 
-        if (!$transferRequest) {
+        if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
-        // Only the requester can confirm (or someone with special permission)
-        $canConfirm = $transferRequest->requested_by === $user->id ||
+        // Only the requester, owner, or someone with special permission can confirm
+        $canConfirm = $business->owner_id === $user->id ||
+                      $transferRequest->requested_by === $user->id ||
                       $user->hasPermissionTo('approve stock transfer');
 
-        if (!$canConfirm) {
+        if (! $canConfirm) {
             return response()->json(['message' => 'Only the requester can confirm this transfer'], 403);
         }
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         $validator = Validator::make($request->all(), [
-            'actual_quantity' => ['nullable', 'integer', 'min:1', 'max:' . $transferRequest->quantity_requested],
+            'actual_quantity' => ['nullable', 'integer', 'min:1', 'max:'.$transferRequest->quantity_requested],
             'notes' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -389,7 +446,7 @@ class StockTransferRequestController extends Controller
 
         try {
             $actualQuantity = $request->actual_quantity ?? $transferRequest->quantity_requested;
-            
+
             $transferRequest->confirm($user, $actualQuantity, $request->notes);
 
             return response()->json([
@@ -403,16 +460,23 @@ class StockTransferRequestController extends Controller
         }
     }
 
-    /**
-     * Cancel a stock transfer request
-     */
     public function cancel(Request $request, int $id)
     {
         $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (!$businessId) {
+        if (! $businessId) {
             return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
         $transferRequest = StockTransferRequest::where('id', $id)
@@ -420,13 +484,19 @@ class StockTransferRequestController extends Controller
             ->lockForUpdate()
             ->first();
 
-        if (!$transferRequest) {
+        if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
-        // Only the requester can cancel their own request
-        if ($transferRequest->requested_by !== $user->id) {
+        setPermissionsTeamId($businessId);
+
+        // Only the requester or owner can cancel
+        if ($business->owner_id !== $user->id && $transferRequest->requested_by !== $user->id) {
             return response()->json(['message' => 'Only the requester can cancel this request'], 403);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
         $validator = Validator::make($request->all(), [
@@ -452,27 +522,6 @@ class StockTransferRequestController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         }
-    }
-
-    /**
-     * Check if user has access to a branch
-     */
-    private function userHasBranchAccess($user, int $businessId, int $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        if ($accessibleBranches->isEmpty()) {
-            $hasBusinessWideRole = \DB::table('model_has_roles')
-                ->where('model_type', get_class($user))
-                ->where('model_id', $user->id)
-                ->where('business_id', $businessId)
-                ->whereNull('branch_id')
-                ->exists();
-            
-            return $hasBusinessWideRole;
-        }
-        
-        return $accessibleBranches->contains($branchId);
     }
 
     /**

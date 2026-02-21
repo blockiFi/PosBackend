@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\Product;
 use App\Models\QuickSale;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\DB;
 
 class QuickSaleController extends Controller
 {
+    use HasBranchAccess;
+
     /**
      * List quick sales with filtering
      */
@@ -20,11 +23,22 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        // Check permissions
-        $canRequest = $user->hasPermissionTo('request quick sale');
-        $canApprove = $user->hasPermissionTo('approve quick sale');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
 
-        if (!$canRequest && !$canApprove) {
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        // Check permissions
+        setPermissionsTeamId($businessId);
+        $canRequest = $user->hasPermissionTo('request quick sale');
+        $canApprove = $business->owner_id === $user->id || $user->hasPermissionTo('approve quick sale');
+
+        if (! $canRequest && ! $canApprove) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -33,7 +47,7 @@ class QuickSaleController extends Controller
             'branch',
             'requestedBy',
             'approvedBy',
-            'endedBy'
+            'endedBy',
         ])->forBusiness($businessId);
 
         // Filter by accessible branches
@@ -43,7 +57,7 @@ class QuickSaleController extends Controller
         }
 
         // If user can only request (not approve), show only their requests
-        if ($canRequest && !$canApprove) {
+        if ($canRequest && ! $canApprove) {
             $query->where('requested_by', $user->id);
         }
 
@@ -54,7 +68,7 @@ class QuickSaleController extends Controller
 
         if ($request->filled('branch_id')) {
             $branchId = $request->branch_id;
-            if (!$this->userHasBranchAccess($user, $businessId, $branchId)) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'Unauthorized access to this branch'], 403);
             }
             $query->where('branch_id', $branchId);
@@ -77,7 +91,18 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('request quick sale')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('request quick sale')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -93,12 +118,12 @@ class QuickSaleController extends Controller
             ->where('business_id', $businessId)
             ->first();
 
-        if (!$product) {
+        if (! $product) {
             return response()->json(['message' => 'Product not found'], 404);
         }
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
+        if (! $this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
@@ -107,15 +132,15 @@ class QuickSaleController extends Controller
             ->where('branch_id', $validated['branch_id'])
             ->first();
 
-        if (!$branchProduct) {
+        if (! $branchProduct) {
             return response()->json([
-                'message' => 'Product not available in this branch'
+                'message' => 'Product not available in this branch',
             ], 400);
         }
 
         if ($branchProduct->stock_quantity <= 0) {
             return response()->json([
-                'message' => 'Product is out of stock'
+                'message' => 'Product is out of stock',
             ], 400);
         }
 
@@ -127,7 +152,7 @@ class QuickSaleController extends Controller
 
         if ($hasPending) {
             return response()->json([
-                'message' => 'A pending quick sale request already exists for this product in this branch'
+                'message' => 'A pending quick sale request already exists for this product in this branch',
             ], 400);
         }
 
@@ -152,9 +177,10 @@ class QuickSaleController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to create quick sale request',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -167,10 +193,21 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        $canRequest = $user->hasPermissionTo('request quick sale');
-        $canApprove = $user->hasPermissionTo('approve quick sale');
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
 
-        if (!$canRequest && !$canApprove) {
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        $canRequest = $user->hasPermissionTo('request quick sale');
+        $canApprove = $business->owner_id === $user->id || $user->hasPermissionTo('approve quick sale');
+
+        if (! $canRequest && ! $canApprove) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -184,16 +221,16 @@ class QuickSaleController extends Controller
             'branch',
             'requestedBy',
             'approvedBy',
-            'endedBy'
+            'endedBy',
         ])->forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // If user can only request (not approve), they can only view their own requests
-        if ($canRequest && !$canApprove && $quickSale->requested_by !== $user->id) {
+        if ($canRequest && ! $canApprove && $quickSale->requested_by !== $user->id) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -208,7 +245,18 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('approve quick sale')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve quick sale')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -223,29 +271,29 @@ class QuickSaleController extends Controller
         if ($validated['discount_type'] === 'percentage' && $validated['discount_value'] > 100) {
             return response()->json([
                 'message' => 'Percentage discount cannot exceed 100%',
-                'errors' => ['discount_value' => ['Percentage must be between 0 and 100']]
+                'errors' => ['discount_value' => ['Percentage must be between 0 and 100']],
             ], 422);
         }
 
         $quickSale = QuickSale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate request is pending
-        if (!$quickSale->isPending()) {
+        if (! $quickSale->isPending()) {
             return response()->json([
                 'message' => 'Only pending quick sale requests can be approved',
-                'current_status' => $quickSale->status
+                'current_status' => $quickSale->status,
             ], 400);
         }
 
         // Prevent self-approval
         if ($quickSale->requested_by === $user->id) {
             return response()->json([
-                'message' => 'You cannot approve your own quick sale request'
+                'message' => 'You cannot approve your own quick sale request',
             ], 403);
         }
 
@@ -259,7 +307,7 @@ class QuickSaleController extends Controller
 
         if ($hasOverlap) {
             return response()->json([
-                'message' => 'Another quick sale is already scheduled for this product during the selected time period'
+                'message' => 'Another quick sale is already scheduled for this product during the selected time period',
             ], 400);
         }
 
@@ -272,7 +320,7 @@ class QuickSaleController extends Controller
             if ($branchProduct && $validated['discount_value'] >= $branchProduct->selling_price) {
                 return response()->json([
                     'message' => 'Fixed discount amount cannot be greater than or equal to the product price',
-                    'errors' => ['discount_value' => ['Must be less than product price']]
+                    'errors' => ['discount_value' => ['Must be less than product price']],
                 ], 422);
             }
         }
@@ -300,15 +348,16 @@ class QuickSaleController extends Controller
                     'product',
                     'branch',
                     'requestedBy',
-                    'approvedBy'
+                    'approvedBy',
                 ]),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to approve quick sale',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -321,7 +370,18 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('approve quick sale')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve quick sale')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -332,22 +392,22 @@ class QuickSaleController extends Controller
         $quickSale = QuickSale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate request is pending
-        if (!$quickSale->isPending()) {
+        if (! $quickSale->isPending()) {
             return response()->json([
                 'message' => 'Only pending quick sale requests can be rejected',
-                'current_status' => $quickSale->status
+                'current_status' => $quickSale->status,
             ], 400);
         }
 
         // Prevent self-rejection
         if ($quickSale->requested_by === $user->id) {
             return response()->json([
-                'message' => 'You cannot reject your own quick sale request'
+                'message' => 'You cannot reject your own quick sale request',
             ], 403);
         }
 
@@ -363,15 +423,16 @@ class QuickSaleController extends Controller
                     'product',
                     'branch',
                     'requestedBy',
-                    'approvedBy'
+                    'approvedBy',
                 ]),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to reject quick sale request',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
     }
@@ -384,22 +445,33 @@ class QuickSaleController extends Controller
         $user = $request->user();
         $businessId = $request->current_business_id;
 
-        if (!$user->hasPermissionTo('approve quick sale')) {
+        // Verify user has access to this business
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('approve quick sale')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $quickSale = QuickSale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
-        if (!$this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
+        if (! $this->userHasBranchAccess($user, $businessId, $quickSale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
         // Validate quick sale is active or approved
-        if (!$quickSale->isActive() && !$quickSale->isApproved()) {
+        if (! $quickSale->isActive() && ! $quickSale->isApproved()) {
             return response()->json([
                 'message' => 'Only active or approved quick sales can be ended',
-                'current_status' => $quickSale->status
+                'current_status' => $quickSale->status,
             ], 400);
         }
 
@@ -416,31 +488,17 @@ class QuickSaleController extends Controller
                     'branch',
                     'requestedBy',
                     'approvedBy',
-                    'endedBy'
+                    'endedBy',
                 ]),
             ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
+
             return response()->json([
                 'message' => 'Failed to end quick sale',
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * Check if user has access to a specific branch
-     */
-    private function userHasBranchAccess($user, $businessId, $branchId): bool
-    {
-        $accessibleBranches = $user->getBranchesInBusiness($businessId);
-        
-        // Empty collection means user has access to all branches
-        if ($accessibleBranches->isEmpty()) {
-            return true;
-        }
-        
-        return $accessibleBranches->contains('id', $branchId);
     }
 }

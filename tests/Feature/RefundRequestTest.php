@@ -23,11 +23,17 @@ class RefundRequestTest extends TestCase
     use RefreshDatabase;
 
     private User $requester;
+
     private User $approver;
+
     private User $regularUser;
+
     private Business $business;
+
     private Branch $branch;
+
     private Product $product;
+
     private PaymentMethod $paymentMethod;
 
     protected function setUp(): void
@@ -43,10 +49,10 @@ class RefundRequestTest extends TestCase
         ]);
 
         // Create permissions for api guard
-        Permission::create(['name' => 'request refund', 'guard_name' => 'api']);
-        Permission::create(['name' => 'approve refund', 'guard_name' => 'api']);
-        Permission::create(['name' => 'view sales', 'guard_name' => 'api']);
-        Permission::create(['name' => 'create sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'request refund', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'approve refund', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view sales', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'create sales', 'guard_name' => 'api']);
 
         // Create roles
         $requesterRole = Role::create([
@@ -507,7 +513,7 @@ class RefundRequestTest extends TestCase
     private function createCompletedSale(): Sale
     {
         $sale = Sale::create([
-            'sale_number' => 'SAL-' . uniqid(),
+            'sale_number' => 'SAL-'.uniqid(),
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'user_id' => $this->requester->id,
