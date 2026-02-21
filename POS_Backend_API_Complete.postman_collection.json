@@ -756,10 +756,10 @@
                                 "roles"
                             ]
                         },
-                        "description": "Create a role. name required. guard_name usually 'api'. business_id from context.",
+                        "description": "Create a role. name required. permissions optional (array of permission names). business_id from X-Business-Id.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"Cashier\",\n  \"guard_name\": \"api\"\n}"
+                            "raw": "{\n  \"name\": \"Cashier\",\n  \"permissions\": [\"view products\", \"create sales\"]\n}"
                         }
                     },
                     "response": []
@@ -795,10 +795,10 @@
                                 "addpermission"
                             ]
                         },
-                        "description": "Attach a permission to a role. role_id, permission_id required. Optionally branch_id for branch-scoped role.",
+                        "description": "Attach permissions to a role. role_id (integer), permission_name (array of permission names) required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"role_id\": 1,\n  \"permission_id\": 1,\n  \"branch_id\": null\n}"
+                            "raw": "{\n  \"role_id\": 1,\n  \"permission_name\": [\"view products\", \"create sales\"]\n}"
                         }
                     },
                     "response": []
@@ -834,10 +834,10 @@
                                 "removepermission"
                             ]
                         },
-                        "description": "Detach a permission from a role. role_id, permission_id required.",
+                        "description": "Detach permissions from a role. role_id (integer), permission_name (array of permission names) required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"role_id\": 1,\n  \"permission_id\": 1\n}"
+                            "raw": "{\n  \"role_id\": 1,\n  \"permission_name\": [\"edit_product\"]\n}"
                         }
                     },
                     "response": []
@@ -2972,10 +2972,10 @@
                                 "payments"
                             ]
                         },
-                        "description": "Add a payment to a sale. payment_method_id, amount required. reference_number optional.",
+                        "description": "Add a payment to a sale. payment_method_id, amount required. reference_number, notes optional.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"payment_method_id\": 1,\n  \"amount\": 50.00,\n  \"reference_number\": \"TXN-123\"\n}"
+                            "raw": "{\n  \"payment_method_id\": 1,\n  \"amount\": 50.00,\n  \"reference_number\": \"TXN-123\",\n  \"notes\": null\n}"
                         }
                     },
                     "response": []
@@ -4099,10 +4099,10 @@
                                 "stock-writeoffs"
                             ]
                         },
-                        "description": "Create write-off. branch_id, product_id, quantity, reason required. batch_id optional.",
+                        "description": "Create write-off. branch_id, sku (product SKU or barcode), quantity, reason required. X-Business-Id sets current_business_id.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"quantity\": 5,\n  \"reason\": \"Damaged\",\n  \"batch_id\": null,\n  \"notes\": \"Water damage\"\n}"
+                            "raw": "{\n  \"branch_id\": 1,\n  \"sku\": \"SKU-MOUSE-001\",\n  \"quantity\": 5,\n  \"reason\": \"Damaged - water damage\"\n}"
                         }
                     },
                     "response": []

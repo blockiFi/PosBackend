@@ -419,21 +419,21 @@ Authorization: Bearer {token}
 |-------|------|----------|----------|------------|-------------|
 | `name` | string | ✅ Yes | ❌ No | max:255 | Business name |
 | `legal_name` | string | ❌ No | ✅ Yes | max:255 | Legal registered name |
-| `slug` | string | ❌ No | ✅ Yes | unique:businesses, alpha_dash | URL-friendly identifier |
-| `email` | string | ✅ Yes | ❌ No | email, unique:businesses | Contact email |
-| `phone` | string | ❌ No | ✅ Yes | max:20 | Contact phone number |
-| `address` | string | ❌ No | ✅ Yes | max:500 | Physical address |
-| `city` | string | ❌ No | ✅ Yes | max:100 | City |
-| `state` | string | ❌ No | ✅ Yes | max:100 | State/Province |
-| `postal_code` | string | ❌ No | ✅ Yes | max:20 | Postal/ZIP code |
-| `country` | string | ❌ No | ✅ Yes | max:2, ISO 3166-1 alpha-2 | Country code (e.g., 'US') |
-| `currency` | string | ✅ Yes | ❌ No | size:3, ISO 4217 | Currency code (e.g., 'USD') |
-| `time_zone` | string | ✅ Yes | ❌ No | valid timezone | Timezone (e.g., 'America/New_York') |
-| `tax_registration_number` | string | ❌ No | ✅ Yes | max:50 | Tax ID/VAT number |
+| `slug` | string | ❌ No | ✅ Yes | unique:businesses,slug | URL-friendly identifier (auto-generated from name if omitted) |
+| `email` | string | ❌ No | ✅ Yes | email, max:255 | Contact email |
+| `phone` | string | ❌ No | ✅ Yes | max:50 | Contact phone number |
+| `address` | string | ❌ No | ✅ Yes | - | Physical address |
+| `city` | string | ❌ No | ✅ Yes | max:150 | City |
+| `state` | string | ❌ No | ✅ Yes | max:150 | State/Province |
+| `postal_code` | string | ❌ No | ✅ Yes | max:50 | Postal/ZIP code |
+| `country` | string | ❌ No | ✅ Yes | size:2 | Country code (e.g., 'US') |
+| `currency` | string | ❌ No | ✅ Yes | size:3 | Currency code (default: USD) |
+| `time_zone` | string | ❌ No | ✅ Yes | max:100 | Timezone (e.g., 'America/New_York') |
+| `tax_registration_number` | string | ❌ No | ✅ Yes | max:150 | Tax ID/VAT number |
 | `default_tax_rate` | decimal | ❌ No | ✅ Yes | numeric, min:0, max:100 | Default tax rate (percentage) |
-| `settings` | object | ❌ No | ✅ Yes | json | Additional settings |
-| `main_branch_name` | string | ❌ No | ✅ Yes | max:255 | Name for auto-created main branch |
-| `main_branch_code` | string | ❌ No | ✅ Yes | max:50 | Code for auto-created main branch |
+| `settings` | object | ❌ No | ✅ Yes | - | Additional settings |
+| `main_branch_name` | string | ❌ No | ✅ Yes | max:255 | Name for auto-created main branch (default: Main Branch) |
+| `main_branch_code` | string | ❌ No | ✅ Yes | max:32 | Code for auto-created main branch (default: MAIN) |
 
 **Request Example:**
 ```json
@@ -770,11 +770,6 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Query Parameters:**
-- `search` - Search by name, email
-- `branch_id` - Filter by branch
-- `role` - Filter by role name
-
 **Response:** `200 OK`
 ```json
 {
@@ -783,13 +778,11 @@ X-Business-Id: {business_id}
       "id": 1,
       "name": "John Doe",
       "email": "john@example.com",
-      "pivot": {
-        "branch_id": 1,
-        "is_active": true,
-        "joined_at": "2026-01-01T00:00:00.000000Z"
-      },
-      "roles": ["Cashier"],
-      "permissions": ["view_product", "create_sale"]
+      "is_active": true,
+      "joined_at": "2026-01-01T00:00:00.000000Z",
+      "roles": [
+        { "id": 1, "name": "Cashier" }
+      ]
     }
   ]
 }
@@ -807,24 +800,24 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_users`
+**Permission Required:** Owner only (only business owners can add users).
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| email | string | ✅ Yes | ❌ No | email, max:255, exists:users,email | Email of existing user to add to business |
+| email | string | ✅ Yes | ❌ No | email | Email (existing user or new user to create) |
 | name | string | ✅ Yes | ❌ No | max:255 | User's full name |
-| branch_id | integer | ✅ Yes | ❌ No | exists:branches,id | Default branch assignment |
-| role | string | ✅ Yes | ❌ No | max:255 | Role to assign (e.g., Manager, Cashier, Admin) |
+| is_active | boolean | ❌ No | ❌ No | boolean | Whether user is active in business (default: true) |
+| role_ids | array | ❌ No | ✅ Yes | array of integers, exists:roles,id | Role IDs to assign (must belong to this business) |
 
 **Request Example:**
 ```json
 {
   "email": "newuser@example.com",
   "name": "Jane Smith",
-  "branch_id": 1,
-  "role": "Cashier"
+  "is_active": true,
+  "role_ids": [1, 2]
 }
 ```
 
@@ -979,14 +972,14 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_roles`
+**Permission Required:** `manage-roles` (or business owner)
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
 | name | string | ✅ Yes | ❌ No | max:255, unique per business | Role name |
-| permissions | array | ✅ Yes | ❌ No | array, exists:permissions,name | Array of permission names to assign to role |
+| permissions | array | ❌ No | ✅ Yes | array, exists:permissions,name,guard_name,api | Array of permission names to assign to role |
 
 **Request Example:**
 ```json
@@ -1024,14 +1017,14 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_roles`
+**Permission Required:** `manage-roles`
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
 | name | string | ❌ No | ❌ No | max:255, unique per business | New role name |
-| permissions | array | ❌ No | ❌ No | array, exists:permissions,name | New array of permission names (replaces existing permissions) |
+| permissions | array | ❌ No | ❌ No | array, exists:permissions,name,guard_name,api | New array of permission names (replaces existing permissions) |
 
 **Note:** All fields are optional for update. Only include fields you want to change.
 
@@ -1057,7 +1050,7 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_roles`
+**Permission Required:** `manage-roles`
 
 **Response:** `204 No Content`
 
@@ -1073,11 +1066,18 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
+**Request Schema:**
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| role_id | integer | ✅ Yes | exists:roles,id | Role ID (must belong to this business) |
+| permission_name | array | ✅ Yes | array of strings, exists:permissions,name,guard_name,api | Permission names to add |
+
 **Request:**
 ```json
 {
   "role_id": 1,
-  "permission": "edit_product"
+  "permission_name": ["edit_product", "view_product"]
 }
 ```
 
@@ -1095,11 +1095,18 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
+**Request Schema:**
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| role_id | integer | ✅ Yes | exists:roles,id | Role ID (must belong to this business) |
+| permission_name | array | ✅ Yes | array of strings, exists:permissions,name,guard_name,api | Permission names to remove |
+
 **Request:**
 ```json
 {
   "role_id": 1,
-  "permission": "edit_product"
+  "permission_name": ["edit_product"]
 }
 ```
 
@@ -1117,13 +1124,22 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_roles`
+**Permission Required:** `manage-roles`
+
+**Request Schema:**
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| user_id | integer | ✅ Yes | exists:users,id | User ID (must be a member of this business) |
+| role_id | integer | ✅ Yes | exists:roles,id | Role ID (must belong to this business) |
+| branch_id | integer | ❌ No | exists:branches,id | Optional branch scope for this role assignment |
 
 **Request:**
 ```json
 {
   "user_id": 5,
-  "role": "Cashier"
+  "role_id": 1,
+  "branch_id": 2
 }
 ```
 
@@ -1141,13 +1157,20 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_roles`
+**Permission Required:** `manage-roles`
+
+**Request Schema:**
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| user_id | integer | ✅ Yes | exists:users,id | User ID |
+| role_id | integer | ✅ Yes | exists:roles,id | Role ID (must belong to this business) |
 
 **Request:**
 ```json
 {
   "user_id": 5,
-  "role": "Cashier"
+  "role_id": 1
 }
 ```
 
@@ -1169,9 +1192,15 @@ X-Business-Id: {business_id}
 ```json
 {
   "data": {
-    "user_id": 5,
-    "name": "Jane Smith",
-    "roles": ["Cashier", "Inventory Manager"],
+    "user": {
+      "id": 5,
+      "name": "Jane Smith",
+      "email": "jane@example.com"
+    },
+    "roles": [
+      { "id": 1, "name": "Cashier", "permissions": ["view_product", "create_sale"] },
+      { "id": 2, "name": "Inventory Manager", "permissions": ["manage_inventory"] }
+    ],
     "permissions": ["view_product", "create_sale", "manage_inventory"]
   }
 }
@@ -3183,34 +3212,38 @@ X-Business-Id: {business_id}
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| closing_balance | decimal | ✅ Yes | ❌ No | min:0, max:999999999.99 | Cash amount in register at shift end |
+| actual_cash | decimal | ✅ Yes | ❌ No | numeric, min:0 | Cash amount in register at shift end |
+| closing_notes | string | ❌ No | ✅ Yes | - | Optional notes for shift closure |
+| pin_code | string | ✅ Yes | ❌ No | size:6, regex:/^[0-9]{6}$/ | Current user's 6-digit PIN (user must have PIN set) |
 
 **Business Rules:**
-- Calculates expected balance from opening + sales
-- Records discrepancy if closing ≠ expected
-- Requires manager approval if discrepancy > threshold
+- User must have a PIN set; PIN is verified before closing.
+- Calculates expected cash from opening + cash sales; variance = expected − actual_cash.
+- Only shift owner, business owner, or user with `manage shifts` can close.
 
 **Request Example:**
 ```json
 {
-  "closing_balance": 1240.00
+  "actual_cash": 1240.00,
+  "closing_notes": "End of day count",
+  "pin_code": "123456"
 }
 ```
 
 **Response:** `200 OK`
 ```json
 {
-  "data": {
+  "message": "Shift closed successfully",
+  "shift": {
     "id": 12,
     "shift_number": "SHIFT-20260208-001",
     "start_time": "2026-02-08T08:00:00.000000Z",
     "end_time": "2026-02-08T16:00:00.000000Z",
     "opening_balance": 500.00,
-    "closing_balance": 1240.00,
-    "expected_balance": 1250.00,
-    "discrepancy": -10.00,
-    "status": "closed",
-    "requires_approval": true
+    "actual_cash": 1240.00,
+    "expected_cash": 1250.00,
+    "variance": -10.00,
+    "status": "closed"
   }
 }
 ```
@@ -3221,26 +3254,26 @@ X-Business-Id: {business_id}
 
 **POST** `/shifts/{id}/resolve-discrepancy`
 
+Marks a closed shift's cash variance as resolved. Shift must be closed and have a non-zero variance.
+
 **Headers:**
 ```
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `approve_shift_discrepancy`
+**Permission Required:** `manage shifts` (or business owner)
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| reason | string | ✅ Yes | ❌ No | max:1000 | Explanation for the discrepancy |
-| approved | boolean | ✅ Yes | ❌ No | - | Whether to approve or reject the discrepancy |
+| resolution_notes | string | ✅ Yes | ❌ No | max:1000 | Explanation for the discrepancy |
 
 **Request Example:**
 ```json
 {
-  "reason": "Cashier forgot to record petty cash withdrawal",
-  "approved": true
+  "resolution_notes": "Cashier forgot to record petty cash withdrawal; variance explained and accepted."
 }
 ```
 
@@ -3916,46 +3949,31 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `write_off_stock`
+**Permission Required:** `write off stock`
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
 | `branch_id` | integer | ✅ Yes | ❌ No | exists:branches,id | Branch where write-off occurs |
-| `product_id` | integer | ✅ Yes | ❌ No | exists:products,id | Product being written off |
-| `batch_id` | integer | ❌ No | ✅ Yes | exists:batches,id | Specific batch (for batch tracked products) |
-| `quantity` | decimal | ✅ Yes | ❌ No | numeric, min:0.01 | Quantity to write off |
-| `reason` | enum | ✅ Yes | ❌ No | in:damaged,expired,theft,lost,other | Write-off reason |
-| `cost_per_unit` | decimal | ❌ No | ✅ Yes | numeric, min:0 | Unit cost (auto-calculated if null) |
-| `total_cost` | decimal | ❌ No | ✅ Yes | numeric, min:0 | Total cost (auto-calculated) |
-| `notes` | text | ❌ No | ✅ Yes | max:1000 | Additional notes |
-| `reference_number` | string | ❌ No | ✅ Yes | max:100 | External reference |
-| `requires_approval` | boolean | ❌ No | ❌ No | boolean | Needs manager approval (auto-determined) |
+| `sku` | string | ✅ Yes | ❌ No | string | Product SKU or barcode (product must exist in business and be assigned to this branch) |
+| `quantity` | integer | ✅ Yes | ❌ No | integer, min:1 | Quantity to write off (from shelf) |
+| `reason` | string | ✅ Yes | ❌ No | max:1000 | Reason for write-off (free text) |
 
 **Request Example:**
 ```json
 {
   "branch_id": 1,
-  "product_id": 12,
-  "batch_id": 25,
+  "sku": "SKU-MOUSE-001",
   "quantity": 5,
-  "reason": "expired",
-  "notes": "Batch expired yesterday",
-  "reference_number": "WO-2026-001"
+  "reason": "Damaged - water damage"
 }
 ```
 
-**Write-off Reasons:**
-- `damage` - Product damaged
-- `expiry` - Product expired
-- `theft` - Product stolen
-- `other` - Other reason
-
 **Business Rules:**
-- Deducts from inventory
-- Creates inventory transaction (type: writeoff)
-- Requires manager approval for large amounts
+- Product is looked up by SKU or barcode within the business.
+- Product must be assigned to the branch; quantity is deducted from shelf.
+- Requires `write off stock` permission (or business owner).
 
 **Response:** `201 Created`
 

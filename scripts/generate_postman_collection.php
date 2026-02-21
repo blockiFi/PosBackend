@@ -187,18 +187,17 @@ $items[] = [
     'name' => '5. Roles & Permissions',
     'item' => [
         req('List Roles', 'GET', 'roles', 'List all roles for the business. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Role', 'POST', 'roles', "Create a role. name required. guard_name usually 'api'. business_id from context.", '{
+        req('Create Role', 'POST', 'roles', "Create a role. name required. permissions optional (array of permission names). business_id from X-Business-Id.", '{
   "name": "Cashier",
-  "guard_name": "api"
+  "permissions": ["view products", "create sales"]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Add Permission to Role', 'POST', 'roles/addpermission', 'Attach a permission to a role. role_id, permission_id required. Optionally branch_id for branch-scoped role.', '{
+        req('Add Permission to Role', 'POST', 'roles/addpermission', 'Attach permissions to a role. role_id (integer), permission_name (array of permission names) required.', '{
   "role_id": 1,
-  "permission_id": 1,
-  "branch_id": null
+  "permission_name": ["view products", "create sales"]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Remove Permission from Role', 'POST', 'roles/removepermission', 'Detach a permission from a role. role_id, permission_id required.', '{
+        req('Remove Permission from Role', 'POST', 'roles/removepermission', 'Detach permissions from a role. role_id (integer), permission_name (array of permission names) required.', '{
   "role_id": 1,
-  "permission_id": 1
+  "permission_name": ["edit_product"]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Role', 'GET', 'roles/1', 'Get one role with permissions. Replace 1 with role id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Update Role', 'PUT', 'roles/1', 'Update role name. X-Business-Id required.', '{"name": "Senior Cashier"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
@@ -451,10 +450,11 @@ $items[] = [
   ]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Sale', 'GET', 'sales/{{sale_id}}', 'Get one sale with items and payments. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Add Payment to Sale', 'POST', 'sales/{{sale_id}}/payments', 'Add a payment to a sale. payment_method_id, amount required. reference_number optional.', '{
+        req('Add Payment to Sale', 'POST', 'sales/{{sale_id}}/payments', 'Add a payment to a sale. payment_method_id, amount required. reference_number, notes optional.', '{
   "payment_method_id": 1,
   "amount": 50.00,
-  "reference_number": "TXN-123"
+  "reference_number": "TXN-123",
+  "notes": null
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Cancel Sale', 'POST', 'sales/{{sale_id}}/cancel', 'Cancel/void a sale. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
@@ -533,13 +533,11 @@ $items[] = [
     'name' => '18. Stock Write-offs',
     'item' => [
         req('List Stock Write-offs', 'GET', 'stock-writeoffs', 'List write-offs. Query: branch_id, product_id, start_date, end_date. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. branch_id, product_id, quantity, reason required. batch_id optional.', '{
+        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. branch_id, sku (product SKU or barcode), quantity, reason required. X-Business-Id sets current_business_id.', '{
   "branch_id": 1,
-  "product_id": 1,
+  "sku": "SKU-MOUSE-001",
   "quantity": 5,
-  "reason": "Damaged",
-  "batch_id": null,
-  "notes": "Water damage"
+  "reason": "Damaged - water damage"
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Stock Write-off', 'GET', 'stock-writeoffs/1', 'Get one write-off. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
