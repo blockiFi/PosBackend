@@ -42,6 +42,8 @@ class ProductBatch extends Model
         'meta_data' => 'array',
     ];
 
+    protected $appends = ['quick_sale_requested'];
+
     protected static function boot()
     {
         parent::boot();
@@ -94,6 +96,35 @@ class ProductBatch extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(InventoryTransaction::class, 'batch_id');
+    }
+
+    public function quickSales(): HasMany
+    {
+        return $this->hasMany(QuickSale::class, 'batch_id');
+    }
+
+    /**
+     * Quick sales for this product+branch with no specific batch (apply to any batch of this product at this branch).
+     */
+    public function productLevelQuickSales(): HasMany
+    {
+        return $this->hasMany(QuickSale::class, 'product_id', 'product_id')
+            ->whereColumn('quick_sales.branch_id', 'product_batches.branch_id')
+            ->whereNull('quick_sales.batch_id');
+    }
+
+    public function getQuickSaleRequestedAttribute(): bool
+    {
+        $statuses = [QuickSale::STATUS_PENDING, QuickSale::STATUS_APPROVED, QuickSale::STATUS_ACTIVE];
+        $direct = (int) ($this->attributes['quick_sale_requested_count'] ?? 0);
+        $productLevel = (int) ($this->attributes['product_level_quick_sale_count'] ?? 0);
+        if (array_key_exists('quick_sale_requested_count', $this->attributes)
+            || array_key_exists('product_level_quick_sale_count', $this->attributes)) {
+            return (bool) ($direct + $productLevel);
+        }
+
+        return $this->quickSales()->whereIn('status', $statuses)->exists()
+            || $this->productLevelQuickSales()->whereIn('status', $statuses)->exists();
     }
 
     // Scopes

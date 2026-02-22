@@ -1614,31 +1614,48 @@ X-Business-Id: {business_id}
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
+Alternatively, business context can be sent as query: `current_business_id={business_id}`.
 
-**Permission Required:** `manage_inventory`
+**Permission Required:** `manage branch products`
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| branch_id | integer | ✅ Yes | ❌ No | exists:branches,id | Branch to add product to |
-| shelf_quantity | integer | ❌ No | ❌ No | min:0 | Initial shelf quantity (default: 0) |
-| store_quantity | integer | ❌ No | ❌ No | min:0 | Initial store/warehouse quantity (default: 0) |
-| reorder_level | integer | ❌ No | ✅ Yes | min:0 | Stock level at which to reorder |
-| reorder_quantity | integer | ❌ No | ✅ Yes | min:0 | Quantity to order when reordering |
+| branch_id | integer | ✅ Yes | ❌ No | exists:branches,id,business_id,{business_id} | Branch to add product to |
+| cost_price | number | ❌ No | ✅ Yes | numeric, min:0 | Branch cost price |
+| selling_price | number | ❌ No | ✅ Yes | numeric, min:0 | Branch selling price |
+| compare_price | number | ❌ No | ✅ Yes | numeric, min:0 | Compare-at price |
+| discount_amount | number | ❌ No | ✅ Yes | numeric, min:0 | Discount amount |
+| discount_type | string | ❌ No | ✅ Yes | in:fixed,percentage | Discount type |
+| tax_rate | number | ❌ No | ✅ Yes | numeric, min:0, max:100 | Tax rate |
+| stock_quantity | integer | ❌ No | ❌ No | integer, min:0 | Initial stock (default: 0) |
+| low_stock_threshold | integer | ❌ No | ✅ Yes | integer, min:0 | Low stock alert level |
+| allow_backorder | boolean | ❌ No | ❌ No | boolean | Allow backorder (default: false) |
+| reorder_point | integer | ❌ No | ✅ Yes | integer, min:0 | Reorder point |
+| reorder_quantity | integer | ❌ No | ✅ Yes | integer, min:0 | Reorder quantity |
+| is_available | boolean | ❌ No | ❌ No | boolean | Available at branch (default: true) |
+| is_featured | boolean | ❌ No | ❌ No | boolean | Featured (default: false) |
+| display_order | integer | ❌ No | ❌ No | integer | Display order (default: 0) |
+| bin_location | string | ❌ No | ✅ Yes | string, max:255 | Bin location |
+| shelf_location | string | ❌ No | ✅ Yes | string, max:255 | Shelf location |
+| branch_meta_data | object | ❌ No | ✅ Yes | array | Branch-specific metadata |
 
 **Request Example:**
 ```json
 {
   "branch_id": 1,
-  "shelf_quantity": 10,
-  "store_quantity": 50,
-  "reorder_level": 15,
-  "reorder_quantity": 25
+  "selling_price": 29.99,
+  "compare_price": 39.99,
+  "cost_price": 15.99,
+  "stock_quantity": 100,
+  "discount_amount": 0,
+  "is_available": true,
+  "low_stock_threshold": 10
 }
 ```
 
-**Response:** `200 OK`
+**Response:** `200 OK` with `message` and `data` (formatted product including `branch_data`).
 
 ---
 
@@ -1651,17 +1668,17 @@ X-Business-Id: {business_id}
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
+Alternatively, business context via query: `current_business_id={business_id}`.
 
-**Permission Required:** `manage_inventory`
+**Query Parameters:** `branch_id` (required), `current_business_id` (optional if using header).
 
-**Request:**
-```json
-{
-  "branch_id": 1
-}
-```
+**Permission Required:** `manage branch products`
 
-**Response:** `204 No Content`
+**Request:** No body. Pass `branch_id` and optionally `current_business_id` as query parameters.
+
+**Example:** `DELETE /products/1/branches?branch_id=1&current_business_id=1`
+
+**Response:** `200 OK` with `message`: "Product removed from branch successfully". The branch product is soft-deleted.
 
 ---
 
@@ -1708,13 +1725,32 @@ X-Business-Id: {business_id}
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
+Alternatively, business context via query: `current_business_id={business_id}`.
+
+**Permission Required:** `view products`
 
 **Query Parameters:**
-- `search` - Search by name, sku, barcode
-- `category_id` - Filter by category
-- `in_stock` - Show only items in stock (true/false)
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| current_business_id | integer | Business context (if not using X-Business-Id) |
+| category_id | integer | Filter by product category |
+| active_only | boolean | If true, only active products |
+| available_only | boolean | If true, only products available at this branch |
+| in_stock_only | boolean | If true, only products with stock_quantity > 0 at branch |
+| search | string | Search by name, sku, barcode |
+| start_id | integer | Return products with id >= start_id (cursor-style) |
+| per_page | integer | Items per page (default: 15) |
+| paginated | boolean | If false, return all results without pagination (default: true) |
 
 **Response:** `200 OK`
+```json
+{
+  "data": [ { "id", "name", "sku", "branch_data": { ... } }, ... ],
+  "branch": { "id", "name", "code" },
+  "meta": { "current_page", "last_page", "per_page", "total", "paginated" }
+}
+```
 
 ---
 
@@ -2006,7 +2042,7 @@ X-Business-Id: {business_id}
 
 ## Inventory Module
 
-Manage inventory transactions and stock tracking (FEFO system).
+Manage inventory transactions and stock tracking (FEFO system). Every stock-in and stock-out transaction is tied to product batches when the product uses batch tracking: stock-out (sale, transfer_out, damage, negative adjustment) is allocated across batches using FEFO; stock-in (purchase, transfer_in, return, adjustment, refund, sale cancel) creates or updates a batch and sets `batch_id` on the transaction. Child transactions of type `batch_allocation` may be created for FEFO deductions.
 
 ### 1. List Inventory Transactions
 
@@ -2021,7 +2057,7 @@ X-Business-Id: {business_id}
 **Query Parameters:**
 - `branch_id` - Filter by branch
 - `product_id` - Filter by product
-- `type` - Filter by type (purchase, sale, adjustment, transfer_in, transfer_out, writeoff)
+- `type` - Filter by type (purchase, sale, adjustment, transfer_in, transfer_out, return, damage, initial, batch_allocation)
 - `start_date` - Date range start (Y-m-d)
 - `end_date` - Date range end (Y-m-d)
 
@@ -2083,32 +2119,50 @@ X-Business-Id: {business_id}
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| branch_id | integer | ✅ Yes | ❌ No | exists:branches,id | Branch where transaction occurs |
-| product_id | integer | ✅ Yes | ❌ No | exists:products,id | Product involved in transaction |
-| batch_id | integer | ❌ No | ✅ Yes | exists:batches,id | Batch ID if product uses batch tracking |
-| type | string | ✅ Yes | ❌ No | in:purchase,sale,adjustment,transfer_in,transfer_out,writeoff | Transaction type |
-| quantity | decimal | ✅ Yes | ❌ No | min:0.01 | Quantity moved (positive for in, negative for out) |
-| unit_cost | decimal | ❌ No | ✅ Yes | min:0 | Cost per unit for purchase transactions |
-| notes | text | ❌ No | ✅ Yes | max:1000 | Additional notes about transaction |
+| branch_id | integer | ✅ Yes | ❌ No | exists:branches,id,business_id,{business_id} | Branch where transaction occurs |
+| product_id | integer | ✅ Yes | ❌ No | exists:products,id,business_id,{business_id} | Product involved |
+| type | string | ✅ Yes | ❌ No | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial | Transaction type |
+| quantity | integer | ✅ Yes | ❌ No | integer, not_in:0 | Quantity (positive = stock in, negative = stock out) |
+| shelf_quantity | integer | ❌ No | ❌ No | min:0 | Shelf delta (optional) |
+| store_quantity | integer | ❌ No | ❌ No | min:0 | Store delta (optional) |
+| location | string | ❌ No | ✅ Yes | in:shelf,store,both | For adjustments: which location |
+| unit_cost | number | ❌ No | ✅ Yes | min:0 | Cost per unit |
+| reference_number | string | ❌ No | ✅ Yes | max:255 | Reference (e.g. ADJ-001) |
+| related_branch_id | integer | ❌ No | ✅ Yes | exists:branches,id | For transfers: other branch |
+| notes | string | ❌ No | ✅ Yes | - | Notes |
+| meta_data | object | ❌ No | ✅ Yes | array | Extra metadata |
+| batch_number | string | ❌ No | ✅ Yes | max:255 | For purchase: batch number |
+| lot_number | string | ❌ No | ✅ Yes | max:255 | Lot number |
+| manufacturing_date | date | ❌ No | ✅ Yes | date | Manufacturing date |
+| expiry_date | date | ❌ No | ✅ Yes | date, after:manufacturing_date | Expiry date |
+| supplier_name | string | ❌ No | ✅ Yes | max:255 | Supplier name |
+| supplier_reference | string | ❌ No | ✅ Yes | max:255 | Supplier reference |
+
+**Note:** For batch-tracked products, the server allocates or creates batches (FEFO); `batch_id` is set automatically. Child transactions of type `batch_allocation` may be created for stock-out.
 
 **Transaction Types:**
 - `purchase` - New stock purchase
-- `sale` - Stock sold (auto-created by sales)
-- `adjustment` - Manual adjustment
+- `sale` - Stock sold (typically created by sales flow)
+- `adjustment` - Manual adjustment (positive or negative quantity)
 - `transfer_in` - Received from another branch
 - `transfer_out` - Sent to another branch
-- `writeoff` - Stock write-off (damage, expiry)
+- `return` - Customer return
+- `damage` - Damaged/write-off (often created via stock-writeoffs endpoint)
+- `initial` - Initial stock setup
 
 **Request Example:**
 ```json
 {
   "branch_id": 1,
   "product_id": 5,
-  "batch_id": 10,
-  "type": "purchase",
-  "quantity": 50,
-  "unit_cost": 25.00,
-  "notes": "Restocking from supplier"
+  "type": "adjustment",
+  "quantity": 25,
+  "location": "both",
+  "unit_cost": 10.50,
+  "reference_number": "ADJ-001",
+  "notes": "Stock count correction",
+  "batch_number": null,
+  "expiry_date": null
 }
 ```
 
@@ -2207,42 +2261,54 @@ X-Business-Id: {business_id}
 **Query Parameters:**
 - `branch_id` - Filter by branch
 - `product_id` - Filter by product
-- `status` - Filter by status (active, near_expiry, expired, sold_out)
+- `status` - Filter by status (active, depleted, expired, recalled)
+- `expired` - Set to `true` to return only expired batches
+- `near_expiry` - Days threshold for near-expiry filter (e.g. 30)
+- `batch_number` - Partial match on batch number
+- `lot_number` - Partial match on lot number
+- `sort_by` - Sort field (default: expiry_date)
+- `sort_direction` - asc or desc
+- `per_page` - Items per page (default: 15)
 
-**Response:** `200 OK`
+**Response:** `200 OK` (paginated). Each batch includes full `product` and `branch` objects, plus `quick_sale_requested_count` and `quick_sale_requested` (true when the batch or its product has pending/approved/active quick-sale requests).
 ```json
 {
+  "current_page": 1,
   "data": [
     {
       "id": 10,
+      "uuid": "...",
+      "business_id": 1,
       "branch_id": 1,
       "product_id": 5,
       "batch_number": "BATCH-20260201-001",
-      "quantity": 80,
-      "initial_quantity": 100,
-      "unit_cost": 25.00,
-      "manufacturing_date": "2026-01-15",
-      "expiry_date": "2027-02-01",
+      "lot_number": "LOT-001",
+      "manufacturing_date": "2026-01-15T00:00:00.000000Z",
+      "expiry_date": "2027-02-01T00:00:00.000000Z",
+      "received_quantity": 100,
+      "current_quantity": 80,
+      "unit_cost": "25.00",
+      "supplier_name": "Acme",
+      "supplier_reference": "PO-001",
       "status": "active",
-      "days_until_expiry": 358,
-      "is_near_expiry": false,
-      "is_expired": false,
-      "product": {
-        "id": 5,
-        "name": "Product Name",
-        "sku": "SKU123"
-      },
-      "branch": {
-        "id": 1,
-        "name": "Main Branch"
-      },
+      "product": { "id": 5, "name": "Product Name", "sku": "SKU123", ... },
+      "branch": { "id": 1, "name": "Main Branch", ... },
+      "quick_sale_requested_count": 1,
+      "quick_sale_requested": true,
       "created_at": "2026-02-01T10:00:00.000000Z"
     }
   ],
-  "meta": {
-    "current_page": 1,
-    "total": 45
-  }
+  "first_page_url": "...",
+  "from": 1,
+  "last_page": 3,
+  "last_page_url": "...",
+  "links": [...],
+  "next_page_url": "...",
+  "path": "...",
+  "per_page": 15,
+  "prev_page_url": null,
+  "to": 15,
+  "total": 45
 }
 ```
 
@@ -2259,24 +2325,30 @@ X-Business-Id: {business_id}
 ```
 
 **Query Parameters:**
-- `branch_id` - Filter by branch
-- `days` - Days threshold (default: 30)
+- `days` - Days until expiry threshold (default: 30)
+- `branch_id` - Filter by branch (optional)
 
 **Response:** `200 OK`
 ```json
 {
-  "data": [
+  "batches": [
     {
       "id": 12,
+      "uuid": "...",
       "batch_number": "BATCH-20260115-003",
-      "product_id": 7,
-      "product_name": "Perishable Item",
-      "quantity": 25,
+      "lot_number": "LOT-003",
+      "product": { "id": 7, "name": "Perishable Item", "sku": "SKU456" },
+      "branch": { "id": 1, "name": "Main Branch" },
       "expiry_date": "2026-03-01",
+      "current_quantity": 25,
+      "unit_cost": "1.50",
       "days_until_expiry": 21,
-      "recommended_discount": 15
+      "status": "active",
+      "quick_sale_requested": true
     }
-  ]
+  ],
+  "count": 5,
+  "days_threshold": 30
 }
 ```
 
@@ -2295,7 +2367,7 @@ X-Business-Id: {business_id}
 **Query Parameters:**
 - `branch_id` - Filter by branch
 
-**Response:** `200 OK`
+**Response:** `200 OK`. Returns batches with `current_quantity` > 0 that are expired. Body: `batches` (array with slim product/branch, total_value per batch), `count`, `total_value`.
 
 ---
 
@@ -2309,7 +2381,7 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Response:** `200 OK`
+**Response:** `200 OK`. Single batch with product, branch, inventory transaction, transaction count, `quick_sale_requested`, and computed fields (is_expired, is_near_expiry, days_until_expiry).
 
 ---
 
@@ -2323,15 +2395,19 @@ Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_inventory`
+**Permission Required:** `manage batches`
 
-**Request:**
+**Request:** All fields optional.
 ```json
 {
-  "quantity": 75,
-  "status": "active"
+  "status": "active",
+  "lot_number": "LOT-001",
+  "supplier_name": "Acme",
+  "supplier_reference": "PO-001",
+  "notes": "Extended shelf life"
 }
 ```
+Allowed `status`: active, depleted, expired, recalled.
 
 **Response:** `200 OK`
 
@@ -2348,10 +2424,9 @@ X-Business-Id: {business_id}
 ```
 
 **Query Parameters:**
-- `branch_id` - Filter by branch
-- `status` - Filter by status
+- `branch_id` - Filter by branch (optional)
 
-**Response:** `200 OK`
+**Response:** `200 OK`. Body: `batches` array in FEFO order; each item includes branch (id, name), expiry dates, quantities, `quick_sale_requested`, and computed fields (is_expired, is_near_expiry, days_until_expiry).
 
 ---
 

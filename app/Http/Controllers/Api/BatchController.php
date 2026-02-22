@@ -45,13 +45,23 @@ class BatchController extends Controller
         // Get permitted branches
         $permittedBranches = $user->getBranchesInBusiness($businessId);
 
+        $withCount = [
+            'quickSales as quick_sale_requested_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+            'productLevelQuickSales as product_level_quick_sale_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+        ];
         if ($permittedBranches->isEmpty()) {
             // User has business-wide access
             $query = ProductBatch::with(['product', 'branch'])
+                ->withCount($withCount)
                 ->forBusiness($businessId);
         } else {
             // User has branch-specific access
             $query = ProductBatch::with(['product', 'branch'])
+                ->withCount($withCount)
                 ->forBusiness($businessId)
                 ->whereIn('branch_id', $permittedBranches);
         }
@@ -97,6 +107,12 @@ class BatchController extends Controller
 
         $batches = $query->paginate($request->input('per_page', 15));
 
+        // Ensure consistent shape with product/branch and quick_sale_requested (same as near-expiry)
+        $batches->getCollection()->transform(fn (ProductBatch $batch) => array_merge(
+            $batch->toArray(),
+            ['quick_sale_requested' => $batch->quick_sale_requested]
+        ));
+
         return response()->json($batches);
     }
 
@@ -131,6 +147,14 @@ class BatchController extends Controller
         $permittedBranches = $user->getBranchesInBusiness($businessId);
 
         $query = ProductBatch::with(['branch'])
+            ->withCount([
+                'quickSales as quick_sale_requested_count' => function ($q) {
+                    $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+                },
+                'productLevelQuickSales as product_level_quick_sale_count' => function ($q) {
+                    $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+                },
+            ])
             ->forBusiness($businessId)
             ->where('product_id', $productId);
 
@@ -160,6 +184,7 @@ class BatchController extends Controller
                     'is_expired' => $batch->isExpired(),
                     'is_near_expiry' => $batch->isNearExpiry(),
                     'days_until_expiry' => $batch->daysUntilExpiry(),
+                    'quick_sale_requested' => $batch->quick_sale_requested,
                 ];
             });
 
@@ -197,11 +222,28 @@ class BatchController extends Controller
         $days = (int) $request->input('days', 30);
         $permittedBranches = $user->getBranchesInBusiness($businessId);
 
+        $withCount = [
+            'quickSales as quick_sale_requested_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+            'productLevelQuickSales as product_level_quick_sale_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+        ];
         $query = ProductBatch::with(['product', 'branch'])
+            ->withCount($withCount)
             ->forBusiness($businessId);
 
         if ($permittedBranches->isNotEmpty()) {
             $query->whereIn('branch_id', $permittedBranches);
+        }
+
+        if ($request->has('branch_id')) {
+            $branchId = (int) $request->branch_id;
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+            $query->where('branch_id', $branchId);
         }
 
         $batches = $query->nearExpiry($days)
@@ -213,20 +255,21 @@ class BatchController extends Controller
                     'uuid' => $batch->uuid,
                     'batch_number' => $batch->batch_number,
                     'lot_number' => $batch->lot_number,
-                    'product' => [
+                    'product' => $batch->product ? [
                         'id' => $batch->product->id,
                         'name' => $batch->product->name,
                         'sku' => $batch->product->sku,
-                    ],
-                    'branch' => [
+                    ] : null,
+                    'branch' => $batch->branch ? [
                         'id' => $batch->branch->id,
                         'name' => $batch->branch->name,
-                    ],
+                    ] : null,
                     'expiry_date' => $batch->expiry_date?->format('Y-m-d'),
                     'current_quantity' => $batch->current_quantity,
                     'unit_cost' => $batch->unit_cost,
                     'days_until_expiry' => $batch->daysUntilExpiry(),
                     'status' => $batch->status,
+                    'quick_sale_requested' => $batch->quick_sale_requested,
                 ];
             });
 
@@ -267,7 +310,16 @@ class BatchController extends Controller
 
         $permittedBranches = $user->getBranchesInBusiness($businessId);
 
+        $withCount = [
+            'quickSales as quick_sale_requested_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+            'productLevelQuickSales as product_level_quick_sale_count' => function ($q) {
+                $q->whereIn('status', [\App\Models\QuickSale::STATUS_PENDING, \App\Models\QuickSale::STATUS_APPROVED, \App\Models\QuickSale::STATUS_ACTIVE]);
+            },
+        ];
         $query = ProductBatch::with(['product', 'branch'])
+            ->withCount($withCount)
             ->forBusiness($businessId);
 
         if ($permittedBranches->isNotEmpty()) {
@@ -298,6 +350,7 @@ class BatchController extends Controller
                     'unit_cost' => $batch->unit_cost,
                     'total_value' => $batch->current_quantity * $batch->unit_cost,
                     'status' => $batch->status,
+                    'quick_sale_requested' => $batch->quick_sale_requested,
                 ];
             });
 
@@ -385,6 +438,7 @@ class BatchController extends Controller
                     'created_at' => $batch->inventoryTransaction->created_at,
                 ] : null,
                 'transaction_count' => $batch->transactions->count(),
+                'quick_sale_requested' => $batch->quick_sale_requested,
             ],
         ]);
     }

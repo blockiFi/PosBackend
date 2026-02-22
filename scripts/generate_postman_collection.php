@@ -28,16 +28,19 @@ $base = [
     ],
 ];
 
-function req(string $name, string $method, string $path, string $description, ?string $body = null, array $extraHeaders = [], bool $noAuth = false): array
+function req(string $name, string $method, string $path, string $description, ?string $body = null, array $extraHeaders = [], bool $noAuth = false, array $query = []): array
 {
     $pathParts = array_values(array_filter(explode('/', $path)));
     $url = ['raw' => '{{base_url}}/'.$path, 'host' => ['{{base_url}}'], 'path' => $pathParts];
+    if ($query !== []) {
+        $url['query'] = array_map(fn ($q) => ['key' => $q[0], 'value' => $q[1]], $query);
+    }
     $headers = [
         ['key' => 'Accept', 'value' => 'application/json'],
         ['key' => 'Content-Type', 'value' => 'application/json'],
     ];
-    foreach ($extraHeaders as $k => $v) {
-        $headers[] = ['key' => $k, 'value' => $v];
+    foreach ($extraHeaders as $h) {
+        $headers[] = is_array($h) && isset($h['key'], $h['value']) ? $h : ['key' => (string) $h[0], 'value' => (string) $h[1]];
     }
     $request = [
         'method' => $method,
@@ -279,19 +282,27 @@ $items[] = [
         req('Get Product', 'GET', 'products/{{product_id}}', 'Get product. Optional query: branch_id for branch-specific pricing/stock. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Update Product', 'PUT', 'products/{{product_id}}', 'Update product. Same fields as create (all optional).', '{"name": "Wireless Mouse Pro", "base_selling_price": 34.99}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Delete Product', 'DELETE', 'products/{{product_id}}', 'Delete product. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Add Product to Branch', 'POST', 'products/{{product_id}}/branches', 'Add product to a branch (creates branch_product). branch_id, selling_price, compare_price, stock_quantity, etc. Query: current_business_id.', '{
+        req('Add Product to Branch', 'POST', 'products/{{product_id}}/branches', 'Add or update product at a branch. branch_id required. Optional: cost_price, selling_price, compare_price, discount_amount, discount_type (fixed|percentage), tax_rate, stock_quantity, low_stock_threshold, allow_backorder, reorder_point, reorder_quantity, is_available, is_featured, display_order, bin_location, shelf_location, branch_meta_data. Permission: manage branch products.', '{
   "branch_id": 1,
   "selling_price": 29.99,
   "compare_price": 39.99,
   "cost_price": 15.99,
   "stock_quantity": 100,
   "discount_amount": 0,
+  "discount_type": "fixed",
+  "tax_rate": 10,
+  "low_stock_threshold": 10,
+  "allow_backorder": false,
   "is_available": true,
-  "low_stock_threshold": 10
+  "is_featured": false,
+  "display_order": 0,
+  "bin_location": null,
+  "shelf_location": null,
+  "branch_meta_data": null
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Remove Product from Branch', 'DELETE', 'products/{{product_id}}/branches', 'Remove product from branch. Query: branch_id, current_business_id.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Remove Product from Branch', 'DELETE', 'products/{{product_id}}/branches', 'Remove product from branch (soft delete). branch_id and current_business_id required as query params. Permission: manage branch products.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['current_business_id', '{{business_id}}']]),
         req('Update Product Price', 'PATCH', 'products/{{product_id}}/price', 'Update base selling price for product. selling_price required. Query: branch_id optional. X-Business-Id required.', '{"selling_price": 34.99}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Get Products by Branch', 'GET', 'branches/{{branch_id}}/products', 'Get products for a specific branch with branch-level pricing/stock. Query: category_id, search, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Products by Branch', 'GET', 'branches/{{branch_id}}/products', 'Get products for a branch with branch_data. Query: current_business_id (or X-Business-Id), category_id, active_only, available_only, in_stock_only, search, start_id, per_page (default 15), paginated (default true). Permission: view products.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 
@@ -356,13 +367,13 @@ $items[] = [
     'name' => '10. Inventory',
     'item' => [
         req('List Inventory Transactions', 'GET', 'inventory/transactions', 'List transactions. Query: branch_id, product_id, type, start_date, end_date, reference_number, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Inventory Transaction', 'POST', 'inventory/transactions', 'Create transaction. type: purchase|sale|adjustment|transfer_out|transfer_in|return|damage|initial. quantity non-zero integer. location: shelf|store|both. For transfers, related_branch_id. Batch: batch_number, lot_number, manufacturing_date, expiry_date, supplier_name.', '{
+        req('Create Inventory Transaction', 'POST', 'inventory/transactions', 'Create transaction. type: purchase|sale|adjustment|transfer_out|transfer_in|return|damage|initial. quantity required (non-zero; positive=in, negative=out). location: shelf|store|both. related_branch_id for transfers. Batch fields for purchase: batch_number, lot_number, manufacturing_date, expiry_date, supplier_name, supplier_reference. Server allocates batches (FEFO) for batch-tracked products.', '{
   "branch_id": 1,
   "product_id": 1,
   "type": "adjustment",
   "quantity": 25,
-  "shelf_quantity": 20,
-  "store_quantity": 5,
+  "shelf_quantity": null,
+  "store_quantity": null,
   "location": "both",
   "unit_cost": 10.50,
   "reference_number": "ADJ-001",
@@ -488,12 +499,12 @@ $items[] = [
 $items[] = [
     'name' => '15. Batches',
     'item' => [
-        req('List Batches', 'GET', 'batches', 'List batches. Query: branch_id, product_id, status (active|expired|exhausted), per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Batches Near Expiry', 'GET', 'batches/near-expiry', 'Batches nearing expiry. Query: branch_id, product_id, days. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Expired Batches', 'GET', 'batches/expired', 'List expired batches. Query: branch_id, product_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Get Batch', 'GET', 'batches/1', 'Get one batch. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Update Batch', 'PATCH', 'batches/1', 'Update batch. expiry_date, quantity_remaining, etc. X-Business-Id required.', '{"expiry_date": "2026-12-31", "notes": "Extended"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Batches for Product', 'GET', 'products/{{product_id}}/batches', 'List batches for a product. Query: branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('List Batches', 'GET', 'batches', 'List batches. Each item includes product, branch, quick_sale_requested_count, quick_sale_requested. Query: branch_id, product_id, status (active|depleted|expired|recalled), expired (true), near_expiry (days), batch_number, lot_number, sort_by (default expiry_date), sort_direction, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Batches Near Expiry', 'GET', 'batches/near-expiry', 'Batches nearing expiry. Response: batches (with product, branch, quick_sale_requested), count, days_threshold. Query: days (default 30), branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['days', '40'], ['branch_id', '{{branch_id}}']]),
+        req('Expired Batches', 'GET', 'batches/expired', 'List expired batches with current_quantity > 0. Response: batches (slim product/branch), count, total_value. Query: branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Batch', 'GET', 'batches/1', 'Get one batch with product, branch, inventory transaction, quick_sale_requested. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Batch', 'PATCH', 'batches/1', 'Update batch. Body: status (active|depleted|expired|recalled), lot_number, supplier_name, supplier_reference, notes. X-Business-Id required.', '{"status": "active", "lot_number": "LOT-001", "supplier_name": "Acme", "notes": "Extended"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Batches for Product', 'GET', 'products/{{product_id}}/batches', 'List batches for a product (FEFO order). Response: batches array with branch, expiry, quantities, quick_sale_requested. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 
@@ -514,17 +525,21 @@ $items[] = [
     'name' => '17. Stock Transfer Requests',
     'item' => [
         req('List Stock Transfer Requests', 'GET', 'stock-transfer-requests', 'List transfer requests. Query: status, branch_id, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Stock Transfer Request', 'POST', 'stock-transfer-requests', 'Create request. from_branch_id, to_branch_id, items (branch_product_id, quantity). notes optional.', '{
-  "from_branch_id": 1,
-  "to_branch_id": 2,
-  "items": [{"branch_product_id": 1, "quantity": 20}],
-  "notes": "Restock request"
+        req('Create Stock Transfer Request', 'POST', 'stock-transfer-requests', 'Create a single-item transfer request. branch_from_id, branch_to_id, branch_product_id (branch_product at source branch), quantity_requested required. reason, priority (low|normal|high|urgent) optional.', '{
+  "branch_from_id": 1,
+  "branch_to_id": 2,
+  "branch_product_id": 1,
+  "quantity_requested": 20,
+  "reason": "Restock request",
+  "priority": "normal"
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Stock Transfer Request', 'GET', 'stock-transfer-requests/1', 'Get one request. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Approve Transfer', 'POST', 'stock-transfer-requests/1/approve', 'Approve a pending transfer. Optional body. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Reject Transfer', 'POST', 'stock-transfer-requests/1/reject', 'Reject transfer. Optional reason. X-Business-Id required.', '{"reason": "Insufficient stock"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Confirm Transfer', 'POST', 'stock-transfer-requests/1/confirm', 'Confirm receipt at destination. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Cancel Transfer', 'POST', 'stock-transfer-requests/1/cancel', 'Cancel a request. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Approve Transfer', 'POST', 'stock-transfer-requests/1/approve', 'Approve out-request at sending branch. Creates transfer-in request for receiving branch. Optional body: notes. X-Business-Id required.', '{"notes": null}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Accept Transfer', 'POST', 'stock-transfer-requests/1/accept', 'Accept transfer at receiving branch (in-request). Confirms receipt. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Reject In (Receiving Branch)', 'POST', 'stock-transfer-requests/1/reject-in', 'Reject at receiving branch. reason required (max 500). Reverses stock at sending branch. X-Business-Id required.', '{"reason": "Wrong items sent"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Reject (Sending Branch)', 'POST', 'stock-transfer-requests/1/reject', 'Reject out-request at sending branch. reason required (max 500). X-Business-Id required.', '{"reason": "Insufficient stock"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Confirm Transfer', 'POST', 'stock-transfer-requests/1/confirm', 'Confirm receipt at destination (in-request). actual_quantity (optional, default=requested), notes optional. X-Business-Id required.', '{"actual_quantity": null, "notes": null}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Cancel Transfer', 'POST', 'stock-transfer-requests/1/cancel', 'Cancel a request. reason required (max 500). X-Business-Id required.', '{"reason": "No longer needed"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 
@@ -533,7 +548,8 @@ $items[] = [
     'name' => '18. Stock Write-offs',
     'item' => [
         req('List Stock Write-offs', 'GET', 'stock-writeoffs', 'List write-offs. Query: branch_id, product_id, start_date, end_date. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. branch_id, sku, quantity, source (shelf|store), reason required. X-Business-Id sets current_business_id.', '{
+        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. current_business_id, branch_id, sku, quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.', '{
+  "current_business_id": 1,
   "branch_id": 1,
   "sku": "SKU-MOUSE-001",
   "quantity": 5,

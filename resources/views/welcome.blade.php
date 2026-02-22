@@ -136,15 +136,15 @@ php artisan key:generate</code></pre>
                 <li><strong>Auth:</strong> register, login, pin-login, pin/set, pin/remove, GET /user</li>
                 <li><strong>Business & Branches:</strong> CRUD businesses, CRUD branches, branches/{id}/products</li>
                 <li><strong>Roles & Users:</strong> permissions, roles (CRUD, add/remove permission), assign/remove role, users/{id}/roles, business-users (CRUD)</li>
-                <li><strong>Catalog:</strong> categories (CRUD, breadcrumb), products (CRUD, branches, price)</li>
+                <li><strong>Catalog:</strong> categories (CRUD, breadcrumb), products (CRUD, add/remove branches, price), GET branches/{id}/products (products by branch with filters)</li>
                 <li><strong>Branch Products:</strong> list, by-category, CRUD, assign-multiple, stock, move-to-shelf/store, summary/stock, bulk-update</li>
-                <li><strong>Inventory:</strong> transactions (list, create, show), stock-summary</li>
-                <li><strong>Batches:</strong> list, near-expiry, expired, show, update, products/{id}/batches</li>
+                <li><strong>Inventory:</strong> transactions (list, create, show), stock-summary; FEFO batch allocation for stock-in/out</li>
+                <li><strong>Batches:</strong> list, near-expiry (days, branch_id), expired, show, update, products/{id}/batches — responses include product, branch, and quick_sale_requested</li>
                 <li><strong>Customers & Payments:</strong> customers CRUD, payment-methods CRUD</li>
                 <li><strong>Sales:</strong> sales (list, create, show, addPayment, cancel)</li>
                 <li><strong>Shifts:</strong> list, open, current, show, sales, close, pause, resume, resolve-discrepancy</li>
                 <li><strong>Analytics:</strong> organization, branches, products, profit-loss, growth-trends</li>
-                <li><strong>Workflows:</strong> stock-transfer-requests (approve, reject, confirm, cancel), stock-writeoffs, refund-requests (approve, reject), quick-sales (approve, reject, end)</li>
+                <li><strong>Workflows:</strong> stock-transfer-requests (approve, accept, reject-in, reject, confirm, cancel), stock-writeoffs, refund-requests (approve, reject), quick-sales (approve, reject, end)</li>
                 <li><strong>Sync:</strong> register-device, bootstrap, pull, push, resolve-conflicts, status, heartbeat</li>
                 <li><strong>Server-Sync:</strong> push, pull, status, health, receive, provide-changes</li>
             </ul>

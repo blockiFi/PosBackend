@@ -374,11 +374,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -409,11 +406,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -448,11 +442,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -520,11 +511,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -554,11 +542,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -592,11 +577,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -627,11 +609,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -666,11 +645,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -706,11 +682,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -740,11 +713,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -778,11 +748,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -817,11 +784,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -856,11 +820,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -891,11 +852,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -930,11 +888,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -965,11 +920,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1004,11 +956,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1043,11 +992,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1084,11 +1030,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1118,11 +1061,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1156,11 +1096,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1191,11 +1128,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1230,11 +1164,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1270,11 +1201,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1304,11 +1232,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1342,11 +1267,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1377,11 +1299,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1416,11 +1335,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1451,11 +1367,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1492,11 +1405,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1526,11 +1436,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1564,11 +1471,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1599,11 +1503,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1638,11 +1539,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1673,11 +1571,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1691,10 +1586,10 @@
                                 "branches"
                             ]
                         },
-                        "description": "Add product to a branch (creates branch_product). branch_id, selling_price, compare_price, stock_quantity, etc. Query: current_business_id.",
+                        "description": "Add or update product at a branch. branch_id required. Optional: cost_price, selling_price, compare_price, discount_amount, discount_type (fixed|percentage), tax_rate, stock_quantity, low_stock_threshold, allow_backorder, reorder_point, reorder_quantity, is_available, is_featured, display_order, bin_location, shelf_location, branch_meta_data. Permission: manage branch products.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_id\": 1,\n  \"selling_price\": 29.99,\n  \"compare_price\": 39.99,\n  \"cost_price\": 15.99,\n  \"stock_quantity\": 100,\n  \"discount_amount\": 0,\n  \"is_available\": true,\n  \"low_stock_threshold\": 10\n}"
+                            "raw": "{\n  \"branch_id\": 1,\n  \"selling_price\": 29.99,\n  \"compare_price\": 39.99,\n  \"cost_price\": 15.99,\n  \"stock_quantity\": 100,\n  \"discount_amount\": 0,\n  \"discount_type\": \"fixed\",\n  \"tax_rate\": 10,\n  \"low_stock_threshold\": 10,\n  \"allow_backorder\": false,\n  \"is_available\": true,\n  \"is_featured\": false,\n  \"display_order\": 0,\n  \"bin_location\": null,\n  \"shelf_location\": null,\n  \"branch_meta_data\": null\n}"
                         }
                     },
                     "response": []
@@ -1713,11 +1608,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1729,9 +1621,19 @@
                                 "products",
                                 "{{product_id}}",
                                 "branches"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "current_business_id",
+                                    "value": "{{business_id}}"
+                                }
                             ]
                         },
-                        "description": "Remove product from branch. Query: branch_id, current_business_id."
+                        "description": "Remove product from branch (soft delete). branch_id and current_business_id required as query params. Permission: manage branch products."
                     },
                     "response": []
                 },
@@ -1749,11 +1651,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1789,11 +1688,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1807,7 +1703,7 @@
                                 "products"
                             ]
                         },
-                        "description": "Get products for a specific branch with branch-level pricing/stock. Query: category_id, search, per_page. X-Business-Id required."
+                        "description": "Get products for a branch with branch_data. Query: current_business_id (or X-Business-Id), category_id, active_only, available_only, in_stock_only, search, start_id, per_page (default 15), paginated (default true). Permission: view products."
                     },
                     "response": []
                 }
@@ -1830,11 +1726,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1864,11 +1757,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1899,11 +1789,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1937,11 +1824,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -1976,11 +1860,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2011,11 +1892,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2050,11 +1928,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2090,11 +1965,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2125,11 +1997,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2165,11 +2034,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2205,11 +2071,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2245,11 +2108,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2281,11 +2141,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2325,11 +2182,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2360,11 +2214,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2377,10 +2228,10 @@
                                 "transactions"
                             ]
                         },
-                        "description": "Create transaction. type: purchase|sale|adjustment|transfer_out|transfer_in|return|damage|initial. quantity non-zero integer. location: shelf|store|both. For transfers, related_branch_id. Batch: batch_number, lot_number, manufacturing_date, expiry_date, supplier_name.",
+                        "description": "Create transaction. type: purchase|sale|adjustment|transfer_out|transfer_in|return|damage|initial. quantity required (non-zero; positive=in, negative=out). location: shelf|store|both. related_branch_id for transfers. Batch fields for purchase: batch_number, lot_number, manufacturing_date, expiry_date, supplier_name, supplier_reference. Server allocates batches (FEFO) for batch-tracked products.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"type\": \"adjustment\",\n  \"quantity\": 25,\n  \"shelf_quantity\": 20,\n  \"store_quantity\": 5,\n  \"location\": \"both\",\n  \"unit_cost\": 10.50,\n  \"reference_number\": \"ADJ-001\",\n  \"related_branch_id\": null,\n  \"notes\": \"Stock count correction\",\n  \"meta_data\": {},\n  \"batch_number\": null,\n  \"lot_number\": null,\n  \"manufacturing_date\": null,\n  \"expiry_date\": null,\n  \"supplier_name\": null,\n  \"supplier_reference\": null\n}"
+                            "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"type\": \"adjustment\",\n  \"quantity\": 25,\n  \"shelf_quantity\": null,\n  \"store_quantity\": null,\n  \"location\": \"both\",\n  \"unit_cost\": 10.50,\n  \"reference_number\": \"ADJ-001\",\n  \"related_branch_id\": null,\n  \"notes\": \"Stock count correction\",\n  \"meta_data\": {},\n  \"batch_number\": null,\n  \"lot_number\": null,\n  \"manufacturing_date\": null,\n  \"expiry_date\": null,\n  \"supplier_name\": null,\n  \"supplier_reference\": null\n}"
                         }
                     },
                     "response": []
@@ -2399,11 +2250,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2435,11 +2283,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2475,11 +2320,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2509,11 +2351,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2547,11 +2386,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2582,11 +2418,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2621,11 +2454,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2661,11 +2491,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2695,11 +2522,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2733,11 +2557,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2768,11 +2589,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2807,11 +2625,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2847,11 +2662,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2881,11 +2693,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2919,11 +2728,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2954,11 +2760,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -2994,11 +2797,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3035,11 +2835,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3069,11 +2866,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3107,11 +2901,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3142,11 +2933,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3177,11 +2965,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3213,11 +2998,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3253,11 +3035,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3293,11 +3072,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3333,11 +3109,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3378,11 +3151,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3394,7 +3164,7 @@
                                 "batches"
                             ]
                         },
-                        "description": "List batches. Query: branch_id, product_id, status (active|expired|exhausted), per_page. X-Business-Id required."
+                        "description": "List batches. Each item includes product, branch, quick_sale_requested_count, quick_sale_requested. Query: branch_id, product_id, status (active|depleted|expired|recalled), expired (true), near_expiry (days), batch_number, lot_number, sort_by (default expiry_date), sort_direction, per_page. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -3412,11 +3182,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3427,9 +3194,19 @@
                             "path": [
                                 "batches",
                                 "near-expiry"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "40"
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                }
                             ]
                         },
-                        "description": "Batches nearing expiry. Query: branch_id, product_id, days. X-Business-Id required."
+                        "description": "Batches nearing expiry. Response: batches (with product, branch, quick_sale_requested), count, days_threshold. Query: days (default 30), branch_id. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -3447,11 +3224,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3464,7 +3238,7 @@
                                 "expired"
                             ]
                         },
-                        "description": "List expired batches. Query: branch_id, product_id. X-Business-Id required."
+                        "description": "List expired batches with current_quantity > 0. Response: batches (slim product/branch), count, total_value. Query: branch_id. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -3482,11 +3256,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3499,7 +3270,7 @@
                                 "1"
                             ]
                         },
-                        "description": "Get one batch. X-Business-Id required."
+                        "description": "Get one batch with product, branch, inventory transaction, quick_sale_requested. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -3517,11 +3288,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3534,10 +3302,10 @@
                                 "1"
                             ]
                         },
-                        "description": "Update batch. expiry_date, quantity_remaining, etc. X-Business-Id required.",
+                        "description": "Update batch. Body: status (active|depleted|expired|recalled), lot_number, supplier_name, supplier_reference, notes. X-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\"expiry_date\": \"2026-12-31\", \"notes\": \"Extended\"}"
+                            "raw": "{\"status\": \"active\", \"lot_number\": \"LOT-001\", \"supplier_name\": \"Acme\", \"notes\": \"Extended\"}"
                         }
                     },
                     "response": []
@@ -3556,11 +3324,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3574,7 +3339,7 @@
                                 "batches"
                             ]
                         },
-                        "description": "List batches for a product. Query: branch_id. X-Business-Id required."
+                        "description": "List batches for a product (FEFO order). Response: batches array with branch, expiry, quantities, quick_sale_requested. X-Business-Id required."
                     },
                     "response": []
                 }
@@ -3597,11 +3362,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3632,11 +3394,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3667,11 +3426,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3702,11 +3458,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3737,11 +3490,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3777,11 +3527,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3811,11 +3558,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3827,10 +3571,10 @@
                                 "stock-transfer-requests"
                             ]
                         },
-                        "description": "Create request. from_branch_id, to_branch_id, items (branch_product_id, quantity). notes optional.",
+                        "description": "Create a single-item transfer request. branch_from_id, branch_to_id, branch_product_id (branch_product at source branch), quantity_requested required. reason, priority (low|normal|high|urgent) optional.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"from_branch_id\": 1,\n  \"to_branch_id\": 2,\n  \"items\": [{\"branch_product_id\": 1, \"quantity\": 20}],\n  \"notes\": \"Restock request\"\n}"
+                            "raw": "{\n  \"branch_from_id\": 1,\n  \"branch_to_id\": 2,\n  \"branch_product_id\": 1,\n  \"quantity_requested\": 20,\n  \"reason\": \"Restock request\",\n  \"priority\": \"normal\"\n}"
                         }
                     },
                     "response": []
@@ -3849,11 +3593,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3884,11 +3625,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3902,16 +3640,16 @@
                                 "approve"
                             ]
                         },
-                        "description": "Approve a pending transfer. Optional body. X-Business-Id required.",
+                        "description": "Approve out-request at sending branch. Creates transfer-in request for receiving branch. Optional body: notes. X-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\"notes\": null}"
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Reject Transfer",
+                    "name": "Accept Transfer",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -3924,11 +3662,82 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/stock-transfer-requests/1/accept",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "stock-transfer-requests",
+                                "1",
+                                "accept"
+                            ]
+                        },
+                        "description": "Accept transfer at receiving branch (in-request). Confirms receipt. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject In (Receiving Branch)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/stock-transfer-requests/1/reject-in",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "stock-transfer-requests",
+                                "1",
+                                "reject-in"
+                            ]
+                        },
+                        "description": "Reject at receiving branch. reason required (max 500). Reverses stock at sending branch. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"reason\": \"Wrong items sent\"}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject (Sending Branch)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3942,7 +3751,7 @@
                                 "reject"
                             ]
                         },
-                        "description": "Reject transfer. Optional reason. X-Business-Id required.",
+                        "description": "Reject out-request at sending branch. reason required (max 500). X-Business-Id required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\"reason\": \"Insufficient stock\"}"
@@ -3964,11 +3773,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -3982,10 +3788,10 @@
                                 "confirm"
                             ]
                         },
-                        "description": "Confirm receipt at destination. X-Business-Id required.",
+                        "description": "Confirm receipt at destination (in-request). actual_quantity (optional, default=requested), notes optional. X-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\"actual_quantity\": null, \"notes\": null}"
                         }
                     },
                     "response": []
@@ -4004,11 +3810,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4022,10 +3825,10 @@
                                 "cancel"
                             ]
                         },
-                        "description": "Cancel a request. X-Business-Id required.",
+                        "description": "Cancel a request. reason required (max 500). X-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\"reason\": \"No longer needed\"}"
                         }
                     },
                     "response": []
@@ -4049,11 +3852,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4083,11 +3883,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4099,10 +3896,10 @@
                                 "stock-writeoffs"
                             ]
                         },
-                        "description": "Create write-off. branch_id, sku (product SKU or barcode), quantity, reason required. X-Business-Id sets current_business_id.",
+                        "description": "Create write-off. current_business_id, branch_id, sku, quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_id\": 1,\n  \"sku\": \"SKU-MOUSE-001\",\n  \"quantity\": 5,\n  \"reason\": \"Damaged - water damage\"\n}"
+                            "raw": "{\n  \"current_business_id\": 1,\n  \"branch_id\": 1,\n  \"sku\": \"SKU-MOUSE-001\",\n  \"quantity\": 5,\n  \"source\": \"shelf\",\n  \"reason\": \"Damaged - water damage\"\n}"
                         }
                     },
                     "response": []
@@ -4121,11 +3918,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4161,11 +3955,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4195,11 +3986,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4233,11 +4021,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4268,11 +4053,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4308,11 +4090,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4353,11 +4132,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4387,11 +4163,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4425,11 +4198,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4460,11 +4230,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4500,11 +4267,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4540,11 +4304,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4585,11 +4346,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4624,18 +4382,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4670,18 +4422,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4716,18 +4462,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4762,18 +4502,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4808,18 +4542,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4850,18 +4578,12 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             },
                             {
-                                "key": 1,
-                                "value": {
-                                    "key": "X-Device-Id",
-                                    "value": "{{device_id}}"
-                                }
+                                "key": "X-Device-Id",
+                                "value": "{{device_id}}"
                             }
                         ],
                         "url": {
@@ -4901,11 +4623,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4940,11 +4659,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -4979,11 +4695,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -5014,11 +4727,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -5049,11 +4759,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -5088,11 +4795,8 @@
                                 "value": "application/json"
                             },
                             {
-                                "key": 0,
-                                "value": {
-                                    "key": "X-Business-Id",
-                                    "value": "{{business_id}}"
-                                }
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
