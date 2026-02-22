@@ -33,6 +33,7 @@ class InventoryTransaction extends Model
         'total_cost',
         'related_branch_id',
         'related_transaction_id',
+        'stock_transfer_request_id',
         'reference_number',
         'notes',
         'meta_data',
@@ -56,7 +57,7 @@ class InventoryTransaction extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($transaction) {
             if (empty($transaction->uuid)) {
                 $transaction->uuid = (string) Str::uuid();
@@ -68,12 +69,19 @@ class InventoryTransaction extends Model
      * Transaction types
      */
     const TYPE_PURCHASE = 'purchase';
+
     const TYPE_SALE = 'sale';
+
     const TYPE_ADJUSTMENT = 'adjustment';
+
     const TYPE_TRANSFER_OUT = 'transfer_out';
+
     const TYPE_TRANSFER_IN = 'transfer_in';
+
     const TYPE_RETURN = 'return';
+
     const TYPE_DAMAGE = 'damage';
+
     const TYPE_INITIAL = 'initial';
 
     /**
@@ -112,6 +120,11 @@ class InventoryTransaction extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(ProductBatch::class, 'batch_id');
+    }
+
+    public function stockTransferRequest(): BelongsTo
+    {
+        return $this->belongsTo(StockTransferRequest::class, 'stock_transfer_request_id');
     }
 
     /**

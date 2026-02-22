@@ -2,17 +2,16 @@
 
 namespace Database\Seeders;
 
+use App\Models\Branch;
 use App\Models\Business;
-use App\Models\RefundRequest;
-use App\Models\QuickSale;
-use App\Models\StockTransferRequest;
-use App\Models\Sale;
 use App\Models\Product;
 use App\Models\ProductBatch;
-use App\Models\Branch;
-use App\Models\User;
-use Illuminate\Database\Seeder;
+use App\Models\QuickSale;
+use App\Models\RefundRequest;
+use App\Models\Sale;
+use App\Models\StockTransferRequest;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 
 class WorkflowSeeder extends Seeder
 {
@@ -22,9 +21,10 @@ class WorkflowSeeder extends Seeder
     public function run(): void
     {
         $businesses = Business::with('branches')->get();
-        
+
         if ($businesses->isEmpty()) {
             $this->command->warn('No businesses found. Please run BusinessSeeder first.');
+
             return;
         }
 
@@ -46,17 +46,18 @@ class WorkflowSeeder extends Seeder
 
         if ($sales->isEmpty() || $products->isEmpty() || $users->isEmpty()) {
             $this->command->warn("Insufficient data for {$business->name}. Skipping workflows.");
+
             return;
         }
 
         // Create refund requests
         $this->createRefundRequests($business, $sales, $users);
-        
+
         // Create quick sale requests
         if ($batches->isNotEmpty()) {
             $this->createQuickSaleRequests($business, $branches, $products, $batches, $users);
         }
-        
+
         // Create stock transfer requests
         if ($branches->count() > 1) {
             $this->createStockTransferRequests($business, $branches, $products, $batches, $users);
@@ -66,14 +67,14 @@ class WorkflowSeeder extends Seeder
     private function createRefundRequests(Business $business, $sales, $users): void
     {
         $this->command->info('  Creating refund requests...');
-        
+
         // Create 10-20 refund requests
         $refundCount = fake()->numberBetween(10, 20);
         $completedSales = $sales->where('status', 'completed')->take($refundCount * 2);
-        
+
         foreach ($completedSales->random($refundCount) as $sale) {
             $status = fake()->randomElement(['pending', 'pending', 'approved', 'rejected']); // More pending
-            
+
             RefundRequest::create([
                 'sale_id' => $sale->id,
                 'business_id' => $business->id,
@@ -102,10 +103,11 @@ class WorkflowSeeder extends Seeder
     private function createQuickSaleRequests(Business $business, $branches, $products, $batches, $users): void
     {
         $this->command->info('  Creating quick sale requests...');
-        
+
         // Find products with batches that are perishable
-        $perishableProducts = $products->filter(function($product) {
+        $perishableProducts = $products->filter(function ($product) {
             $categoryName = $product->category?->name;
+
             return in_array($categoryName, ['Groceries', 'Beverages', 'Dairy Products']);
         });
 
@@ -116,18 +118,18 @@ class WorkflowSeeder extends Seeder
         $quickSalesCount = 0;
         foreach ($perishableProducts->take(15) as $product) {
             $status = fake()->randomElement(['pending', 'approved', 'approved', 'rejected', 'ended']);
-            
+
             $discountType = fake()->randomElement(['percentage', 'fixed']);
-            $discountValue = $discountType === 'percentage' 
-                ? fake()->randomFloat(2, 20, 50) 
+            $discountValue = $discountType === 'percentage'
+                ? fake()->randomFloat(2, 20, 50)
                 : fake()->randomFloat(2, 5, $product->base_selling_price * 0.3);
-            
+
             QuickSale::create([
                 'business_id' => $business->id,
                 'branch_id' => $branches->random()->id,
                 'product_id' => $product->id,
                 'reason' => fake()->randomElement([
-                    'Product expiring in ' . fake()->numberBetween(5, 30) . ' days',
+                    'Product expiring in '.fake()->numberBetween(5, 30).' days',
                     'Batch near expiry',
                     'Need to clear old stock',
                     'Overstock situation',
@@ -154,29 +156,41 @@ class WorkflowSeeder extends Seeder
     private function createStockTransferRequests(Business $business, $branches, $products, $batches, $users): void
     {
         $this->command->info('  Creating stock transfer requests...');
-        
+
         // Get branch products for this business
-        $branchProducts = \App\Models\BranchProduct::whereHas('branch', function($q) use ($business) {
+        $branchProducts = \App\Models\BranchProduct::whereHas('branch', function ($q) use ($business) {
             $q->where('business_id', $business->id);
         })->with(['branch', 'product'])->get();
-        
+
         if ($branchProducts->isEmpty()) {
             $this->command->info('    No branch products found for transfers');
+
             return;
         }
-        
+
         $transferCount = min(fake()->numberBetween(5, 15), $branchProducts->count());
         $created = 0;
-        
+
+        $branchIds = $branches->pluck('id')->toArray();
+
         for ($i = 0; $i < $transferCount; $i++) {
             $branchProduct = $branchProducts->random();
+            $branchFromId = $branchProduct->branch_id;
+            $otherBranchIds = array_values(array_diff($branchIds, [$branchFromId]));
+            $branchToId = count($otherBranchIds) > 0 ? $otherBranchIds[array_rand($otherBranchIds)] : $branchFromId;
+            if ($branchToId === $branchFromId) {
+                continue;
+            }
             $status = fake()->randomElement(['pending', 'approved', 'rejected', 'confirmed', 'cancelled']);
-            
+
             try {
                 StockTransferRequest::create([
-                    'request_number' => 'TR-' . now()->format('Ymd') . '-' . str_pad(fake()->unique()->numberBetween(1, 9999), 4, '0', STR_PAD_LEFT),
+                    'request_number' => 'TR-'.now()->format('Ymd').'-'.str_pad(fake()->unique()->numberBetween(1, 9999), 4, '0', STR_PAD_LEFT),
                     'business_id' => $business->id,
-                    'branch_id' => $branchProduct->branch_id,
+                    'branch_id' => $branchFromId,
+                    'branch_from_id' => $branchFromId,
+                    'branch_to_id' => $branchToId,
+                    'direction' => 'out',
                     'branch_product_id' => $branchProduct->id,
                     'quantity_requested' => fake()->numberBetween(10, 100),
                     'quantity_transferred' => in_array($status, ['confirmed']) ? fake()->numberBetween(10, 100) : null,

@@ -83,6 +83,7 @@ class RealisticRoleSeeder extends Seeder
                     'approve quick sale',
                     'request stock transfer',
                     'approve stock transfer',
+                    'accept stock transfer',
                     'write off stock',
 
                     // Analytics & Reports
@@ -152,6 +153,7 @@ class RealisticRoleSeeder extends Seeder
                     'approve quick sale',
                     'request stock transfer',
                     'approve stock transfer',
+                    'accept stock transfer',
                     'write off stock',
 
                     // Analytics & Reports (Branch level)

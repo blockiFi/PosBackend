@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\QuickSale;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -45,6 +46,7 @@ class QuickSaleController extends Controller
         $query = QuickSale::with([
             'product',
             'branch',
+            'batch',
             'requestedBy',
             'approvedBy',
             'endedBy',
@@ -109,6 +111,7 @@ class QuickSaleController extends Controller
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'branch_id' => 'required|exists:branches,id',
+            'batch_id' => 'nullable|exists:product_batches,id',
             'reason' => 'required|string|min:10|max:1000',
             'expiry_date' => 'required|date|after:today',
         ]);
@@ -125,6 +128,30 @@ class QuickSaleController extends Controller
         // Check branch access
         if (! $this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        $batchId = isset($validated['batch_id']) ? (int) $validated['batch_id'] : null;
+        $batch = null;
+        if ($batchId) {
+            $batch = ProductBatch::where('id', $batchId)
+                ->where('product_id', $product->id)
+                ->where('branch_id', $validated['branch_id'])
+                ->where('business_id', $businessId)
+                ->first();
+
+            if (! $batch) {
+                return response()->json([
+                    'message' => 'Batch not found or does not belong to this product and branch',
+                    'errors' => ['batch_id' => ['Invalid batch for this product and branch']],
+                ], 422);
+            }
+
+            if ($batch->current_quantity <= 0) {
+                return response()->json([
+                    'message' => 'Batch has no remaining quantity',
+                    'errors' => ['batch_id' => ['Batch is depleted']],
+                ], 422);
+            }
         }
 
         // Verify product exists in this branch and has stock
@@ -144,13 +171,16 @@ class QuickSaleController extends Controller
             ], 400);
         }
 
-        // Check for pending quick sale for same product/branch
-        $hasPending = QuickSale::where('product_id', $product->id)
+        // Check for pending quick sale for same product/branch (and batch when batch-scoped)
+        $pendingQuery = QuickSale::where('product_id', $product->id)
             ->where('branch_id', $validated['branch_id'])
-            ->where('status', QuickSale::STATUS_PENDING)
-            ->exists();
-
-        if ($hasPending) {
+            ->where('status', QuickSale::STATUS_PENDING);
+        if ($batchId !== null) {
+            $pendingQuery->where('batch_id', $batchId);
+        } else {
+            $pendingQuery->whereNull('batch_id');
+        }
+        if ($pendingQuery->exists()) {
             return response()->json([
                 'message' => 'A pending quick sale request already exists for this product in this branch',
             ], 400);
@@ -162,6 +192,7 @@ class QuickSaleController extends Controller
                 'product_id' => $product->id,
                 'business_id' => $businessId,
                 'branch_id' => $validated['branch_id'],
+                'batch_id' => $batchId,
                 'requested_by' => $user->id,
                 'reason' => $validated['reason'],
                 'expiry_date' => $validated['expiry_date'],
@@ -172,7 +203,7 @@ class QuickSaleController extends Controller
 
             return response()->json([
                 'message' => 'Quick sale request submitted successfully',
-                'quick_sale' => $quickSale->load(['product', 'branch', 'requestedBy']),
+                'quick_sale' => $quickSale->load(['product', 'branch', 'batch', 'requestedBy']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -219,6 +250,7 @@ class QuickSaleController extends Controller
                 }
             },
             'branch',
+            'batch',
             'requestedBy',
             'approvedBy',
             'endedBy',
@@ -297,12 +329,24 @@ class QuickSaleController extends Controller
             ], 403);
         }
 
-        // Check for overlapping quick sales
+        // When batch-scoped, re-check batch still has stock
+        if ($quickSale->batch_id) {
+            $batch = $quickSale->batch;
+            if (! $batch || $batch->current_quantity <= 0) {
+                return response()->json([
+                    'message' => 'Batch has no remaining quantity; cannot approve quick sale',
+                ], 400);
+            }
+        }
+
+        // Check for overlapping quick sales (same product/branch and, when batch-scoped, same batch)
         $hasOverlap = QuickSale::hasOverlappingQuickSale(
             $quickSale->product_id,
             $quickSale->branch_id,
             $validated['start_time'],
-            $validated['end_time']
+            $validated['end_time'],
+            null,
+            $quickSale->batch_id
         );
 
         if ($hasOverlap) {
@@ -347,6 +391,7 @@ class QuickSaleController extends Controller
                 'quick_sale' => $quickSale->fresh([
                     'product',
                     'branch',
+                    'batch',
                     'requestedBy',
                     'approvedBy',
                 ]),

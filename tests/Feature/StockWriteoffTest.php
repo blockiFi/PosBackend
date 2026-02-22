@@ -18,10 +18,15 @@ class StockWriteoffTest extends TestCase
     use RefreshDatabase;
 
     protected $user;
+
     protected $business;
+
     protected $branch;
+
     protected $product;
+
     protected $branchProduct;
+
     protected $writeoffRole;
 
     protected function setUp(): void
@@ -46,7 +51,7 @@ class StockWriteoffTest extends TestCase
 
         // Create permission and role
         Permission::firstOrCreate(['name' => 'write off stock', 'guard_name' => 'api']);
-        
+
         $this->writeoffRole = Role::create([
             'name' => 'Stock Manager',
             'guard_name' => 'api',
@@ -87,12 +92,14 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged during handling',
             ]);
 
         $response->assertStatus(201)
             ->assertJsonPath('message', 'Stock written off successfully')
             ->assertJsonPath('data.quantity', 10)
+            ->assertJsonPath('data.source', 'shelf')
             ->assertJsonPath('data.reason', 'Damaged during handling')
             ->assertJsonPath('data.sku', 'TEST-SKU-001');
 
@@ -135,6 +142,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => '1234567890123', // Using barcode instead of SKU
                 'quantity' => 5,
+                'source' => 'shelf',
                 'reason' => 'Expired product',
             ]);
 
@@ -142,6 +150,27 @@ class StockWriteoffTest extends TestCase
 
         $this->branchProduct->refresh();
         $this->assertEquals(95, $this->branchProduct->shelf_quantity);
+    }
+
+    public function test_user_can_write_off_stock_from_store(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'sku' => 'TEST-SKU-001',
+                'quantity' => 20,
+                'source' => 'store',
+                'reason' => 'Expired in warehouse',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('data.source', 'store')
+            ->assertJsonPath('data.quantity', 20);
+
+        $this->branchProduct->refresh();
+        $this->assertEquals(100, $this->branchProduct->shelf_quantity);
+        $this->assertEquals(30, $this->branchProduct->store_quantity);
     }
 
     public function test_user_without_permission_cannot_write_off_stock(): void
@@ -155,11 +184,12 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
         $response->assertStatus(403);
-        
+
         // Verify stock was not reduced
         $this->branchProduct->refresh();
         $this->assertEquals(100, $this->branchProduct->shelf_quantity);
@@ -173,6 +203,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 150, // More than available shelf_quantity (100)
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -184,6 +215,25 @@ class StockWriteoffTest extends TestCase
         $this->assertEquals(100, $this->branchProduct->shelf_quantity);
     }
 
+    public function test_cannot_write_off_more_than_store_quantity(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'sku' => 'TEST-SKU-001',
+                'quantity' => 60, // More than available store_quantity (50)
+                'source' => 'store',
+                'reason' => 'Damaged',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['quantity']);
+
+        $this->branchProduct->refresh();
+        $this->assertEquals(50, $this->branchProduct->store_quantity);
+    }
+
     public function test_writeoff_fails_with_invalid_sku(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
@@ -192,6 +242,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'INVALID-SKU',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -213,6 +264,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'OTHER-SKU',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -228,7 +280,7 @@ class StockWriteoffTest extends TestCase
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['branch_id', 'sku', 'quantity', 'reason']);
+            ->assertJsonValidationErrors(['branch_id', 'sku', 'quantity', 'source', 'reason']);
     }
 
     public function test_validates_quantity_is_positive(): void
@@ -239,6 +291,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => -5,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -256,6 +309,7 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 5,
+            'source' => 'shelf',
             'reason' => 'Expired',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
@@ -268,13 +322,14 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 3,
+            'source' => 'shelf',
             'reason' => 'Damaged',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/stock-writeoffs?current_business_id=' . $this->business->id);
+            ->getJson('/api/stock-writeoffs?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonCount(2, 'data');
@@ -302,6 +357,7 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 5,
+            'source' => 'shelf',
             'reason' => 'Branch 1',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
@@ -315,13 +371,14 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 3,
+            'source' => 'shelf',
             'reason' => 'Branch 2',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/stock-writeoffs?current_business_id=' . $this->business->id . '&branch_id=' . $this->branch->id);
+            ->getJson('/api/stock-writeoffs?current_business_id='.$this->business->id.'&branch_id='.$this->branch->id);
 
         $response->assertStatus(200)
             ->assertJsonCount(1, 'data')
@@ -338,6 +395,7 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 5,
+            'source' => 'shelf',
             'reason' => 'Old',
             'written_off_by' => $this->user->id,
             'written_off_at' => now()->subDays(10),
@@ -351,6 +409,7 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 3,
+            'source' => 'shelf',
             'reason' => 'Recent',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
@@ -358,7 +417,7 @@ class StockWriteoffTest extends TestCase
 
         $startDate = now()->subDays(3)->format('Y-m-d');
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/stock-writeoffs?current_business_id=' . $this->business->id . '&start_date=' . $startDate);
+            ->getJson('/api/stock-writeoffs?current_business_id='.$this->business->id.'&start_date='.$startDate);
 
         $response->assertStatus(200)
             ->assertJsonCount(1, 'data')
@@ -374,17 +433,19 @@ class StockWriteoffTest extends TestCase
             'product_id' => $this->product->id,
             'sku' => $this->product->sku,
             'quantity' => 5,
+            'source' => 'shelf',
             'reason' => 'Test reason',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
         ]);
 
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/stock-writeoffs/' . $writeoff->id . '?current_business_id=' . $this->business->id);
+            ->getJson('/api/stock-writeoffs/'.$writeoff->id.'?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonPath('data.id', $writeoff->id)
             ->assertJsonPath('data.quantity', 5)
+            ->assertJsonPath('data.source', 'shelf')
             ->assertJsonPath('data.reason', 'Test reason');
     }
 
@@ -409,6 +470,7 @@ class StockWriteoffTest extends TestCase
             'product_id' => $otherProduct->id,
             'sku' => $otherProduct->sku,
             'quantity' => 5,
+            'source' => 'shelf',
             'reason' => 'Other business',
             'written_off_by' => $this->user->id,
             'written_off_at' => now(),
@@ -416,7 +478,7 @@ class StockWriteoffTest extends TestCase
 
         // Try to list - should not see other business's write-offs
         $response = $this->actingAs($this->user, 'sanctum')
-            ->getJson('/api/stock-writeoffs?current_business_id=' . $this->business->id);
+            ->getJson('/api/stock-writeoffs?current_business_id='.$this->business->id);
 
         $response->assertStatus(200)
             ->assertJsonCount(0, 'data');
@@ -444,7 +506,7 @@ class StockWriteoffTest extends TestCase
             'business_id' => $this->business->id,
             'branch_id' => $branch2->id,
         ]);
-        
+
         // Clear permission cache
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         $restrictedUser->load('roles');
@@ -456,6 +518,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -471,6 +534,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
@@ -485,6 +549,7 @@ class StockWriteoffTest extends TestCase
             'branch_id' => $this->branch->id,
             'sku' => 'TEST-SKU-001',
             'quantity' => 10,
+            'source' => 'shelf',
             'reason' => 'Damaged',
         ]);
 
@@ -502,6 +567,7 @@ class StockWriteoffTest extends TestCase
                 'branch_id' => $this->branch->id,
                 'sku' => 'TEST-SKU-001',
                 'quantity' => 10,
+                'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 

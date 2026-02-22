@@ -3957,22 +3957,35 @@ X-Business-Id: {business_id}
 |-------|------|----------|----------|------------|-------------|
 | `branch_id` | integer | ✅ Yes | ❌ No | exists:branches,id | Branch where write-off occurs |
 | `sku` | string | ✅ Yes | ❌ No | string | Product SKU or barcode (product must exist in business and be assigned to this branch) |
-| `quantity` | integer | ✅ Yes | ❌ No | integer, min:1 | Quantity to write off (from shelf) |
+| `quantity` | integer | ✅ Yes | ❌ No | integer, min:1 | Quantity to write off |
+| `source` | string | ✅ Yes | ❌ No | in:shelf,store | Where to deduct: `shelf` or `store` |
 | `reason` | string | ✅ Yes | ❌ No | max:1000 | Reason for write-off (free text) |
 
-**Request Example:**
+**Request Example (deduct from shelf):**
 ```json
 {
   "branch_id": 1,
   "sku": "SKU-MOUSE-001",
   "quantity": 5,
+  "source": "shelf",
   "reason": "Damaged - water damage"
+}
+```
+
+**Request Example (deduct from store):**
+```json
+{
+  "branch_id": 1,
+  "sku": "SKU-MOUSE-001",
+  "quantity": 3,
+  "source": "store",
+  "reason": "Expired in warehouse"
 }
 ```
 
 **Business Rules:**
 - Product is looked up by SKU or barcode within the business.
-- Product must be assigned to the branch; quantity is deducted from shelf.
+- Product must be assigned to the branch. Quantity is deducted from the location given by `source` (shelf or store).
 - Requires `write off stock` permission (or business owner).
 
 **Response:** `201 Created`

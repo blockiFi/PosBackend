@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
+use App\Models\Branch;
 use App\Models\SalesShift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -101,6 +102,118 @@ class SalesShiftController extends Controller
         });
 
         return response()->json($shifts);
+    }
+
+    /**
+     * All-shifts summary for a branch with optional filters: start_date, end_date, user_id.
+     * Aggregates gross sales, total transactions, and counts across matching shifts.
+     */
+    public function branchShiftsSummary(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canViewAll = $business->owner_id === $user->id || $user->hasPermissionTo('view all shifts');
+        $canViewOwn = $user->hasPermissionTo('view user shift');
+
+        if (! $canViewAll && ! $canViewOwn) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'branch_id' => 'required|exists:branches,id',
+            'start_date' => 'nullable|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'user_id' => 'nullable|exists:users,id',
+        ]);
+
+        $branchId = (int) $validated['branch_id'];
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        $query = SalesShift::with(['branch', 'user'])
+            ->forBusiness($businessId)
+            ->forBranch($branchId);
+
+        if (! $canViewAll && $canViewOwn) {
+            $query->where('user_id', $user->id);
+        } elseif (! empty($validated['user_id'])) {
+            $query->where('user_id', $validated['user_id']);
+        }
+
+        if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
+            $query->dateRange($validated['start_date'], $validated['end_date']);
+        }
+
+        $shifts = $query->get();
+
+        $totalGrossSales = (float) $shifts->sum('total_sales');
+        $totalTransactions = (int) $shifts->sum('transactions_count');
+        $totalCashSales = (float) $shifts->sum('cash_sales');
+        $totalCardSales = (float) $shifts->sum('card_sales');
+        $totalOtherSales = (float) $shifts->sum('other_sales');
+
+        $shiftsByStatus = [
+            'open' => $shifts->where('status', 'open')->count(),
+            'closed' => $shifts->where('status', 'closed')->count(),
+            'paused' => $shifts->where('status', 'paused')->count(),
+        ];
+
+        $totalForPercent = $totalGrossSales > 0 ? $totalGrossSales : 1;
+        $cashPercentage = round(($totalCashSales / $totalForPercent) * 100, 2);
+        $cardPercentage = round(($totalCardSales / $totalForPercent) * 100, 2);
+        $otherPercentage = round(($totalOtherSales / $totalForPercent) * 100, 2);
+
+        $averageBasketValue = $totalTransactions > 0
+            ? round($totalGrossSales / $totalTransactions, 2)
+            : 0;
+
+        $branch = $shifts->first()?->branch
+            ?? Branch::where('id', $branchId)->where('business_id', $businessId)->first();
+
+        $summary = [
+            'branch_id' => $branchId,
+            'branch' => $branch ? [
+                'id' => $branch->id,
+                'name' => $branch->name,
+            ] : null,
+            'filters' => [
+                'start_date' => $validated['start_date'] ?? null,
+                'end_date' => $validated['end_date'] ?? null,
+                'user_id' => $validated['user_id'] ?? null,
+            ],
+            'total_gross_sales' => $totalGrossSales,
+            'total_transactions' => $totalTransactions,
+            'total_shifts_count' => $shifts->count(),
+            'shifts_by_status' => $shiftsByStatus,
+            'average_basket_value' => $averageBasketValue,
+            'sales_by_payment_type' => [
+                'cash' => [
+                    'amount' => $totalCashSales,
+                    'percentage' => $cashPercentage,
+                ],
+                'card' => [
+                    'amount' => $totalCardSales,
+                    'percentage' => $cardPercentage,
+                ],
+                'other' => [
+                    'amount' => $totalOtherSales,
+                    'percentage' => $otherPercentage,
+                ],
+            ],
+        ];
+
+        return response()->json(['data' => $summary]);
     }
 
     /**
@@ -232,6 +345,48 @@ class SalesShiftController extends Controller
         $shift = $this->enrichShiftWithSalesDetails($shift);
 
         return response()->json($shift);
+    }
+
+    /**
+     * Get shift summary: gross sales, total transactions, and key metrics.
+     * Uses live sales data for open/paused shifts; uses stored totals for closed shifts.
+     */
+    public function summary(Request $request, $id)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canViewAll = $business->owner_id === $user->id || $user->hasPermissionTo('view all shifts');
+        $canViewOwn = $user->hasPermissionTo('view user shift');
+
+        if (! $canViewAll && ! $canViewOwn) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $shift = SalesShift::with(['user', 'branch'])
+            ->forBusiness($businessId)
+            ->findOrFail($id);
+
+        if (! $this->userHasBranchAccess($user, $businessId, $shift->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        if (! $canViewAll && $canViewOwn && $shift->user_id !== $user->id) {
+            return response()->json(['message' => 'You can only view your own shifts'], 403);
+        }
+
+        $summary = $this->buildShiftSummary($shift);
+
+        return response()->json(['data' => $summary]);
     }
 
     /**
@@ -622,6 +777,121 @@ class SalesShiftController extends Controller
         });
 
         return response()->json($sales);
+    }
+
+    /**
+     * Build shift summary with gross sales, total transactions, and key metrics.
+     * Uses live sales for open/paused shifts; stored totals for closed shifts.
+     *
+     * @return array<string, mixed>
+     */
+    private function buildShiftSummary(SalesShift $shift): array
+    {
+        $isClosed = $shift->status === 'closed';
+
+        if ($isClosed) {
+            $grossSales = (float) ($shift->total_sales ?? 0);
+            $totalTransactions = (int) ($shift->transactions_count ?? 0);
+            $cashSales = (float) ($shift->cash_sales ?? 0);
+            $cardSales = (float) ($shift->card_sales ?? 0);
+            $otherSales = (float) ($shift->other_sales ?? 0);
+        } else {
+            $sales = $shift->sales()
+                ->where('status', 'completed')
+                ->withoutTrashed()
+                ->with(['payments.paymentMethod'])
+                ->get();
+
+            $grossSales = (float) $sales->sum('total_amount');
+            $totalTransactions = $sales->count();
+
+            $cashSales = 0;
+            $cardSales = 0;
+            foreach ($sales as $sale) {
+                foreach ($sale->payments as $payment) {
+                    $type = strtolower($payment->paymentMethod->type ?? 'other');
+                    if ($type === 'cash') {
+                        $cashSales += (float) $payment->amount;
+                    } elseif ($type === 'card') {
+                        $cardSales += (float) $payment->amount;
+                    }
+                }
+            }
+            $otherSales = $grossSales - $cashSales - $cardSales;
+        }
+
+        $expectedCash = (float) ($shift->opening_balance ?? 0) + $cashSales;
+        $actualCash = $shift->actual_cash !== null ? (float) $shift->actual_cash : null;
+        $variance = $actualCash !== null ? $actualCash - $expectedCash : null;
+
+        $averageBasketValue = $totalTransactions > 0
+            ? round($grossSales / $totalTransactions, 2)
+            : 0;
+
+        $totalForPercent = $grossSales > 0 ? $grossSales : 1;
+        $cashPercentage = round(($cashSales / $totalForPercent) * 100, 2);
+        $cardPercentage = round(($cardSales / $totalForPercent) * 100, 2);
+        $otherPercentage = round(($otherSales / $totalForPercent) * 100, 2);
+
+        $hasDiscrepancy = $variance !== null && abs($variance) >= 0.01;
+        $reconciliationStatus = $variance === null
+            ? 'pending'
+            : (! $hasDiscrepancy ? 'balanced' : ($shift->discrepancy_resolved ? 'resolved' : 'discrepancy'));
+
+        $startTime = $shift->start_time;
+        $endTime = $shift->end_time ?? ($shift->status === 'closed' ? $shift->end_time : now());
+        $durationMinutes = $endTime ? $startTime->diffInMinutes($endTime) : 0;
+
+        $voidedCount = $shift->sales()->onlyTrashed()->count();
+
+        return [
+            'shift_id' => $shift->id,
+            'shift_number' => $shift->shift_number,
+            'status' => $shift->status,
+            'branch' => $shift->branch ? [
+                'id' => $shift->branch->id,
+                'name' => $shift->branch->name,
+            ] : null,
+            'user' => $shift->user ? [
+                'id' => $shift->user->id,
+                'name' => $shift->user->name,
+            ] : null,
+            'gross_sales' => $grossSales,
+            'total_transactions' => $totalTransactions,
+            'voided_transactions_count' => $voidedCount,
+            'average_basket_value' => $averageBasketValue,
+            'sales_by_payment_type' => [
+                'cash' => [
+                    'amount' => $cashSales,
+                    'percentage' => $cashPercentage,
+                ],
+                'card' => [
+                    'amount' => $cardSales,
+                    'percentage' => $cardPercentage,
+                ],
+                'other' => [
+                    'amount' => $otherSales,
+                    'percentage' => $otherPercentage,
+                ],
+            ],
+            'opening_balance' => (float) ($shift->opening_balance ?? 0),
+            'expected_cash' => $expectedCash,
+            'actual_cash' => $actualCash,
+            'variance' => $variance,
+            'reconciliation_status' => $reconciliationStatus,
+            'has_discrepancy' => $hasDiscrepancy,
+            'discrepancy_resolved' => (bool) ($shift->discrepancy_resolved ?? false),
+            'discrepancy_resolved_at' => $shift->discrepancy_resolved_at?->toIso8601String(),
+            'resolution_notes' => $shift->resolution_notes,
+            'shift_duration' => [
+                'start_time' => $shift->start_time->toIso8601String(),
+                'end_time' => $shift->end_time?->toIso8601String(),
+                'duration_minutes' => $durationMinutes,
+                'duration_formatted' => sprintf('%dh %dm', (int) floor($durationMinutes / 60), $durationMinutes % 60),
+            ],
+            'opening_notes' => $shift->opening_notes,
+            'closing_notes' => $shift->closing_notes,
+        ];
     }
 
     /**

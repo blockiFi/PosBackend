@@ -187,7 +187,7 @@ $items[] = [
     'name' => '5. Roles & Permissions',
     'item' => [
         req('List Roles', 'GET', 'roles', 'List all roles for the business. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Role', 'POST', 'roles', "Create a role. name required. permissions optional (array of permission names). business_id from X-Business-Id.", '{
+        req('Create Role', 'POST', 'roles', 'Create a role. name required. permissions optional (array of permission names). business_id from X-Business-Id.', '{
   "name": "Cashier",
   "permissions": ["view products", "create sales"]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
@@ -533,10 +533,11 @@ $items[] = [
     'name' => '18. Stock Write-offs',
     'item' => [
         req('List Stock Write-offs', 'GET', 'stock-writeoffs', 'List write-offs. Query: branch_id, product_id, start_date, end_date. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. branch_id, sku (product SKU or barcode), quantity, reason required. X-Business-Id sets current_business_id.', '{
+        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. branch_id, sku, quantity, source (shelf|store), reason required. X-Business-Id sets current_business_id.', '{
   "branch_id": 1,
   "sku": "SKU-MOUSE-001",
   "quantity": 5,
+  "source": "shelf",
   "reason": "Damaged - water damage"
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Stock Write-off', 'GET', 'stock-writeoffs/1', 'Get one write-off. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),

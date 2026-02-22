@@ -8,9 +8,12 @@ use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\ProductBatch;
+use App\Models\QuickSale;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
+use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Str;
@@ -18,6 +21,10 @@ use Str;
 class SaleController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected InventoryBatchService $batchService
+    ) {}
 
     /**
      * List sales with filtering and pagination
@@ -123,6 +130,7 @@ class SaleController extends Controller
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.batch_id' => 'nullable|exists:product_batches,id',
             'items.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'payments' => 'nullable|array',
@@ -191,22 +199,59 @@ class SaleController extends Controller
             // Create sale items
             foreach ($validated['items'] as $itemData) {
                 $product = Product::findOrFail($itemData['product_id']);
+                $branchId = $validated['branch_id'];
+                $qty = (float) $itemData['quantity'];
 
-                // Check stock availability
-                $branchProduct = BranchProduct::where('branch_id', $validated['branch_id'])
+                $branchProduct = BranchProduct::where('branch_id', $branchId)
                     ->where('product_id', $product->id)
                     ->first();
 
-                if (! $branchProduct || $branchProduct->stock_quantity < $itemData['quantity']) {
+                if (! $branchProduct || $branchProduct->stock_quantity < $qty) {
                     throw new \Exception("Insufficient stock for product: {$product->name}");
+                }
+
+                $batch = null;
+                $batchId = isset($itemData['batch_id']) ? (int) $itemData['batch_id'] : null;
+
+                $qtyForBatch = (int) round($qty);
+                if ($batchId) {
+                    $batch = ProductBatch::where('id', $batchId)
+                        ->where('product_id', $product->id)
+                        ->where('branch_id', $branchId)
+                        ->where('business_id', $businessId)
+                        ->first();
+                    if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                        throw new \Exception("Invalid or insufficient batch quantity for product: {$product->name}");
+                    }
+                } else {
+                    $quickSale = QuickSale::getActiveQuickSaleForProduct($product->id, $branchId);
+                    if ($quickSale && $quickSale->batch_id) {
+                        $batch = $quickSale->batch;
+                        if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                            $batchId = $batch->id;
+                        } else {
+                            $batch = null;
+                            $batchId = null;
+                        }
+                    }
+                }
+
+                $unitPrice = (float) $itemData['unit_price'];
+                if ($batchId) {
+                    $quickSaleForBatch = QuickSale::getActiveQuickSale($product->id, $branchId, null, $batchId);
+                    if ($quickSaleForBatch) {
+                        $originalPrice = $branchProduct->selling_price ?? $unitPrice;
+                        $unitPrice = $quickSaleForBatch->calculateFinalPrice($originalPrice);
+                    }
                 }
 
                 $item = new SaleItem([
                     'product_id' => $product->id,
+                    'batch_id' => $batchId,
                     'product_name' => $product->name,
                     'product_sku' => $product->sku,
-                    'quantity' => $itemData['quantity'],
-                    'unit_price' => $itemData['unit_price'],
+                    'quantity' => $qty,
+                    'unit_price' => $unitPrice,
                     'discount_percentage' => $itemData['discount_percentage'] ?? 0,
                     'tax_rate' => $itemData['tax_rate'] ?? 0,
                 ]);
@@ -214,24 +259,41 @@ class SaleController extends Controller
                 $item->calculateTotals();
                 $sale->items()->save($item);
 
-                // Update stock and create inventory transaction
-                $branchProduct->decrement('stock_quantity', $itemData['quantity']);
+                $branchProduct->decrement('stock_quantity', $qtyForBatch);
 
-                InventoryTransaction::create([
+                if ($batchId && $batch) {
+                    $batch->allocate($qtyForBatch);
+                }
+
+                $invPayload = [
                     'uuid' => Str::uuid(),
                     'business_id' => $businessId,
-                    'branch_id' => $validated['branch_id'],
+                    'branch_id' => $branchId,
                     'product_id' => $product->id,
                     'user_id' => $user->id,
                     'type' => 'sale',
-                    'quantity' => -$itemData['quantity'],
-                    'quantity_before' => $branchProduct->stock_quantity + $itemData['quantity'],
+                    'quantity' => -$qtyForBatch,
+                    'quantity_before' => $branchProduct->stock_quantity + $qtyForBatch,
                     'quantity_after' => $branchProduct->stock_quantity,
                     'unit_cost' => $branchProduct->cost_price,
-                    'total_cost' => $branchProduct->cost_price * $itemData['quantity'],
+                    'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
                     'reference_number' => $saleNumber,
                     'notes' => "Sale: {$saleNumber}",
-                ]);
+                ];
+                if ($batchId) {
+                    $invPayload['batch_id'] = $batchId;
+                }
+                $invTransaction = InventoryTransaction::create($invPayload);
+
+                if (! $batchId && $qtyForBatch > 0) {
+                    $this->batchService->allocateStockOut(
+                        $product->id,
+                        $branchId,
+                        $qtyForBatch,
+                        $invTransaction,
+                        ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                    );
+                }
             }
 
             // Calculate totals
@@ -423,8 +485,7 @@ class SaleController extends Controller
                 if ($branchProduct) {
                     $branchProduct->increment('stock_quantity', $item->quantity);
 
-                    // Create inventory transaction
-                    InventoryTransaction::create([
+                    $adjTransaction = InventoryTransaction::create([
                         'uuid' => Str::uuid(),
                         'business_id' => $businessId,
                         'branch_id' => $sale->branch_id,
@@ -439,6 +500,16 @@ class SaleController extends Controller
                         'reference_number' => $sale->sale_number,
                         'notes' => "Sale cancelled: {$sale->sale_number}",
                     ]);
+
+                    $this->batchService->addStockIn(
+                        $item->product_id,
+                        $sale->branch_id,
+                        $businessId,
+                        $item->quantity,
+                        $adjTransaction,
+                        $item->batch_id,
+                        []
+                    );
                 }
             }
 

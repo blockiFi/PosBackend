@@ -40,7 +40,7 @@ class RolePermissionSeeder extends Seeder
             'use-pin-login', 'manage-pin-codes',
 
             // Stock Transfer Workflow
-            'request stock transfer', 'approve stock transfer',
+            'request stock transfer', 'approve stock transfer', 'accept stock transfer',
 
             // Stock Write-offs
             'write off stock',

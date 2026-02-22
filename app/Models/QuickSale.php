@@ -13,6 +13,7 @@ class QuickSale extends Model
         'product_id',
         'business_id',
         'branch_id',
+        'batch_id',
         'requested_by',
         'approved_by',
         'ended_by',
@@ -39,14 +40,20 @@ class QuickSale extends Model
 
     // Status constants
     const STATUS_PENDING = 'pending';
+
     const STATUS_APPROVED = 'approved';
+
     const STATUS_ACTIVE = 'active';
+
     const STATUS_EXPIRED = 'expired';
+
     const STATUS_ENDED = 'ended';
+
     const STATUS_REJECTED = 'rejected';
 
     // Discount type constants
     const DISCOUNT_PERCENTAGE = 'percentage';
+
     const DISCOUNT_FIXED = 'fixed';
 
     /**
@@ -65,6 +72,11 @@ class QuickSale extends Model
     public function branch()
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function batch()
+    {
+        return $this->belongsTo(ProductBatch::class, 'batch_id');
     }
 
     public function requestedBy()
@@ -127,14 +139,14 @@ class QuickSale extends Model
 
     public function isActive(): bool
     {
-        return $this->status === self::STATUS_ACTIVE 
-            && $this->start_time <= now() 
+        return $this->status === self::STATUS_ACTIVE
+            && $this->start_time <= now()
             && $this->end_time > now();
     }
 
     public function isExpired(): bool
     {
-        return $this->status === self::STATUS_EXPIRED 
+        return $this->status === self::STATUS_EXPIRED
             || ($this->end_time && $this->end_time < now());
     }
 
@@ -146,6 +158,11 @@ class QuickSale extends Model
     public function isRejected(): bool
     {
         return $this->status === self::STATUS_REJECTED;
+    }
+
+    public function isBatchScoped(): bool
+    {
+        return $this->batch_id !== null;
     }
 
     /**
@@ -172,9 +189,10 @@ class QuickSale extends Model
             'approved_at' => now(),
             'rejection_reason' => $reason,
         ]);
-        
-        // Remove discount from branch product if it was previously applied
-        $this->removeDiscountFromBranchProduct();
+
+        if (! $this->isBatchScoped()) {
+            $this->removeDiscountFromBranchProduct();
+        }
     }
 
     public function markAsActive(): void
@@ -182,9 +200,10 @@ class QuickSale extends Model
         $this->update([
             'status' => self::STATUS_ACTIVE,
         ]);
-        
-        // Apply discount to branch product
-        $this->applyDiscountToBranchProduct();
+
+        if (! $this->isBatchScoped()) {
+            $this->applyDiscountToBranchProduct();
+        }
     }
 
     public function markAsExpired(): void
@@ -192,21 +211,23 @@ class QuickSale extends Model
         $this->update([
             'status' => self::STATUS_EXPIRED,
         ]);
-        
-        // Remove discount from branch product
-        $this->removeDiscountFromBranchProduct();
+
+        if (! $this->isBatchScoped()) {
+            $this->removeDiscountFromBranchProduct();
+        }
     }
 
-    public function markAsEnded($userId): void
+    public function markAsEnded(?int $userId): void
     {
         $this->update([
             'status' => self::STATUS_ENDED,
             'ended_by' => $userId,
             'ended_at' => now(),
         ]);
-        
-        // Remove discount from branch product
-        $this->removeDiscountFromBranchProduct();
+
+        if (! $this->isBatchScoped()) {
+            $this->removeDiscountFromBranchProduct();
+        }
     }
 
     /**
@@ -214,16 +235,16 @@ class QuickSale extends Model
      */
     public function shouldBeActive(): bool
     {
-        return $this->isApproved() 
-            && $this->start_time 
-            && $this->start_time <= now() 
+        return $this->isApproved()
+            && $this->start_time
+            && $this->start_time <= now()
             && $this->end_time > now();
     }
 
     public function shouldExpire(): bool
     {
-        return $this->isActive() 
-            && $this->end_time 
+        return $this->isActive()
+            && $this->end_time
             && $this->end_time < now();
     }
 
@@ -232,7 +253,7 @@ class QuickSale extends Model
      */
     public function calculateDiscount($originalPrice): float
     {
-        if (!$this->isActive()) {
+        if (! $this->isActive()) {
             return 0;
         }
 
@@ -252,9 +273,9 @@ class QuickSale extends Model
     }
 
     /**
-     * Check if there's an overlapping active/approved quick sale for the same product
+     * Check if there's an overlapping active/approved quick sale for the same product (and batch when batch-scoped)
      */
-    public static function hasOverlappingQuickSale($productId, $branchId, $startTime, $endTime, $excludeId = null): bool
+    public static function hasOverlappingQuickSale($productId, $branchId, $startTime, $endTime, $excludeId = null, $batchId = null): bool
     {
         $query = self::where('product_id', $productId)
             ->where('branch_id', $branchId)
@@ -268,6 +289,10 @@ class QuickSale extends Model
                     });
             });
 
+        if ($batchId !== null) {
+            $query->where('batch_id', $batchId);
+        }
+
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
         }
@@ -276,18 +301,54 @@ class QuickSale extends Model
     }
 
     /**
-     * Get active quick sale for a product at a specific time
+     * Get active quick sale for a product at a specific time, optionally for a specific batch
      */
-    public static function getActiveQuickSale($productId, $branchId, $time = null): ?self
+    public static function getActiveQuickSale($productId, $branchId, $time = null, $batchId = null): ?self
     {
         $time = $time ?? now();
 
-        return self::where('product_id', $productId)
+        $query = self::where('product_id', $productId)
             ->where('branch_id', $branchId)
             ->where('status', self::STATUS_ACTIVE)
             ->where('start_time', '<=', $time)
-            ->where('end_time', '>', $time)
+            ->where('end_time', '>', $time);
+
+        if ($batchId !== null) {
+            $query->where('batch_id', $batchId);
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * Get active batch-scoped quick sale for a product at branch whose batch has remaining quantity (for auto-allocating sale items)
+     */
+    public static function getActiveQuickSaleForProduct(int $productId, int $branchId): ?self
+    {
+        return self::where('product_id', $productId)
+            ->where('branch_id', $branchId)
+            ->whereNotNull('batch_id')
+            ->where('status', self::STATUS_ACTIVE)
+            ->where('start_time', '<=', now())
+            ->where('end_time', '>', now())
+            ->whereHas('batch', function ($q) {
+                $q->where('current_quantity', '>', 0)->where('status', 'active');
+            })
             ->first();
+    }
+
+    /**
+     * End all active quick sales for a batch (e.g. when batch is depleted)
+     */
+    public static function endActiveForBatch(int $batchId, ?int $userId = null): void
+    {
+        $quickSales = self::where('batch_id', $batchId)
+            ->where('status', self::STATUS_ACTIVE)
+            ->get();
+
+        foreach ($quickSales as $qs) {
+            $qs->markAsEnded($userId); // null for system-ended when batch depleted
+        }
     }
 
     /**
@@ -319,7 +380,7 @@ class QuickSale extends Model
         if ($branchProduct) {
             // Only remove if this quick sale is the one that applied it
             // Check if discount matches this quick sale's discount
-            if ($branchProduct->discount_type === $this->discount_type 
+            if ($branchProduct->discount_type === $this->discount_type
                 && $branchProduct->discount_amount == $this->discount_value) {
                 $branchProduct->update([
                     'discount_type' => null,

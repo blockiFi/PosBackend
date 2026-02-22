@@ -7,6 +7,7 @@ use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\StockWriteoff;
+use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,6 +15,10 @@ use Illuminate\Support\Str;
 class StockWriteoffController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected InventoryBatchService $batchService
+    ) {}
 
     /**
      * List all stock write-offs
@@ -91,6 +96,7 @@ class StockWriteoffController extends Controller
             'branch_id' => 'required|exists:branches,id',
             'sku' => 'required|string',
             'quantity' => 'required|integer|min:1',
+            'source' => 'required|in:shelf,store',
             'reason' => 'required|string|max:1000',
         ]);
 
@@ -149,27 +155,37 @@ class StockWriteoffController extends Controller
             ], 422);
         }
 
-        // Check if there's enough stock on shelf
-        if ($branchProduct->shelf_quantity < $request->quantity) {
+        $source = $request->source;
+        $available = $source === 'shelf' ? $branchProduct->shelf_quantity : $branchProduct->store_quantity;
+        $location = $source === 'shelf' ? 'shelf' : 'store';
+
+        if ($available < $request->quantity) {
             return response()->json([
                 'message' => 'The given data was invalid.',
                 'errors' => [
                     'quantity' => [
-                        "Insufficient stock on shelf. Available: {$branchProduct->shelf_quantity}, Requested: {$request->quantity}",
+                        "Insufficient stock on {$location}. Available: {$available}, Requested: {$request->quantity}",
                     ],
                 ],
             ], 422);
         }
 
-        // Create write-off and reduce shelf quantity in a transaction
-        $writeoff = DB::transaction(function () use ($request, $businessId, $branchId, $branchProduct, $product, $user) {
+        // Create write-off and reduce quantity from the chosen source in a transaction
+        $writeoff = DB::transaction(function () use ($request, $businessId, $branchId, $branchProduct, $product, $user, $source) {
             // Capture quantities before change
             $shelfQuantityBefore = $branchProduct->shelf_quantity;
             $storeQuantityBefore = $branchProduct->store_quantity;
             $totalQuantityBefore = $shelfQuantityBefore + $storeQuantityBefore;
 
-            // Reduce shelf quantity
-            $branchProduct->updateShelfQuantity($request->quantity, 'subtract');
+            if ($source === 'shelf') {
+                $branchProduct->updateShelfQuantity($request->quantity, 'subtract');
+                $shelfDelta = -$request->quantity;
+                $storeDelta = 0;
+            } else {
+                $branchProduct->updateStoreQuantity($request->quantity, 'subtract');
+                $shelfDelta = 0;
+                $storeDelta = -$request->quantity;
+            }
 
             // Refresh to get updated quantities
             $branchProduct->refresh();
@@ -185,12 +201,12 @@ class StockWriteoffController extends Controller
                 'product_id' => $product->id,
                 'sku' => $product->sku,
                 'quantity' => $request->quantity,
+                'source' => $source,
                 'reason' => $request->reason,
                 'written_off_by' => $user->id,
             ]);
 
-            // Create inventory transaction for audit trail
-            InventoryTransaction::create([
+            $damageTransaction = InventoryTransaction::create([
                 'uuid' => Str::uuid(),
                 'business_id' => $businessId,
                 'branch_id' => $branchId,
@@ -198,8 +214,8 @@ class StockWriteoffController extends Controller
                 'user_id' => $user->id,
                 'type' => 'damage',
                 'quantity' => -$request->quantity,
-                'shelf_quantity' => -$request->quantity,
-                'store_quantity' => 0,
+                'shelf_quantity' => $shelfDelta,
+                'store_quantity' => $storeDelta,
                 'quantity_before' => $totalQuantityBefore,
                 'shelf_quantity_before' => $shelfQuantityBefore,
                 'store_quantity_before' => $storeQuantityBefore,
@@ -209,6 +225,17 @@ class StockWriteoffController extends Controller
                 'reference_number' => 'WO-'.str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
                 'notes' => $request->reason,
             ]);
+
+            $this->batchService->allocateStockOut(
+                $product->id,
+                $branchId,
+                $request->quantity,
+                $damageTransaction,
+                [
+                    'reference_number' => 'WO-'.str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
+                    'notes' => $request->reason,
+                ]
+            );
 
             return $writeoff;
         });

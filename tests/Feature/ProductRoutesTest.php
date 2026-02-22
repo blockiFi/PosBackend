@@ -506,7 +506,7 @@ class ProductRoutesTest extends TestCase
             ->postJson('/api/products?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['name', 'sku', 'base_selling_price']);
+            ->assertJsonValidationErrors(['name', 'sku']);
     }
 
     public function test_validates_unique_sku(): void

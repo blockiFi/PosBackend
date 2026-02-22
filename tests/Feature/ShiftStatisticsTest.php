@@ -258,4 +258,90 @@ class ShiftStatisticsTest extends TestCase
 
         $this->assertEquals(-20.0, $response->json('statistics.variance'));
     }
+
+    public function test_shift_summary_returns_gross_sales_and_total_transactions(): void
+    {
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/shifts/'.$this->shift->id.'/summary', [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.shift_id', $this->shift->id)
+            ->assertJsonPath('data.shift_number', $this->shift->shift_number)
+            ->assertJsonPath('data.status', 'closed')
+            ->assertJsonPath('data.reconciliation_status', 'balanced');
+
+        $data = $response->json('data');
+        $this->assertSame(1000, (int) $data['gross_sales']);
+        $this->assertSame(20, $data['total_transactions']);
+        $this->assertEqualsWithDelta(50.0, (float) $data['average_basket_value'], 0.01);
+        $this->assertEqualsWithDelta(100.0, (float) $data['opening_balance'], 0.01);
+        $this->assertEqualsWithDelta(400.0, (float) $data['expected_cash'], 0.01);
+        $this->assertEqualsWithDelta(400.0, (float) $data['actual_cash'], 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $data['variance'], 0.01);
+        $this->assertArrayHasKey('sales_by_payment_type', $data);
+        $this->assertEqualsWithDelta(300.0, (float) $data['sales_by_payment_type']['cash']['amount'], 0.01);
+        $this->assertEqualsWithDelta(700.0, (float) $data['sales_by_payment_type']['card']['amount'], 0.01);
+        $this->assertArrayHasKey('shift_duration', $data);
+        $this->assertArrayHasKey('branch', $data);
+        $this->assertArrayHasKey('user', $data);
+    }
+
+    public function test_branch_shifts_summary_returns_aggregated_totals(): void
+    {
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/shifts/branch-summary?branch_id='.$this->branch->id, [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200);
+
+        $data = $response->json('data');
+        $this->assertSame($this->branch->id, $data['branch_id']);
+        $this->assertSame($this->branch->name, $data['branch']['name']);
+        $this->assertSame(1000, (int) $data['total_gross_sales']);
+        $this->assertSame(20, (int) $data['total_transactions']);
+        $this->assertSame(1, $data['total_shifts_count']);
+        $this->assertArrayHasKey('filters', $data);
+        $this->assertArrayHasKey('shifts_by_status', $data);
+        $this->assertSame(1, $data['shifts_by_status']['closed']);
+        $this->assertEqualsWithDelta(50.0, (float) $data['average_basket_value'], 0.01);
+        $this->assertEqualsWithDelta(300.0, (float) $data['sales_by_payment_type']['cash']['amount'], 0.01);
+        $this->assertEqualsWithDelta(700.0, (float) $data['sales_by_payment_type']['card']['amount'], 0.01);
+    }
+
+    public function test_branch_shifts_summary_respects_date_and_user_filters(): void
+    {
+        $otherUser = User::factory()->create();
+        $otherUser->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        SalesShift::create([
+            'shift_number' => 'SHIFT-20260201-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $otherUser->id,
+            'start_time' => '2026-02-01 10:00:00',
+            'end_time' => '2026-02-01 18:00:00',
+            'total_sales' => 500.00,
+            'transactions_count' => 5,
+            'status' => 'closed',
+        ]);
+
+        $startDate = now()->subDays(1)->format('Y-m-d H:i:s');
+        $endDate = now()->addDay()->format('Y-m-d H:i:s');
+        $response = $this->actingAs($this->user)
+            ->getJson('/api/shifts/branch-summary?branch_id='.$this->branch->id.'&start_date='.urlencode($startDate).'&end_date='.urlencode($endDate).'&user_id='.$this->user->id, [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200);
+
+        $data = $response->json('data');
+        $this->assertSame(1, $data['total_shifts_count']);
+        $this->assertSame(1000, (int) $data['total_gross_sales']);
+        $this->assertSame($startDate, $data['filters']['start_date']);
+        $this->assertSame($endDate, $data['filters']['end_date']);
+        $this->assertSame($this->user->id, (int) $data['filters']['user_id']);
+    }
 }

@@ -18,6 +18,7 @@ class StockWriteoff extends Model
         'product_id',
         'sku',
         'quantity',
+        'source',
         'reason',
         'written_off_by',
         'written_off_at',
@@ -31,7 +32,7 @@ class StockWriteoff extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($writeoff) {
             if (empty($writeoff->written_off_at)) {
                 $writeoff->written_off_at = now();

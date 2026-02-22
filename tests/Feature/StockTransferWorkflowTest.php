@@ -21,9 +21,15 @@ class StockTransferWorkflowTest extends TestCase
     use RefreshDatabase;
 
     private User $requester;
+
     private User $approver;
+
     private Business $business;
+
     private Branch $branch;
+
+    private Branch $branchTo;
+
     private BranchProduct $branchProduct;
 
     protected function setUp(): void
@@ -42,11 +48,15 @@ class StockTransferWorkflowTest extends TestCase
             'owner_id' => $owner->id,
         ]);
 
-        // Create branch
         $this->branch = Branch::create([
             'business_id' => $this->business->id,
             'name' => 'Main Branch',
             'code' => 'MAIN',
+        ]);
+        $this->branchTo = Branch::create([
+            'business_id' => $this->business->id,
+            'name' => 'Second Branch',
+            'code' => 'SEC',
         ]);
 
         // Create users
@@ -65,6 +75,7 @@ class StockTransferWorkflowTest extends TestCase
         // Create permissions
         Permission::firstOrCreate(['name' => 'request stock transfer', 'guard_name' => 'api']);
         Permission::firstOrCreate(['name' => 'approve stock transfer', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'accept stock transfer', 'guard_name' => 'api']);
 
         // Create roles
         $requesterRole = Role::create([
@@ -126,7 +137,8 @@ class StockTransferWorkflowTest extends TestCase
         $response = $this->actingAs($this->requester, 'sanctum')
             ->postJson('/api/stock-transfer-requests', [
                 'current_business_id' => $this->business->id,
-                'branch_id' => $this->branch->id,
+                'branch_from_id' => $this->branch->id,
+                'branch_to_id' => $this->branchTo->id,
                 'branch_product_id' => $this->branchProduct->id,
                 'quantity_requested' => 20,
                 'reason' => 'Need to restock shelf',
@@ -149,7 +161,8 @@ class StockTransferWorkflowTest extends TestCase
 
         $this->assertDatabaseHas('stock_transfer_requests', [
             'business_id' => $this->business->id,
-            'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
             'quantity_requested' => 20,
             'status' => 'pending',
             'requested_by' => $this->requester->id,
@@ -168,7 +181,8 @@ class StockTransferWorkflowTest extends TestCase
         $response = $this->actingAs($unauthorizedUser, 'sanctum')
             ->postJson('/api/stock-transfer-requests', [
                 'current_business_id' => $this->business->id,
-                'branch_id' => $this->branch->id,
+                'branch_from_id' => $this->branch->id,
+                'branch_to_id' => $this->branchTo->id,
                 'branch_product_id' => $this->branchProduct->id,
                 'quantity_requested' => 20,
             ]);
@@ -176,18 +190,19 @@ class StockTransferWorkflowTest extends TestCase
         $response->assertStatus(403);
     }
 
-    public function test_cannot_request_more_than_available_store_stock(): void
+    public function test_cannot_request_more_than_available_stock(): void
     {
         $response = $this->actingAs($this->requester, 'sanctum')
             ->postJson('/api/stock-transfer-requests', [
                 'current_business_id' => $this->business->id,
-                'branch_id' => $this->branch->id,
+                'branch_from_id' => $this->branch->id,
+                'branch_to_id' => $this->branchTo->id,
                 'branch_product_id' => $this->branchProduct->id,
-                'quantity_requested' => 150, // More than store_quantity (100)
+                'quantity_requested' => 150, // More than shelf+store (110)
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonPath('message', 'Insufficient stock in store');
+            ->assertJsonPath('message', 'Insufficient stock');
     }
 
     public function test_approver_can_approve_pending_request(): void
@@ -195,6 +210,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -210,12 +228,18 @@ class StockTransferWorkflowTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.status', 'approved')
-            ->assertJsonPath('data.reviewed_by.id', $this->approver->id);
+            ->assertJsonPath('data.reviewed_by.id', $this->approver->id)
+            ->assertJsonStructure(['data' => ['transfer_in_request' => ['id', 'request_number', 'status']]]);
 
         $this->assertDatabaseHas('stock_transfer_requests', [
             'id' => $request->id,
             'status' => 'approved',
             'reviewed_by' => $this->approver->id,
+        ]);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'branch_id' => $this->branch->id,
+            'type' => 'transfer_out',
+            'stock_transfer_request_id' => $request->id,
         ]);
     }
 
@@ -224,6 +248,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -247,9 +274,8 @@ class StockTransferWorkflowTest extends TestCase
         ]);
     }
 
-    public function test_user_cannot_approve_their_own_request(): void
+    public function test_requester_with_approve_permission_can_approve_own_request(): void
     {
-        // Give requester both permissions
         $bothRole = Role::create([
             'name' => 'Both Permissions',
             'guard_name' => 'api',
@@ -269,6 +295,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -281,15 +310,18 @@ class StockTransferWorkflowTest extends TestCase
                 'current_business_id' => $this->business->id,
             ]);
 
-        $response->assertStatus(403)
-            ->assertJsonPath('message', 'You cannot approve your own request');
+        $response->assertStatus(200)
+            ->assertJsonPath('data.status', 'approved');
     }
 
-    public function test_requester_can_confirm_approved_request(): void
+    public function test_requester_can_confirm_approved_request_legacy_single_branch(): void
     {
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => null,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -322,6 +354,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => null,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -368,6 +403,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -385,10 +423,12 @@ class StockTransferWorkflowTest extends TestCase
 
     public function test_can_list_requests_with_filters(): void
     {
-        // Create multiple requests
         StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -399,6 +439,9 @@ class StockTransferWorkflowTest extends TestCase
         StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => $this->branchTo->id,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 30,
             'requested_by' => $this->requester->id,
@@ -409,7 +452,7 @@ class StockTransferWorkflowTest extends TestCase
         ]);
 
         $response = $this->actingAs($this->requester, 'sanctum')
-            ->getJson('/api/stock-transfer-requests?current_business_id=' . $this->business->id . '&status=pending');
+            ->getJson('/api/stock-transfer-requests?current_business_id='.$this->business->id.'&status=pending');
 
         $response->assertStatus(200)
             ->assertJsonCount(1, 'data');
@@ -436,6 +479,9 @@ class StockTransferWorkflowTest extends TestCase
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => null,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -457,10 +503,12 @@ class StockTransferWorkflowTest extends TestCase
 
     public function test_audit_trail_is_maintained(): void
     {
-        // Test approval audit trail
         $request = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => null,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 20,
             'requested_by' => $this->requester->id,
@@ -470,15 +518,18 @@ class StockTransferWorkflowTest extends TestCase
 
         $request->approve($this->approver, 'Looks good');
 
+        $request->refresh();
         $this->assertEquals($this->approver->id, $request->reviewed_by);
         $this->assertNotNull($request->reviewed_at);
         $this->assertEquals('Looks good', $request->review_notes);
         $this->assertEquals('approved', $request->status);
 
-        // Test confirmation audit trail (separate request)
         $request2 = StockTransferRequest::create([
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
+            'branch_from_id' => $this->branch->id,
+            'branch_to_id' => null,
+            'direction' => 'out',
             'branch_product_id' => $this->branchProduct->id,
             'quantity_requested' => 10,
             'requested_by' => $this->requester->id,
@@ -490,6 +541,7 @@ class StockTransferWorkflowTest extends TestCase
 
         $request2->confirm($this->requester, null, 'Completed');
 
+        $request2->refresh();
         $this->assertEquals($this->requester->id, $request2->confirmed_by);
         $this->assertNotNull($request2->confirmed_at);
         $this->assertEquals('Completed', $request2->confirmation_notes);
@@ -498,7 +550,7 @@ class StockTransferWorkflowTest extends TestCase
 
     public function test_unauthenticated_user_cannot_access(): void
     {
-        $response = $this->getJson('/api/stock-transfer-requests?current_business_id=' . $this->business->id);
+        $response = $this->getJson('/api/stock-transfer-requests?current_business_id='.$this->business->id);
         $response->assertStatus(401);
     }
 

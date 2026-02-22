@@ -48,23 +48,26 @@ class StockTransferRequestController extends Controller
         }
 
         $query = StockTransferRequest::where('business_id', $businessId)
-            ->with(['branch', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy']);
+            ->with(['branch', 'branchFrom', 'branchTo', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy', 'transferInRequest', 'transferOutRequest']);
 
-        // Filters
+        // Filters: branch_id shows requests where branch is source (from) or destination (to)
         if ($request->has('branch_id')) {
-            $branchId = $request->input('branch_id');
+            $branchId = (int) $request->input('branch_id');
 
-            // Check branch access
             if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
                 return response()->json(['message' => 'You do not have access to this branch'], 403);
             }
 
-            $query->where('branch_id', $branchId);
+            $query->where(function ($q) use ($branchId) {
+                $q->where('branch_from_id', $branchId)->orWhere('branch_to_id', $branchId);
+            });
         } else {
-            // Scope to user's permitted branches
+            // Scope to user's permitted branches (from or to)
             $permittedBranches = $this->getPermittedBranches($user, $businessId);
             if ($permittedBranches->isNotEmpty()) {
-                $query->whereIn('branch_id', $permittedBranches);
+                $query->where(function ($q) use ($permittedBranches) {
+                    $q->whereIn('branch_from_id', $permittedBranches)->orWhereIn('branch_to_id', $permittedBranches);
+                });
             }
         }
 
@@ -86,9 +89,14 @@ class StockTransferRequestController extends Controller
             $query->where('status', StockTransferRequest::STATUS_PENDING);
         }
 
-        // Filter approved pending confirmation
+        // Filter approved pending confirmation (out-requests)
         if ($request->boolean('pending_confirmation', false)) {
-            $query->where('status', StockTransferRequest::STATUS_APPROVED);
+            $query->where('status', StockTransferRequest::STATUS_APPROVED)->where('direction', StockTransferRequest::DIRECTION_OUT);
+        }
+
+        // Filter pending acceptance (in-requests at receiving branch)
+        if ($request->boolean('pending_acceptance', false)) {
+            $query->where('status', StockTransferRequest::STATUS_PENDING_ACCEPTANCE)->where('direction', StockTransferRequest::DIRECTION_IN);
         }
 
         $perPage = $request->input('per_page', 15);
@@ -134,7 +142,8 @@ class StockTransferRequestController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
-            'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
+            'branch_from_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
+            'branch_to_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'branch_product_id' => ['required', 'integer', 'exists:branch_products,id'],
             'quantity_requested' => ['required', 'integer', 'min:1'],
             'reason' => ['nullable', 'string', 'max:500'],
@@ -148,32 +157,37 @@ class StockTransferRequestController extends Controller
             ], 422);
         }
 
-        // Verify branch access
-        if (! $this->userHasBranchAccess($user, $businessId, $request->branch_id)) {
-            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        if ($request->branch_from_id == $request->branch_to_id) {
+            return response()->json(['message' => 'Source and destination branch must be different'], 422);
         }
 
-        // Verify branch product belongs to the branch
+        if (! $this->userHasBranchAccess($user, $businessId, $request->branch_from_id)) {
+            return response()->json(['message' => 'You do not have access to  this branch'], 403);
+        }
+
         $branchProduct = BranchProduct::where('id', $request->branch_product_id)
-            ->where('branch_id', $request->branch_id)
+            ->where('branch_id', $request->branch_from_id)
             ->first();
 
         if (! $branchProduct) {
-            return response()->json(['message' => 'Product not found in this branch'], 404);
+            return response()->json(['message' => 'Product not found in source branch'], 404);
         }
 
-        // Check if there's enough stock in store
-        if ($branchProduct->store_quantity < $request->quantity_requested) {
+        $totalAvailable = $branchProduct->store_quantity + $branchProduct->shelf_quantity;
+        if ($totalAvailable < $request->quantity_requested) {
             return response()->json([
-                'message' => 'Insufficient stock in store',
-                'available' => $branchProduct->store_quantity,
+                'message' => 'Insufficient stock',
+                'available' => $totalAvailable,
                 'requested' => $request->quantity_requested,
             ], 422);
         }
 
         $transferRequest = StockTransferRequest::create([
             'business_id' => $businessId,
-            'branch_id' => $request->branch_id,
+            'branch_id' => $request->branch_from_id,
+            'branch_from_id' => $request->branch_from_id,
+            'branch_to_id' => $request->branch_to_id,
+            'direction' => StockTransferRequest::DIRECTION_OUT,
             'branch_product_id' => $request->branch_product_id,
             'quantity_requested' => $request->quantity_requested,
             'reason' => $request->reason,
@@ -185,7 +199,7 @@ class StockTransferRequestController extends Controller
 
         return response()->json([
             'message' => 'Stock transfer request created successfully',
-            'data' => $this->formatRequest($transferRequest->load(['branch', 'branchProduct.product', 'requestedBy'])),
+            'data' => $this->formatRequest($transferRequest->load(['branch', 'branchFrom', 'branchTo', 'branchProduct.product', 'requestedBy'])),
         ], 201);
     }
 
@@ -213,29 +227,35 @@ class StockTransferRequestController extends Controller
 
         $transferRequest = StockTransferRequest::where('id', $id)
             ->where('business_id', $businessId)
-            ->with(['branch', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy'])
+            ->with(['branch', 'branchFrom', 'branchTo', 'branchProduct.product', 'requestedBy', 'reviewedBy', 'confirmedBy', 'transferInRequest', 'transferOutRequest.branchProduct.product'])
             ->first();
 
         if (! $transferRequest) {
             return response()->json(['message' => 'Request not found'], 404);
         }
 
-        // Set permission context
         setPermissionsTeamId($businessId);
 
-        // Check if user can view (requester, approver, or owner)
         $canView = $transferRequest->requested_by === $user->id ||
                    $business->owner_id === $user->id ||
                    $user->hasPermissionTo('approve stock transfer') ||
-                   $user->hasPermissionTo('request stock transfer');
+                   $user->hasPermissionTo('request stock transfer') ||
+                   $user->hasPermissionTo('accept stock transfer');
 
         if (! $canView) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Verify branch access
-        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
-            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        $branchFromId = $transferRequest->branch_from_id ?? $transferRequest->branch_id;
+        $branchToId = $transferRequest->branch_to_id;
+        $hasAccess = $this->userHasBranchAccess($user, $businessId, $branchFromId);
+        if ($branchToId && ! $hasAccess) {
+            $hasAccess = $this->userHasBranchAccess($user, $businessId, $branchToId);
+        } elseif ($branchToId) {
+            $hasAccess = true;
+        }
+        if (! $hasAccess) {
+            return response()->json(['message' => 'You do not have access to this transfer\'s branches'], 403);
         }
 
         return response()->json([
@@ -273,7 +293,8 @@ class StockTransferRequestController extends Controller
 
         $transferRequest = StockTransferRequest::where('id', $id)
             ->where('business_id', $businessId)
-            ->with('branchProduct')
+            ->where('direction', StockTransferRequest::DIRECTION_OUT)
+            ->with('branchProduct.product')
             ->lockForUpdate()
             ->first();
 
@@ -281,15 +302,15 @@ class StockTransferRequestController extends Controller
             return response()->json(['message' => 'Request not found'], 404);
         }
 
-        // Check branch access
-        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
-            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        $branchFromId = $transferRequest->branch_from_id ?? $transferRequest->branch_id;
+        if (! $this->userHasBranchAccess($user, $businessId, $branchFromId)) {
+            return response()->json(['message' => 'You do not have access to the sending branch'], 403);
         }
 
-        // Prevent self-approval
-        if ($transferRequest->requested_by === $user->id) {
-            return response()->json(['message' => 'You cannot approve your own request'], 403);
-        }
+        // // Prevent self-approval
+        // if ($transferRequest->requested_by === $user->id) {
+        //     return response()->json(['message' => 'You cannot approve your own request'], 403);
+        // }
 
         $validator = Validator::make($request->all(), [
             'notes' => ['nullable', 'string', 'max:500'],
@@ -305,9 +326,11 @@ class StockTransferRequestController extends Controller
         try {
             $transferRequest->approve($user, $request->notes);
 
+            $fresh = $transferRequest->fresh(['requestedBy', 'reviewedBy', 'branchFrom', 'branchTo', 'transferInRequest']);
+
             return response()->json([
-                'message' => 'Request approved successfully',
-                'data' => $this->formatRequest($transferRequest->fresh(['requestedBy', 'reviewedBy'])),
+                'message' => 'Request approved successfully. A transfer-in request has been created for the receiving branch.',
+                'data' => $this->formatRequest($fresh),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -317,7 +340,128 @@ class StockTransferRequestController extends Controller
     }
 
     /**
-     * Reject a stock transfer request
+     * Accept transfer at receiving branch (in-request only).
+     */
+    public function accept(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('accept stock transfer')) {
+            return response()->json(['message' => 'You do not have permission to accept stock transfers'], 403);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->where('direction', StockTransferRequest::DIRECTION_IN)
+            ->with(['transferOutRequest.branchProduct.product'])
+            ->lockForUpdate()
+            ->first();
+
+        if (! $transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_to_id)) {
+            return response()->json(['message' => 'You do not have access to the receiving branch'], 403);
+        }
+
+        try {
+            $transferRequest->acceptInRequest($user);
+
+            return response()->json([
+                'message' => 'Transfer accepted and stock updated successfully',
+                'data' => $this->formatRequest($transferRequest->fresh(['transferOutRequest', 'confirmedBy', 'branchFrom', 'branchTo'])),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Reject transfer at receiving branch (in-request only).
+     */
+    public function rejectIn(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('accept stock transfer')) {
+            return response()->json(['message' => 'You do not have permission to accept or reject stock transfers at receiving branch'], 403);
+        }
+
+        $transferRequest = StockTransferRequest::where('id', $id)
+            ->where('business_id', $businessId)
+            ->where('direction', StockTransferRequest::DIRECTION_IN)
+            ->with(['transferOutRequest.branchProduct'])
+            ->lockForUpdate()
+            ->first();
+
+        if (! $transferRequest) {
+            return response()->json(['message' => 'Request not found'], 404);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_to_id)) {
+            return response()->json(['message' => 'You do not have access to the receiving branch'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        try {
+            $transferRequest->rejectInRequest($user, $request->reason);
+
+            return response()->json([
+                'message' => 'Transfer rejected. Stock has been reversed at the sending branch.',
+                'data' => $this->formatRequest($transferRequest->fresh(['transferOutRequest', 'reviewedBy', 'branchFrom', 'branchTo'])),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
+        }
+    }
+
+    /**
+     * Reject a stock transfer request (out-request, at sending branch)
      */
     public function reject(Request $request, int $id)
     {
@@ -495,7 +639,8 @@ class StockTransferRequestController extends Controller
             return response()->json(['message' => 'Only the requester can cancel this request'], 403);
         }
 
-        if (! $this->userHasBranchAccess($user, $businessId, $transferRequest->branch_id)) {
+        $branchId = $transferRequest->branch_from_id ?? $transferRequest->branch_id;
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
@@ -529,22 +674,47 @@ class StockTransferRequestController extends Controller
      */
     private function formatRequest(StockTransferRequest $transferRequest): array
     {
-        return [
-            'id' => $transferRequest->id,
-            'request_number' => $transferRequest->request_number,
-            'business_id' => $transferRequest->business_id,
-            'branch' => $transferRequest->branch ? [
-                'id' => $transferRequest->branch->id,
-                'name' => $transferRequest->branch->name,
-                'code' => $transferRequest->branch->code,
-            ] : null,
-            'product' => $transferRequest->branchProduct ? [
+        $product = null;
+        if ($transferRequest->branchProduct && $transferRequest->branchProduct->relationLoaded('product') && $transferRequest->branchProduct->product) {
+            $product = [
                 'id' => $transferRequest->branchProduct->product->id,
                 'name' => $transferRequest->branchProduct->product->name,
                 'sku' => $transferRequest->branchProduct->product->sku,
                 'current_shelf_quantity' => $transferRequest->branchProduct->shelf_quantity,
                 'current_store_quantity' => $transferRequest->branchProduct->store_quantity,
+            ];
+        } elseif ($transferRequest->transferOutRequest && $transferRequest->transferOutRequest->relationLoaded('branchProduct') && $transferRequest->transferOutRequest->branchProduct) {
+            $bp = $transferRequest->transferOutRequest->branchProduct;
+            $product = [
+                'id' => $bp->product_id,
+                'name' => $bp->product->name ?? null,
+                'sku' => $bp->product->sku ?? null,
+                'current_shelf_quantity' => $bp->shelf_quantity,
+                'current_store_quantity' => $bp->store_quantity,
+            ];
+        }
+
+        $data = [
+            'id' => $transferRequest->id,
+            'request_number' => $transferRequest->request_number,
+            'business_id' => $transferRequest->business_id,
+            'direction' => $transferRequest->direction ?? 'out',
+            'branch' => $transferRequest->branch ? [
+                'id' => $transferRequest->branch->id,
+                'name' => $transferRequest->branch->name,
+                'code' => $transferRequest->branch->code,
             ] : null,
+            'branch_from' => $transferRequest->branchFrom ? [
+                'id' => $transferRequest->branchFrom->id,
+                'name' => $transferRequest->branchFrom->name,
+                'code' => $transferRequest->branchFrom->code,
+            ] : null,
+            'branch_to' => $transferRequest->branchTo ? [
+                'id' => $transferRequest->branchTo->id,
+                'name' => $transferRequest->branchTo->name,
+                'code' => $transferRequest->branchTo->code,
+            ] : null,
+            'product' => $product,
             'quantity_requested' => $transferRequest->quantity_requested,
             'quantity_transferred' => $transferRequest->quantity_transferred,
             'reason' => $transferRequest->reason,
@@ -574,5 +744,22 @@ class StockTransferRequestController extends Controller
             'created_at' => $transferRequest->created_at,
             'updated_at' => $transferRequest->updated_at,
         ];
+
+        if ($transferRequest->relationLoaded('transferInRequest') && $transferRequest->transferInRequest) {
+            $data['transfer_in_request'] = [
+                'id' => $transferRequest->transferInRequest->id,
+                'request_number' => $transferRequest->transferInRequest->request_number,
+                'status' => $transferRequest->transferInRequest->status,
+            ];
+        }
+        if ($transferRequest->relationLoaded('transferOutRequest') && $transferRequest->transferOutRequest) {
+            $data['transfer_out_request'] = [
+                'id' => $transferRequest->transferOutRequest->id,
+                'request_number' => $transferRequest->transferOutRequest->request_number,
+                'status' => $transferRequest->transferOutRequest->status,
+            ];
+        }
+
+        return $data;
     }
 }

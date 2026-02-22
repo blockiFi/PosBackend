@@ -8,6 +8,7 @@ use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -16,6 +17,10 @@ use Illuminate\Support\Str;
 class InventoryController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected InventoryBatchService $batchService
+    ) {}
 
     /**
      * List inventory transactions
@@ -358,46 +363,40 @@ class InventoryController extends Controller
             }
 
             // Allocate batches for stock-out transactions using FEFO
-            // Include negative adjustments (stock reductions)
             $isStockOut = in_array($data['type'], ['sale', 'transfer_out', 'damage'])
                 || ($data['type'] === 'adjustment' && $normalizedQuantity < 0);
 
             if ($isStockOut && abs($normalizedQuantity) > 0) {
-                try {
-                    $this->allocateBatchesForTransaction($transaction, $data['product_id'], $data['branch_id'], abs($normalizedQuantity));
-                } catch (\Exception $allocError) {
-                    // Log allocation error but don't fail the transaction
-                    \Log::warning("Failed to allocate batches for transaction {$transaction->id}: ".$allocError->getMessage());
-                }
+                $this->batchService->allocateStockOut(
+                    $data['product_id'],
+                    $data['branch_id'],
+                    abs($normalizedQuantity),
+                    $transaction,
+                    [
+                        'reference_number' => $data['reference_number'] ?? null,
+                        'notes' => $transaction->notes,
+                    ]
+                );
             }
 
-            // For positive adjustments, create a batch to track the added stock
+            // For positive adjustments, add to batch (create or existing)
             if ($data['type'] === 'adjustment' && $normalizedQuantity > 0 && abs($normalizedQuantity) > 0) {
-                try {
-                    $batch = ProductBatch::create([
-                        'uuid' => Str::uuid(),
-                        'business_id' => $businessId,
-                        'branch_id' => $data['branch_id'],
-                        'product_id' => $data['product_id'],
+                $this->batchService->addStockIn(
+                    $data['product_id'],
+                    $data['branch_id'],
+                    $businessId,
+                    abs($normalizedQuantity),
+                    $transaction,
+                    null,
+                    [
                         'batch_number' => 'ADJ-'.strtoupper(Str::random(8)),
                         'lot_number' => $data['lot_number'] ?? null,
                         'manufacturing_date' => $data['manufacturing_date'] ?? null,
                         'expiry_date' => $data['expiry_date'] ?? null,
-                        'received_quantity' => abs($normalizedQuantity),
-                        'current_quantity' => abs($normalizedQuantity),
                         'unit_cost' => $data['unit_cost'] ?? 0,
-                        'supplier_name' => null,
                         'supplier_reference' => $data['reference_number'] ?? null,
-                        'inventory_transaction_id' => $transaction->id,
-                        'status' => 'active',
-                    ]);
-
-                    // Link batch to transaction
-                    $transaction->update(['batch_id' => $batch->id]);
-                } catch (\Exception $batchError) {
-                    // Log batch creation error but don't fail the transaction
-                    \Log::warning("Failed to create batch for adjustment transaction {$transaction->id}: ".$batchError->getMessage());
-                }
+                    ]
+                );
             }
 
             DB::commit();
@@ -631,6 +630,17 @@ class InventoryController extends Controller
                 'stock_quantity' => $relatedQuantityAfter,
             ]);
         }
+
+        // Add batch for transfer_in (create or add to existing)
+        $this->batchService->addStockIn(
+            $data['product_id'],
+            $data['related_branch_id'],
+            $businessId,
+            abs($data['quantity']),
+            $relatedTransaction,
+            null,
+            []
+        );
     }
 
     /**
@@ -678,63 +688,5 @@ class InventoryController extends Controller
         }
 
         return $data;
-    }
-
-    /**
-     * Allocate batches for a transaction using FEFO
-     */
-    private function allocateBatchesForTransaction(InventoryTransaction $transaction, int $productId, int $branchId, int $quantity): void
-    {
-        $result = ProductBatch::findBatchesToAllocate($productId, $branchId, $quantity);
-
-        foreach ($result['allocations'] as $allocation) {
-            /** @var ProductBatch $batch */
-            $batch = $allocation['batch'];
-            $allocateQty = $allocation['quantity'];
-
-            // Allocate from batch
-            $batch->allocate($allocateQty);
-
-            // Create transaction record for this batch allocation
-            InventoryTransaction::create([
-                'uuid' => Str::uuid(),
-                'business_id' => $transaction->business_id,
-                'branch_id' => $branchId,
-                'product_id' => $productId,
-                'user_id' => $transaction->user_id,
-                'batch_id' => $batch->id,
-                'type' => 'batch_allocation',
-                'quantity' => -$allocateQty,
-                'shelf_quantity' => 0,
-                'store_quantity' => 0,
-                'quantity_before' => $batch->current_quantity + $allocateQty,
-                'shelf_quantity_before' => 0,
-                'store_quantity_before' => 0,
-                'quantity_after' => $batch->current_quantity,
-                'shelf_quantity_after' => 0,
-                'store_quantity_after' => 0,
-                'unit_cost' => $batch->unit_cost,
-                'total_cost' => $allocateQty * $batch->unit_cost,
-                'related_transaction_id' => $transaction->id,
-                'reference_number' => $transaction->reference_number,
-                'notes' => "FEFO allocation from batch {$batch->batch_number}",
-                'meta_data' => [
-                    'batch_number' => $batch->batch_number,
-                    'lot_number' => $batch->lot_number,
-                    'expiry_date' => $batch->expiry_date?->format('Y-m-d'),
-                ],
-            ]);
-        }
-
-        // Log warning if not fully allocated
-        if (! $result['fully_allocated']) {
-            \Log::warning("Batch allocation incomplete for transaction {$transaction->id}", [
-                'product_id' => $productId,
-                'branch_id' => $branchId,
-                'requested' => $quantity,
-                'allocated' => $quantity - $result['remaining'],
-                'remaining' => $result['remaining'],
-            ]);
-        }
     }
 }

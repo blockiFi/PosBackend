@@ -8,6 +8,7 @@ use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\RefundRequest;
 use App\Models\Sale;
+use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Str;
@@ -15,6 +16,10 @@ use Str;
 class RefundRequestController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected InventoryBatchService $batchService
+    ) {}
 
     /**
      * List refund requests with filtering
@@ -276,8 +281,7 @@ class RefundRequestController extends Controller
                 if ($branchProduct) {
                     $branchProduct->increment('stock_quantity', $item->quantity);
 
-                    // Create inventory transaction
-                    InventoryTransaction::create([
+                    $adjTransaction = InventoryTransaction::create([
                         'uuid' => Str::uuid(),
                         'business_id' => $businessId,
                         'branch_id' => $sale->branch_id,
@@ -292,6 +296,16 @@ class RefundRequestController extends Controller
                         'reference_number' => $sale->sale_number,
                         'notes' => "Refund approved for sale: {$sale->sale_number}",
                     ]);
+
+                    $this->batchService->addStockIn(
+                        $item->product_id,
+                        $sale->branch_id,
+                        $businessId,
+                        $item->quantity,
+                        $adjTransaction,
+                        $item->batch_id,
+                        []
+                    );
                 }
             }
 

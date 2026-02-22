@@ -83,7 +83,7 @@ class Product extends Model
                 'stock_quantity', 'low_stock_threshold', 'allow_backorder',
                 'reorder_point', 'reorder_quantity',
                 'is_available', 'is_featured', 'display_order',
-                'bin_location', 'shelf_location', 'branch_meta_data'
+                'bin_location', 'shelf_location', 'branch_meta_data',
             ])
             ->withTimestamps()
             ->using(BranchProduct::class);
@@ -127,6 +127,7 @@ class Product extends Model
     public function isAvailableInBranch(int $branchId): bool
     {
         $branchProduct = $this->getBranchProduct($branchId);
+
         return $branchProduct && $branchProduct->is_available;
     }
 
@@ -136,6 +137,7 @@ class Product extends Model
     public function getStockInBranch(int $branchId): int
     {
         $branchProduct = $this->getBranchProduct($branchId);
+
         return $branchProduct ? $branchProduct->stock_quantity : 0;
     }
 
@@ -157,7 +159,7 @@ class Product extends Model
     protected static function generateSKU(): string
     {
         do {
-            $sku = 'PRD-' . strtoupper(Str::random(8));
+            $sku = 'PRD-'.strtoupper(Str::random(8));
         } while (static::where('sku', $sku)->exists());
 
         return $sku;
@@ -195,12 +197,12 @@ class Product extends Model
      */
     public function scopeInCategory($query, int $categoryId, bool $includeSubcategories = true)
     {
-        if (!$includeSubcategories) {
+        if (! $includeSubcategories) {
             return $query->where('category_id', $categoryId);
         }
 
         $category = ProductCategory::find($categoryId);
-        if (!$category) {
+        if (! $category) {
             return $query->where('category_id', $categoryId);
         }
 
@@ -223,6 +225,7 @@ class Product extends Model
                 $ids = array_merge($ids, static::flattenDescendants($category->descendants));
             }
         }
+
         return $ids;
     }
 }

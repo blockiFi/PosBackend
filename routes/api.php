@@ -95,6 +95,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('products/{id}/branches', [ProductController::class, 'addToBranch']);
         Route::delete('products/{id}/branches', [ProductController::class, 'removeFromBranch']);
         Route::patch('products/{id}/price', [ProductController::class, 'updatePrice']);
+        Route::patch('products/{id}/base-selling-price', [ProductController::class, 'updateBaseSellingPrice']);
 
         // Get products for a specific branch (with permission check)
         Route::get('branches/{branchId}/products', [ProductController::class, 'getProductsByBranch']);
@@ -143,9 +144,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Sales Shift routes (require business context)
         Route::get('shifts', [SalesShiftController::class, 'index']);
+        Route::get('shifts/branch-summary', [SalesShiftController::class, 'branchShiftsSummary']);
         Route::post('shifts', [SalesShiftController::class, 'store']);
         Route::get('shifts/current', [SalesShiftController::class, 'current']);
         Route::get('shifts/{id}', [SalesShiftController::class, 'show']);
+        Route::get('shifts/{id}/summary', [SalesShiftController::class, 'summary']);
         Route::get('shifts/{id}/sales', [SalesShiftController::class, 'sales']);
         Route::post('shifts/{id}/close', [SalesShiftController::class, 'close']);
         Route::post('shifts/{id}/pause', [SalesShiftController::class, 'pause']);
@@ -172,6 +175,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('stock-transfer-requests', [StockTransferRequestController::class, 'store']);
         Route::get('stock-transfer-requests/{id}', [StockTransferRequestController::class, 'show']);
         Route::post('stock-transfer-requests/{id}/approve', [StockTransferRequestController::class, 'approve']);
+        Route::post('stock-transfer-requests/{id}/accept', [StockTransferRequestController::class, 'accept']);
+        Route::post('stock-transfer-requests/{id}/reject-in', [StockTransferRequestController::class, 'rejectIn']);
         Route::post('stock-transfer-requests/{id}/reject', [StockTransferRequestController::class, 'reject']);
         Route::post('stock-transfer-requests/{id}/confirm', [StockTransferRequestController::class, 'confirm']);
         Route::post('stock-transfer-requests/{id}/cancel', [StockTransferRequestController::class, 'cancel']);

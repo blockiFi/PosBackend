@@ -711,6 +711,9 @@ class InventoryRoutesTest extends TestCase
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
         setPermissionsTeamId($this->business->id);
 
+        // Use product without batch tracking so adjustments only affect branch stock
+        $this->product->update(['stock_tracking' => 'none']);
+
         BranchProduct::create([
             'product_id' => $this->product->id,
             'branch_id' => $this->branch->id,

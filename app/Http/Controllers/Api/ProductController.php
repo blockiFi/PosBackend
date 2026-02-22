@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
+use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Product;
 use Illuminate\Http\Request;
@@ -137,7 +138,7 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'image' => ['nullable', 'string'],
             'base_cost_price' => ['nullable', 'numeric', 'min:0'],
-            'base_selling_price' => ['required', 'numeric', 'min:0'],
+            'base_selling_price' => ['nullable', 'numeric', 'min:0'],
             'is_taxable' => ['nullable', 'boolean'],
             'default_tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'unit_of_measure' => ['nullable', 'string', 'max:50'],
@@ -167,7 +168,7 @@ class ProductController extends Controller
             'description' => $data['description'] ?? null,
             'image' => $data['image'] ?? null,
             'base_cost_price' => $data['base_cost_price'] ?? 0,
-            'base_selling_price' => $data['base_selling_price'],
+            'base_selling_price' => $data['base_selling_price'] ?? null,
             'is_taxable' => $data['is_taxable'] ?? true,
             'default_tax_rate' => $data['default_tax_rate'] ?? null,
             'unit_of_measure' => $data['unit_of_measure'] ?? null,
@@ -436,7 +437,7 @@ class ProductController extends Controller
             ], 403);
         }
 
-        $branchProduct = BranchProduct::updateOrCreate(
+        BranchProduct::updateOrCreate(
             [
                 'product_id' => $product->id,
                 'branch_id' => $data['branch_id'],
@@ -524,109 +525,168 @@ class ProductController extends Controller
             ], 403);
         }
 
-        $deleted = BranchProduct::where('product_id', $product->id)
+        $branchProduct = BranchProduct::where('product_id', $product->id)
             ->where('branch_id', $request->input('branch_id'))
-            ->delete();
+            ->first();
 
-        if (! $deleted) {
+        if (! $branchProduct) {
             return response()->json(['message' => 'Product not found in this branch'], 404);
         }
+
+        $branchProduct->delete();
 
         return response()->json([
             'message' => 'Product removed from branch successfully',
         ]);
     }
 
-    /**
-     * Update product selling price
-     * If branch_id is provided, updates branch-specific price
-     * Otherwise updates base selling price
-     */
-    public function updatePrice(Request $request, int $id)
-    {
-        $user = $request->user();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+    // /**
+    //  * Update product selling price
+    //  * If branch_id is provided, updates branch-specific price
+    //  * Otherwise updates base selling price
+    //  */
+    // public function updatePrice(Request $request, int $id)
+    // {
+    //     $user = $request->user();
+    //     $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
 
-        if (! $businessId) {
-            return response()->json([
-                'message' => 'Business context is required',
-            ], 400);
-        }
+    //     if (! $businessId) {
+    //         return response()->json([
+    //             'message' => 'Business context is required',
+    //         ], 400);
+    //     }
 
-        // Verify user has access to this business
-        $business = $user->businesses()
-            ->where('businesses.id', $businessId)
-            ->wherePivot('is_active', true)
-            ->first();
+    //     // Verify user has access to this business
+    //     $business = $user->businesses()
+    //         ->where('businesses.id', $businessId)
+    //         ->wherePivot('is_active', true)
+    //         ->first();
 
-        if (! $business) {
-            return response()->json(['message' => 'Business not found or access denied'], 404);
-        }
+    //     if (! $business) {
+    //         return response()->json(['message' => 'Business not found or access denied'], 404);
+    //     }
 
-        // Set permission context and check permission
-        setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('update product price')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
+    //     // Set permission context and check permission
+    //     setPermissionsTeamId($businessId);
+    //     if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('update product price')) {
+    //         return response()->json(['message' => 'Unauthorized'], 403);
+    //     }
 
-        $product = Product::where('id', $id)
-            ->where('business_id', $businessId)
-            ->first();
+    //     $product = Product::where('id', $id)
+    //         ->where('business_id', $businessId)
+    //         ->first();
 
-        if (! $product) {
-            return response()->json(['message' => 'Product not found'], 404);
-        }
+    //     if (! $product) {
+    //         return response()->json(['message' => 'Product not found'], 404);
+    //     }
 
-        $validator = Validator::make($request->all(), [
-            'selling_price' => ['required', 'numeric', 'min:0'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,'.$businessId],
-        ]);
+    //     $validator = Validator::make($request->all(), [
+    //         'selling_price' => ['required', 'numeric', 'min:0'],
+    //         'branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,'.$businessId],
+    //     ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'message' => 'Validation error',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
+    //     if ($validator->fails()) {
+    //         return response()->json([
+    //             'message' => 'Validation error',
+    //             'errors' => $validator->errors(),
+    //         ], 422);
+    //     }
 
-        $sellingPrice = $request->input('selling_price');
-        $branchId = $request->input('branch_id');
+    //     $sellingPrice = $request->input('selling_price');
+    //     $branchId = $request->input('branch_id');
 
-        if ($branchId) {
-            // Verify user has access to this branch
-            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
-                return response()->json([
-                    'message' => 'You do not have access to this branch',
-                ], 403);
-            }
+    //     if ($branchId) {
+    //         // Verify user has access to this branch
+    //         if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+    //             return response()->json([
+    //                 'message' => 'You do not have access to this branch',
+    //             ], 403);
+    //         }
 
-            // Update branch-specific price
-            $branchProduct = BranchProduct::where('product_id', $product->id)
-                ->where('branch_id', $branchId)
-                ->first();
+    //         // Update branch-specific price
+    //         $branchProduct = BranchProduct::where('product_id', $product->id)
+    //             ->where('branch_id', $branchId)
+    //             ->first();
 
-            if (! $branchProduct) {
-                return response()->json(['message' => 'Product not found in this branch'], 404);
-            }
+    //         if (! $branchProduct) {
+    //             return response()->json(['message' => 'Product not found in this branch'], 404);
+    //         }
 
-            $branchProduct->selling_price = $sellingPrice;
-            $branchProduct->save();
+    //         $branchProduct->selling_price = $sellingPrice;
+    //         $branchProduct->save();
 
-            return response()->json([
-                'message' => 'Branch product price updated successfully',
-                'data' => $this->formatProduct($product->fresh(), $branchId, true),
-            ]);
-        } else {
-            // Update base selling price
-            $product->base_selling_price = $sellingPrice;
-            $product->save();
+    //         return response()->json([
+    //             'message' => 'Branch product price updated successfully',
+    //             'data' => $this->formatProduct($product->fresh(), $branchId, true),
+    //         ]);
+    //     } else {
+    //         // Update base selling price
+    //         $product->base_selling_price = $sellingPrice;
+    //         $product->save();
 
-            return response()->json([
-                'message' => 'Product base price updated successfully',
-                'data' => $this->formatProduct($product->fresh(), null, true),
-            ]);
-        }
-    }
+    //         return response()->json([
+    //             'message' => 'Product base price updated successfully',
+    //             'data' => $this->formatProduct($product->fresh(), null, true),
+    //         ]);
+    //     }
+    // }
+
+    // /**
+    //  * Update product base selling price only.
+    //  * Requires permission: update base selling price
+    //  */
+    // public function updateBaseSellingPrice(Request $request, int $id)
+    // {
+    //     $user = $request->user();
+    //     $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+    //     if (! $businessId) {
+    //         return response()->json([
+    //             'message' => 'Business context is required',
+    //         ], 400);
+    //     }
+
+    //     $business = $user->businesses()
+    //         ->where('businesses.id', $businessId)
+    //         ->wherePivot('is_active', true)
+    //         ->first();
+
+    //     if (! $business) {
+    //         return response()->json(['message' => 'Business not found or access denied'], 404);
+    //     }
+
+    //     setPermissionsTeamId($businessId);
+    //     if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('update base selling price')) {
+    //         return response()->json(['message' => 'Unauthorized'], 403);
+    //     }
+
+    //     $product = Product::where('id', $id)
+    //         ->where('business_id', $businessId)
+    //         ->first();
+
+    //     if (! $product) {
+    //         return response()->json(['message' => 'Product not found'], 404);
+    //     }
+
+    //     $validator = Validator::make($request->all(), [
+    //         'base_selling_price' => ['required', 'numeric', 'min:0'],
+    //     ]);
+
+    //     if ($validator->fails()) {
+    //         return response()->json([
+    //             'message' => 'Validation error',
+    //             'errors' => $validator->errors(),
+    //         ], 422);
+    //     }
+
+    //     $product->base_selling_price = $request->input('base_selling_price');
+    //     $product->save();
+
+    //     return response()->json([
+    //         'message' => 'Base selling price updated successfully',
+    //         'data' => $this->formatProduct($product->fresh(), null, true),
+    //     ]);
+    // }
 
     /**
      * Get products for a specific branch
@@ -662,7 +722,7 @@ class ProductController extends Controller
         }
 
         // Verify the branch exists and belongs to the business
-        $branch = \App\Models\Branch::where('id', $branchId)
+        $branch = Branch::where('id', $branchId)
             ->where('business_id', $businessId)
             ->first();
 
