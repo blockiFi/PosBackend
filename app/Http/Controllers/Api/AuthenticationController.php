@@ -3,14 +3,57 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\BranchAuthorization;
+use App\Models\Business;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 
 class AuthenticationController extends Controller
 {
+    public function getBusinessDetailsWithBranchAuthorization(Request $request)
+    {
+        $data = $request->all();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        $validator = Validator::make($data, [
+            'auth_code' => ['required', 'string'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = Business::find($businessId);
+        if (! $business) {
+            return response()->json(['message' => 'Business not found'], 404);
+        }
+
+        $branchAuthorization = BranchAuthorization::where(['business_id' => $businessId, 'auth_code' => $request->auth_code])
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (! $branchAuthorization) {
+            return response()->json([
+                'message' => 'Invalid or expired auth code',
+            ], 401);
+        }
+
+        return response()->json([
+            'message' => 'Business details with branch authorization',
+            'business' => $business,
+            'branch' => $branchAuthorization->branch,
+        ]);
+    }
+
     public function register(Request $request)
     {
         $data = $request->all();
@@ -105,7 +148,7 @@ class AuthenticationController extends Controller
 
         $user = User::where('pin_code', $request->pin_code)->first();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'message' => 'Invalid PIN code',
             ], 401);
@@ -121,8 +164,8 @@ class AuthenticationController extends Controller
                 break;
             }
         }
-        
-        if (!$hasPermission) {
+
+        if (! $hasPermission) {
             return response()->json([
                 'message' => 'You do not have permission to use PIN login',
             ], 403);
@@ -172,7 +215,7 @@ class AuthenticationController extends Controller
         }
 
         // If setting someone else's PIN, check for manage-pin-codes permission
-        if (!$isSettingOwnPin) {
+        if (! $isSettingOwnPin) {
             $hasPermission = false;
             $businesses = $authenticatedUser->businesses;
             foreach ($businesses as $business) {
@@ -182,8 +225,8 @@ class AuthenticationController extends Controller
                     break;
                 }
             }
-            
-            if (!$hasPermission) {
+
+            if (! $hasPermission) {
                 return response()->json([
                     'message' => 'You do not have permission to manage PIN codes',
                 ], 403);
@@ -191,7 +234,7 @@ class AuthenticationController extends Controller
         }
 
         // Verify password only when setting your own PIN
-        if ($isSettingOwnPin && !Hash::check($request->password, $authenticatedUser->password)) {
+        if ($isSettingOwnPin && ! Hash::check($request->password, $authenticatedUser->password)) {
             return response()->json([
                 'message' => 'Invalid password',
             ], 401);
@@ -249,15 +292,15 @@ class AuthenticationController extends Controller
                 break;
             }
         }
-        
-        if (!$hasPermission) {
+
+        if (! $hasPermission) {
             return response()->json([
                 'message' => 'You do not have permission to manage PIN codes',
             ], 403);
         }
 
         // Verify password before allowing PIN removal
-        if (!Hash::check($request->password, $authenticatedUser->password)) {
+        if (! Hash::check($request->password, $authenticatedUser->password)) {
             return response()->json([
                 'message' => 'Invalid password',
             ], 401);

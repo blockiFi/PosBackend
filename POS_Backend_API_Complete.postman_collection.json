@@ -296,6 +296,41 @@
                         }
                     },
                     "response": []
+                },
+                {
+                    "name": "Get Business Details With Branch Auth",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/business-details-with-branch-auth",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "business-details-with-branch-auth"
+                            ]
+                        },
+                        "description": "Get business and branch by branch authorization code. Body: auth_code (required). Header or body: business_id. Returns business + branch when code is valid and not expired.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"auth_code\": \"847291\",\n  \"business_id\": \"{{business_id}}\"\n}"
+                        }
+                    },
+                    "response": []
                 }
             ]
         },
@@ -525,6 +560,38 @@
                             ]
                         },
                         "description": "List branches for the business. Requires X-Business-Id. User sees only branches they have access to."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Generate Branch Auth Codes",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/branches/generate-auth-codes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "branches",
+                                "generate-auth-codes"
+                            ]
+                        },
+                        "description": "Generate 2-minute-expiry auth codes for all branches the user has permission to. No body. X-Business-Id required. Returns authorizations array (branch_id, branch_name, auth_code, expires_at). Existing non-expired codes are reused."
                     },
                     "response": []
                 },

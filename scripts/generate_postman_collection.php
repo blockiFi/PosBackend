@@ -106,6 +106,10 @@ $items[] = [
   "user_id": 1,
   "password": "SecurePassword123!"
 }', []),
+        req('Get Business Details With Branch Auth', 'POST', 'business-details-with-branch-auth', 'Get business and branch by branch authorization code. Body: auth_code (required). Header or body: business_id. Returns business + branch when code is valid and not expired.', '{
+  "auth_code": "847291",
+  "business_id": "{{business_id}}"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 
@@ -158,6 +162,7 @@ $items[] = [
     'name' => '4. Branches',
     'item' => [
         req('List Branches', 'GET', 'branches', 'List branches for the business. Requires X-Business-Id. User sees only branches they have access to.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Generate Branch Auth Codes', 'POST', 'branches/generate-auth-codes', 'Generate 2-minute-expiry auth codes for all branches the user has permission to. No body. X-Business-Id required. Returns authorizations array (branch_id, branch_name, auth_code, expires_at). Existing non-expired codes are reused.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Branch', 'POST', 'branches', 'Create a branch. name, code required. code must be unique within business. tax_rate 0-100. is_main: mark as main branch.', '{
   "name": "Downtown Store",
   "code": "DT001",

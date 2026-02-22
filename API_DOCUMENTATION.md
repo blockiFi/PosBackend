@@ -275,6 +275,38 @@ Authorization: Bearer {token}
 
 ---
 
+#### 7. Get Business Details With Branch Authorization
+
+**POST** `/business-details-with-branch-auth`
+
+Returns business and branch when the provided branch authorization code is valid and not expired. Used to resolve branch context from a short-lived code (e.g. displayed at a branch).
+
+**Headers:**
+```
+Authorization: Bearer {token}
+X-Business-Id: {business_id}
+```
+
+**Request Body:** Provide `business_id` if not using header.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `auth_code` | string | ✅ Yes | 6-digit branch authorization code |
+| `business_id` | integer | Conditional | Required if X-Business-Id not sent |
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Business details with branch authorization",
+  "business": { "id": 1, "name": "Acme", ... },
+  "branch": { "id": 1, "name": "Main Branch", ... }
+}
+```
+
+**Errors:** `400` business context missing; `404` business not found; `401` invalid or expired auth code.
+
+---
+
 ## Global Concepts
 
 ### Business Context
@@ -753,6 +785,41 @@ X-Business-Id: {business_id}
 **Permission Required:** `delete_branch`
 
 **Response:** `204 No Content`
+
+---
+
+### 6. Generate Branch Authorization Codes
+
+**POST** `/branches/generate-auth-codes`
+
+Generates (or reuses) a short-lived authorization code for **every branch the user has permission to access** in the current business. No request body; uses `X-Business-Id`. Codes expire in 2 minutes. If a branch already has a non-expired code, it is returned unchanged; if expired or missing, a new code is generated.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+X-Business-Id: {business_id}
+```
+
+**Permission Required:** `manage-branches` or business owner.
+
+**Response:** `200 OK`
+```json
+{
+  "message": "Authorization codes generated",
+  "authorizations": [
+    {
+      "branch_id": 1,
+      "branch_name": "Main Branch",
+      "auth_code": "847291",
+      "expires_at": "2026-02-22T14:32:00.000000Z"
+    }
+  ],
+  "count": 2,
+  "expires_in_minutes": 2
+}
+```
+
+Use these codes with **Get Business Details With Branch Authorization** (`POST /business-details-with-branch-auth`) to resolve business and branch by code.
 
 ---
 
@@ -5511,6 +5578,7 @@ Every API route. Base path: `/api`. All protected routes require `Authorization:
 | GET | `user` | Current authenticated user |
 | POST | `pin/set` | Set/update PIN (user_id, pin_code, password if own) |
 | POST | `pin/remove` | Remove PIN (user_id, password if own) |
+| POST | `business-details-with-branch-auth` | Get business + branch by auth_code (body: auth_code, business_id) |
 | GET | `businesses` | List user's businesses |
 | POST | `businesses` | Create business |
 | GET | `permissions` | List all permissions (global) |
@@ -5520,6 +5588,7 @@ Every API route. Base path: `/api`. All protected routes require `Authorization:
 | DELETE | `businesses/{id}` | Delete business |
 | GET | `branches` | List branches |
 | POST | `branches` | Create branch |
+| POST | `branches/generate-auth-codes` | Generate auth codes for all permitted branches (2-min expiry) |
 | GET | `branches/{id}` | Get branch |
 | PUT | `branches/{id}` | Update branch |
 | DELETE | `branches/{id}` | Delete branch |

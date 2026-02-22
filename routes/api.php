@@ -37,6 +37,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // PIN management
     Route::post('pin/set', [AuthenticationController::class, 'setPin']);
     Route::post('pin/remove', [AuthenticationController::class, 'removePin']);
+    // Get business and branch by auth code (branch authorization)
+    Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
     // Business listing & creation (scoped to authenticated user's memberships)
     Route::get('businesses', [BusinessController::class, 'index']);
     Route::post('businesses', [BusinessController::class, 'store']);
@@ -53,6 +55,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Branch routes (require business context)
         Route::get('branches', [BranchController::class, 'index']);
         Route::post('branches', [BranchController::class, 'store']);
+        Route::post('branches/generate-auth-codes', [BranchController::class, 'generateAuthCode']);
         Route::get('branches/{id}', [BranchController::class, 'show']);
         Route::put('branches/{id}', [BranchController::class, 'update']);
         Route::delete('branches/{id}', [BranchController::class, 'destroy']);

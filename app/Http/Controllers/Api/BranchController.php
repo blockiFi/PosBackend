@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
+use App\Models\BranchAuthorization;
 use App\Models\Business;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -355,5 +356,81 @@ class BranchController extends Controller
         $branch->delete();
 
         return response()->json(['message' => 'Branch deleted']);
+    }
+
+    public function generateAuthCode(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('manage-branches') && $business->owner_id !== $user->id) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $permittedBranchIds = $user->getBranchesInBusiness($businessId);
+        if ($permittedBranchIds->isEmpty()) {
+            $permittedBranchIds = Branch::where('business_id', $businessId)->pluck('id');
+        }
+
+        $expiresAt = now()->addMinutes(2);
+        $authorizations = [];
+
+        foreach ($permittedBranchIds as $branchId) {
+            $existing = BranchAuthorization::where('user_id', $user->id)
+                ->where('business_id', $businessId)
+                ->where('branch_id', $branchId)
+                ->orderByDesc('id')
+                ->first();
+
+            if ($existing && ! $existing->expires_at->isPast()) {
+                $record = $existing;
+                $record->load('branch');
+            } else {
+                $authCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+                if ($existing) {
+                    $existing->update(['auth_code' => $authCode, 'expires_at' => $expiresAt]);
+                    $record = $existing->fresh(['branch']);
+                } else {
+                    $record = BranchAuthorization::create([
+                        'user_id' => $user->id,
+                        'business_id' => $businessId,
+                        'branch_id' => $branchId,
+                        'auth_code' => $authCode,
+                        'expires_at' => $expiresAt,
+                    ]);
+                    $record->load('branch');
+                }
+            }
+
+            $authorizations[] = [
+                'branch_id' => $record->branch_id,
+                'branch_name' => $record->branch->name ?? null,
+                'auth_code' => $record->auth_code,
+                'expires_at' => $record->expires_at->toIso8601String(),
+            ];
+        }
+
+        return response()->json([
+            'message' => 'Authorization codes generated',
+            'authorizations' => $authorizations,
+            'count' => count($authorizations),
+            'expires_in_minutes' => 2,
+        ]);
     }
 }
