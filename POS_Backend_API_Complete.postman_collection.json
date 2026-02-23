@@ -137,7 +137,7 @@
                         "description": "Update current user profile. Optional: name, profile_image (multipart file, image, max 2MB). Returns updated user.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"name\": \"New Name\"\n}"
+                            "raw": "{\"name\": \"New Name\"}"
                         }
                     },
                     "response": []
@@ -347,10 +347,6 @@
                             {
                                 "key": "Content-Type",
                                 "value": "application/json"
-                            },
-                            {
-                                "key": "X-Business-Id",
-                                "value": "{{business_id}}"
                             }
                         ],
                         "url": {
@@ -363,10 +359,10 @@
                                 "business-details-with-branch-auth"
                             ]
                         },
-                        "description": "Get business and branch by branch authorization code. Body: auth_code (required). Header or body: business_id. Returns business + branch when code is valid and not expired.",
+                        "description": "Get business and branch by branch authorization code. Body: auth_code (required). Business is derived from the code; no business_id needed. Returns business + branch when code is valid and not expired. Requires Bearer token.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"auth_code\": \"847291\",\n  \"business_id\": \"{{business_id}}\"\n}"
+                            "raw": "{\n  \"auth_code\": \"847291\"\n}"
                         }
                     },
                     "response": []
@@ -375,6 +371,7 @@
         },
         {
             "name": "2. Businesses",
+            "description": "CRUD for businesses. Multi-tenant: each business has an owner and can have multiple branches. List returns only businesses the authenticated user belongs to. Create sets the creator as owner and creates a main branch. Use X-Business-Id header for get/update/delete.",
             "item": [
                 {
                     "name": "List Businesses",
@@ -543,6 +540,7 @@
         },
         {
             "name": "3. Permissions (Global)",
+            "description": "Global list of all permissions in the system. Used when creating or editing roles. No business context required.",
             "item": [
                 {
                     "name": "List Permissions",
@@ -785,6 +783,7 @@
         },
         {
             "name": "5. Roles & Permissions",
+            "description": "Business-scoped roles and permissions (Spatie). Create roles, attach/detach permissions, assign/remove roles to users. Role assignment can be branch-scoped (branch_id) or business-wide (branch_id null). X-Business-Id required.",
             "item": [
                 {
                     "name": "List Roles",
@@ -1172,7 +1171,7 @@
                                 "business-users"
                             ]
                         },
-                        "description": "List all users in the business with roles. Owner or manage-users. X-Business-Id required."
+                        "description": "List all users in the business with their roles. Permission: owner or manage-users. Query: branch_id (optional) \u2013 filter to users who have a role in this branch or a business-wide role; branch must belong to the business and requester must have branch access. Returns id, name, email, profile_image, profile_image_url, is_active, joined_at, roles. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -1204,7 +1203,7 @@
                                 "business-users"
                             ]
                         },
-                        "description": "Add a user by email. If email does not exist, creates new user with random password; password returned in data.password. name required. role_ids: optional array of role ids (business roles) to assign. Only owner can add.",
+                        "description": "Add a user by email. If email does not exist, creates new user with random password; password returned in data.password. If user is assigned the Cashier role and has no PIN, a PIN is auto-generated and returned in data.pin_code. name required. Optional: profile_image (multipart) when creating new user. role_ids: optional array of role ids. Only owner can add.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"email\": \"newstaff@example.com\",\n  \"name\": \"New Staff\",\n  \"is_active\": true,\n  \"role_ids\": [1, 2]\n}"
@@ -1319,6 +1318,7 @@
         },
         {
             "name": "7. Product Categories",
+            "description": "Product hierarchy. Categories can have parent_id for tree structure. Breadcrumb returns the parent chain for a category. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Categories",
@@ -1859,6 +1859,7 @@
         },
         {
             "name": "9. Branch Products",
+            "description": "Product\u2013branch association: pricing, shelf/store quantities, availability. Move to shelf/store: direct move (requires approve shelf store move or manage/adjust inventory) or use Shelf/Store Move Requests for approval workflow. Stock summary, bulk update. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Branch Products",
@@ -2470,6 +2471,7 @@
         },
         {
             "name": "11. Customers",
+            "description": "CRUD for customers. Types: walk-in, regular, vip. credit_limit, metadata. Filter by type, is_active, search. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Customers",
@@ -2822,6 +2824,7 @@
         },
         {
             "name": "13. Sales",
+            "description": "Sales (POS). Create sale with branch_id, items (product_id, quantity, unit_price), payments. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Sales",
@@ -3325,6 +3328,7 @@
         },
         {
             "name": "15. Batches",
+            "description": "Product batches (FEFO, expiry). List with filters: branch_id, product_id, status, near_expiry (days), expired. Responses include quick_sale_requested. Update status (active|depleted|expired|recalled). X-Business-Id required.",
             "item": [
                 {
                     "name": "List Batches",
@@ -3712,6 +3716,7 @@
         },
         {
             "name": "17. Stock Transfer Requests",
+            "description": "Move stock between branches. Create request (branch_from_id, branch_to_id, branch_product_id, quantity). Approve at sending branch; accept/reject at receiving branch; confirm receipt. Cancel from sending branch. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Stock Transfer Requests",
@@ -4046,19 +4051,35 @@
         },
         {
             "name": "17b. Shelf/Store Move Requests",
+            "description": "Request-based workflow for moving stock between shelf and store within a branch. Create request (branch_product_id, direction: to_shelf|to_store, quantity). Approvers approve or reject; on approve the move is performed. Permissions: request shelf store move, approve shelf store move. Direct move via branch-products move-to-shelf/store requires approve permission. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Shelf/Store Move Requests",
                     "request": {
                         "method": "GET",
                         "header": [
-                            {"key": "Accept", "value": "application/json"},
-                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/shelf-store-move-requests",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "shelf-store-move-requests"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shelf-store-move-requests"
+                            ]
                         },
                         "description": "List move requests. Query: branch_id, status, my_requests, pending_approval, per_page. X-Business-Id required."
                     },
@@ -4069,14 +4090,28 @@
                     "request": {
                         "method": "POST",
                         "header": [
-                            {"key": "Accept", "value": "application/json"},
-                            {"key": "Content-Type", "value": "application/json"},
-                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/shelf-store-move-requests",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "shelf-store-move-requests"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shelf-store-move-requests"
+                            ]
                         },
                         "description": "Request to move stock. branch_product_id, direction (to_shelf|to_store), quantity required. reason optional. Requires request shelf store move.",
                         "body": {
@@ -4091,13 +4126,29 @@
                     "request": {
                         "method": "GET",
                         "header": [
-                            {"key": "Accept", "value": "application/json"},
-                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/shelf-store-move-requests/1",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "shelf-store-move-requests", "1"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shelf-store-move-requests",
+                                "1"
+                            ]
                         },
                         "description": "Get one request. X-Business-Id required."
                     },
@@ -4108,15 +4159,36 @@
                     "request": {
                         "method": "POST",
                         "header": [
-                            {"key": "Accept", "value": "application/json"},
-                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/shelf-store-move-requests/1/approve",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "shelf-store-move-requests", "1", "approve"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shelf-store-move-requests",
+                                "1",
+                                "approve"
+                            ]
                         },
-                        "description": "Approve and perform the move. Requires approve shelf store move."
+                        "description": "Approve and perform the move. Requires approve shelf store move.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
                     },
                     "response": []
                 },
@@ -4125,14 +4197,30 @@
                     "request": {
                         "method": "POST",
                         "header": [
-                            {"key": "Accept", "value": "application/json"},
-                            {"key": "Content-Type", "value": "application/json"},
-                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/shelf-store-move-requests/1/reject",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "shelf-store-move-requests", "1", "reject"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shelf-store-move-requests",
+                                "1",
+                                "reject"
+                            ]
                         },
                         "description": "Reject the request. reason optional (max 500).",
                         "body": {
@@ -4252,6 +4340,7 @@
         },
         {
             "name": "19. Refund Requests",
+            "description": "Refund workflow. Create request: refund_scope whole_sale (default) or items. For items, send items array with sale_item_id and quantity (partial refund). Approve restores inventory and updates sale refunded_amount; reject with reason. One pending request per sale. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Refund Requests",
@@ -4313,10 +4402,46 @@
                                 "refund-requests"
                             ]
                         },
-                        "description": "Create refund request. sale_id, reason required. amount optional (full refund if omitted).",
+                        "description": "Create refund request. sale_id, reason required. refund_scope: whole_sale (default) or items. For items, pass items: [{ sale_item_id, quantity }].",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"sale_id\": 1,\n  \"reason\": \"Customer return\",\n  \"amount\": 29.99\n}"
+                            "raw": "{\n  \"sale_id\": 1,\n  \"reason\": \"Customer return\",\n  \"refund_scope\": \"whole_sale\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Refund Request (Partial)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/refund-requests",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "refund-requests"
+                            ]
+                        },
+                        "description": "Partial refund: pass refund_scope: items and items array.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"sale_id\": 1,\n  \"reason\": \"Return 2 units only\",\n  \"refund_scope\": \"items\",\n  \"items\": [{\"sale_item_id\": 1, \"quantity\": 2}]\n}"
                         }
                     },
                     "response": []
@@ -4434,6 +4559,7 @@
         },
         {
             "name": "20. Quick Sales",
+            "description": "Near-expiry or promotional quick-sale requests. Create with branch_product_id (or batch), discount_percentage, start_date, end_date. Approve/reject/end. When approved and active, discount applies to branch product. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Quick Sales",
@@ -4654,6 +4780,7 @@
         },
         {
             "name": "21. Sync (Offline / Device)",
+            "description": "Offline-first device sync. Register device; bootstrap (initial data); pull (changes since timestamp); push (local sales, customers, etc.); resolve conflicts; status; heartbeat. Use X-Business-Id and X-Device-Id.",
             "item": [
                 {
                     "name": "Register Device",
@@ -4938,6 +5065,7 @@
         },
         {
             "name": "22. Server Sync (Edge \u2194 Cloud)",
+            "description": "Server-to-server sync between edge and cloud. Push/pull from edge; receive/provide-changes on cloud. Status and health endpoints. X-Business-Id required.",
             "item": [
                 {
                     "name": "Server Sync Push",

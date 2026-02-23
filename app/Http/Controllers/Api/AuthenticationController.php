@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BranchAuthorization;
-use App\Models\Business;
 use App\Models\User;
 use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
@@ -15,10 +14,7 @@ class AuthenticationController extends Controller
 {
     public function getBusinessDetailsWithBranchAuthorization(Request $request)
     {
-        $data = $request->all();
-        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
-
-        $validator = Validator::make($data, [
+        $validator = Validator::make($request->all(), [
             'auth_code' => ['required', 'string'],
         ]);
 
@@ -29,16 +25,8 @@ class AuthenticationController extends Controller
             ], 422);
         }
 
-        if (! $businessId) {
-            return response()->json(['message' => 'Business context is required'], 400);
-        }
-
-        $business = Business::find($businessId);
-        if (! $business) {
-            return response()->json(['message' => 'Business not found'], 404);
-        }
-
-        $branchAuthorization = BranchAuthorization::where(['business_id' => $businessId, 'auth_code' => $request->auth_code])
+        $branchAuthorization = BranchAuthorization::with(['business', 'branch'])
+            ->where('auth_code', $request->auth_code)
             ->where('expires_at', '>', now())
             ->first();
 
@@ -50,7 +38,7 @@ class AuthenticationController extends Controller
 
         return response()->json([
             'message' => 'Business details with branch authorization',
-            'business' => $business,
+            'business' => $branchAuthorization->business,
             'branch' => $branchAuthorization->branch,
         ]);
     }

@@ -108,16 +108,16 @@ $items[] = [
   "user_id": 1,
   "password": "SecurePassword123!"
 }', []),
-        req('Get Business Details With Branch Auth', 'POST', 'business-details-with-branch-auth', 'Get business and branch by branch authorization code. Body: auth_code (required). Header or body: business_id. Returns business + branch when code is valid and not expired.', '{
-  "auth_code": "847291",
-  "business_id": "{{business_id}}"
-}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Business Details With Branch Auth', 'POST', 'business-details-with-branch-auth', 'Get business and branch by branch authorization code. Body: auth_code (required). Business is derived from the code; no business_id needed. Returns business + branch when code is valid and not expired. Requires Bearer token.', '{
+  "auth_code": "847291"
+}', []),
     ],
 ];
 
 // ---- 2. Businesses ----
 $items[] = [
     'name' => '2. Businesses',
+    'description' => 'CRUD for businesses. Multi-tenant: each business has an owner and can have multiple branches. List returns only businesses the authenticated user belongs to. Create sets the creator as owner and creates a main branch. Use X-Business-Id header for get/update/delete.',
     'item' => [
         req('List Businesses', 'GET', 'businesses', 'List all businesses the authenticated user belongs to. No business context required. Returns id, name, branches, pivot branch_id, etc.'),
         req('Create Business', 'POST', 'businesses', 'Create a new business. Creator becomes owner. All fields optional except name. Creates a main branch from main_branch_name/code. currency 3-letter (e.g. USD), country 2-letter. settings: arbitrary object.', '{
@@ -154,6 +154,7 @@ $items[] = [
 // ---- 3. Permissions (no business context) ----
 $items[] = [
     'name' => '3. Permissions (Global)',
+    'description' => 'Global list of all permissions in the system. Used when creating or editing roles. No business context required.',
     'item' => [
         req('List Permissions', 'GET', 'permissions', 'List all available permissions in the system. No business context. Used when building roles.'),
     ],
@@ -195,6 +196,7 @@ $items[] = [
 // ---- 5. Roles & Permissions ----
 $items[] = [
     'name' => '5. Roles & Permissions',
+    'description' => 'Business-scoped roles and permissions (Spatie). Create roles, attach/detach permissions, assign/remove roles to users. Role assignment can be branch-scoped (branch_id) or business-wide (branch_id null). X-Business-Id required.',
     'item' => [
         req('List Roles', 'GET', 'roles', 'List all roles for the business. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Role', 'POST', 'roles', 'Create a role. name required. permissions optional (array of permission names). business_id from X-Business-Id.', '{
@@ -229,7 +231,7 @@ $items[] = [
 $items[] = [
     'name' => '6. Business Users',
     'item' => [
-        req('List Business Users', 'GET', 'business-users', 'List all users in the business with roles. Owner or manage-users. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('List Business Users', 'GET', 'business-users', 'List all users in the business with their roles. Permission: owner or manage-users. Query: branch_id (optional) – filter to users who have a role in this branch or a business-wide role; branch must belong to the business and requester must have branch access. Returns id, name, email, profile_image, profile_image_url, is_active, joined_at, roles. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Add User to Business', 'POST', 'business-users', 'Add a user by email. If email does not exist, creates new user with random password; password returned in data.password. If user is assigned the Cashier role and has no PIN, a PIN is auto-generated and returned in data.pin_code. name required. Optional: profile_image (multipart) when creating new user. role_ids: optional array of role ids. Only owner can add.', '{
   "email": "newstaff@example.com",
   "name": "New Staff",
@@ -245,6 +247,7 @@ $items[] = [
 // ---- 7. Product Categories ----
 $items[] = [
     'name' => '7. Product Categories',
+    'description' => 'Product hierarchy. Categories can have parent_id for tree structure. Breadcrumb returns the parent chain for a category. X-Business-Id required.',
     'item' => [
         req('List Categories', 'GET', 'categories', 'List product categories. Query: per_page, search, parent_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Category', 'POST', 'categories', 'Create category. name required. parent_id optional for hierarchy. description, image, sort_order optional.', '{
@@ -316,6 +319,7 @@ $items[] = [
 // ---- 9. Branch Products ----
 $items[] = [
     'name' => '9. Branch Products',
+    'description' => 'Product–branch association: pricing, shelf/store quantities, availability. Move to shelf/store: direct move (requires approve shelf store move or manage/adjust inventory) or use Shelf/Store Move Requests for approval workflow. Stock summary, bulk update. X-Business-Id required.',
     'item' => [
         req('List Branch Products', 'GET', 'branch-products', 'List products in a branch. Query: branch_id (required), is_available, is_featured, stock_status, search, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Branch Products by Category', 'GET', 'branch-products/by-category', 'Get branch products grouped by category. Query: branch_id required. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
@@ -402,6 +406,7 @@ $items[] = [
 // ---- 11. Customers ----
 $items[] = [
     'name' => '11. Customers',
+    'description' => 'CRUD for customers. Types: walk-in, regular, vip. credit_limit, metadata. Filter by type, is_active, search. X-Business-Id required.',
     'item' => [
         req('List Customers', 'GET', 'customers', 'List customers. Query: type (walk-in|regular|vip), is_active, search, per_page. X-Business-Id or current_business_id.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Customer', 'POST', 'customers', 'Create customer. name required. type: walk-in|regular|vip. credit_limit numeric. metadata object.', '{
@@ -441,6 +446,7 @@ $items[] = [
 // ---- 13. Sales ----
 $items[] = [
     'name' => '13. Sales',
+    'description' => 'Sales (POS). Create sale with branch_id, items (product_id, quantity, unit_price), payments. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.',
     'item' => [
         req('List Sales', 'GET', 'sales', 'List sales. Query: branch_id, start_date, end_date, status, customer_id, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Sale', 'POST', 'sales', 'Create sale. branch_id, items required. items: product_id, quantity, unit_price; optional discount_percentage, tax_rate. payments optional: payment_method_id, amount, reference_number. customer_id, shift_id optional. sale_type: pos|online|delivery|wholesale. Shift must be open.', '{
@@ -505,6 +511,7 @@ $items[] = [
 // ---- 15. Batches ----
 $items[] = [
     'name' => '15. Batches',
+    'description' => 'Product batches (FEFO, expiry). List with filters: branch_id, product_id, status, near_expiry (days), expired. Responses include quick_sale_requested. Update status (active|depleted|expired|recalled). X-Business-Id required.',
     'item' => [
         req('List Batches', 'GET', 'batches', 'List batches. Each item includes product, branch, quick_sale_requested_count, quick_sale_requested. Query: branch_id, product_id, status (active|depleted|expired|recalled), expired (true), near_expiry (days), batch_number, lot_number, sort_by (default expiry_date), sort_direction, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Batches Near Expiry', 'GET', 'batches/near-expiry', 'Batches nearing expiry. Response: batches (with product, branch, quick_sale_requested), count, days_threshold. Query: days (default 30), branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['days', '40'], ['branch_id', '{{branch_id}}']]),
@@ -530,6 +537,7 @@ $items[] = [
 // ---- 17. Stock Transfer Requests ----
 $items[] = [
     'name' => '17. Stock Transfer Requests',
+    'description' => 'Move stock between branches. Create request (branch_from_id, branch_to_id, branch_product_id, quantity). Approve at sending branch; accept/reject at receiving branch; confirm receipt. Cancel from sending branch. X-Business-Id required.',
     'item' => [
         req('List Stock Transfer Requests', 'GET', 'stock-transfer-requests', 'List transfer requests. Query: status, branch_id, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Stock Transfer Request', 'POST', 'stock-transfer-requests', 'Create a single-item transfer request. branch_from_id, branch_to_id, branch_product_id (branch_product at source branch), quantity_requested required. reason, priority (low|normal|high|urgent) optional.', '{
@@ -553,6 +561,7 @@ $items[] = [
 // ---- 17b. Shelf/Store Move Requests ----
 $items[] = [
     'name' => '17b. Shelf/Store Move Requests',
+    'description' => 'Request-based workflow for moving stock between shelf and store within a branch. Create request (branch_product_id, direction: to_shelf|to_store, quantity). Approvers approve or reject; on approve the move is performed. Permissions: request shelf store move, approve shelf store move. Direct move via branch-products move-to-shelf/store requires approve permission. X-Business-Id required.',
     'item' => [
         req('List Shelf/Store Move Requests', 'GET', 'shelf-store-move-requests', 'List move requests. Query: branch_id, status, my_requests, pending_approval, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Shelf/Store Move Request', 'POST', 'shelf-store-move-requests', 'Request to move stock. branch_product_id, direction (to_shelf|to_store), quantity required. reason optional. Requires request shelf store move.', '{
@@ -587,6 +596,7 @@ $items[] = [
 // ---- 19. Refund Requests ----
 $items[] = [
     'name' => '19. Refund Requests',
+    'description' => 'Refund workflow. Create request: refund_scope whole_sale (default) or items. For items, send items array with sale_item_id and quantity (partial refund). Approve restores inventory and updates sale refunded_amount; reject with reason. One pending request per sale. X-Business-Id required.',
     'item' => [
         req('List Refund Requests', 'GET', 'refund-requests', 'List refund requests. Query: status, branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Refund Request', 'POST', 'refund-requests', 'Create refund request. sale_id, reason required. refund_scope: whole_sale (default) or items. For items, pass items: [{ sale_item_id, quantity }].', '{
@@ -609,6 +619,7 @@ $items[] = [
 // ---- 20. Quick Sales ----
 $items[] = [
     'name' => '20. Quick Sales',
+    'description' => 'Near-expiry or promotional quick-sale requests. Create with branch_product_id (or batch), discount_percentage, start_date, end_date. Approve/reject/end. When approved and active, discount applies to branch product. X-Business-Id required.',
     'item' => [
         req('List Quick Sales', 'GET', 'quick-sales', 'List quick sale (near-expiry discount) requests. Query: status, branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Create Quick Sale', 'POST', 'quick-sales', 'Request quick sale. branch_product_id, discount_percentage, start_date, end_date. X-Business-Id required.', '{
@@ -624,9 +635,10 @@ $items[] = [
     ],
 ];
 
-// ---- 21. Sync (Offline) ----
+// ---- 21. Sync (Offline / Device) ----
 $items[] = [
     'name' => '21. Sync (Offline / Device)',
+    'description' => 'Offline-first device sync. Register device; bootstrap (initial data); pull (changes since timestamp); push (local sales, customers, etc.); resolve conflicts; status; heartbeat. Use X-Business-Id and X-Device-Id.',
     'item' => [
         req('Register Device', 'POST', 'sync/register-device', 'Register device for sync. device_id, device_name, device_type (web|desktop|mobile|tablet) required. branch_id, business_id, os, app_version, capabilities optional. X-Business-Id for context.', '{
   "device_id": "{{device_id}}",
@@ -653,9 +665,10 @@ $items[] = [
     ],
 ];
 
-// ---- 22. Server Sync (Edge/Cloud) ----
+// ---- 22. Server Sync (Edge ↔ Cloud) ----
 $items[] = [
     'name' => '22. Server Sync (Edge ↔ Cloud)',
+    'description' => 'Server-to-server sync between edge and cloud. Push/pull from edge; receive/provide-changes on cloud. Status and health endpoints. X-Business-Id required.',
     'item' => [
         req('Server Sync Push', 'POST', 'server-sync/push', 'Edge: push data to cloud. Body and headers per server-sync implementation. X-Business-Id.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Server Sync Pull', 'POST', 'server-sync/pull', 'Edge: pull changes from cloud. X-Business-Id.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),

@@ -136,7 +136,7 @@ php artisan key:generate</code></pre>
             <ul>
                 <li><strong>Auth:</strong> register, login, pin-login, pin/set, pin/remove, business-details-with-branch-auth, GET /user</li>
                 <li><strong>Business & Branches:</strong> CRUD businesses, CRUD branches, branches/generate-auth-codes, branches/{id}/products</li>
-                <li><strong>Roles & Users:</strong> permissions, roles (CRUD, add/remove permission), assign/remove role, users/{id}/roles, business-users (CRUD)</li>
+                <li><strong>Roles & Users:</strong> permissions, roles (CRUD, add/remove permission), assign/remove role, users/{id}/roles, business-users (CRUD, optional branch_id filter)</li>
                 <li><strong>Catalog:</strong> categories (CRUD, breadcrumb), products (CRUD, add/remove branches, price), GET branches/{id}/products (products by branch with filters)</li>
                 <li><strong>Branch Products:</strong> list, by-category, CRUD, assign-multiple, stock, move-to-shelf/store, summary/stock, bulk-update</li>
                 <li><strong>Inventory:</strong> transactions (list, create, show), stock-summary; FEFO batch allocation for stock-in/out</li>

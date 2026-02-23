@@ -304,20 +304,13 @@ Authorization: Bearer {token}
 
 **POST** `/business-details-with-branch-auth`
 
-Returns business and branch when the provided branch authorization code is valid and not expired. Used to resolve branch context from a short-lived code (e.g. displayed at a branch).
+Returns business and branch when the provided branch authorization code is valid and not expired. The business is derived from the code; no business_id is required. Used to resolve branch context from a short-lived code (e.g. displayed at a branch).
 
-**Headers:**
-```
-Authorization: Bearer {token}
-X-Business-Id: {business_id}
-```
-
-**Request Body:** Provide `business_id` if not using header.
+**Request Body:**
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `auth_code` | string | ✅ Yes | 6-digit branch authorization code |
-| `business_id` | integer | Conditional | Required if X-Business-Id not sent |
+| `auth_code` | string | ✅ Yes | Branch authorization code (e.g. 6-digit). Business and branch are resolved from this code. |
 
 **Response:** `200 OK`
 ```json
@@ -328,7 +321,7 @@ X-Business-Id: {business_id}
 }
 ```
 
-**Errors:** `400` business context missing; `404` business not found; `401` invalid or expired auth code.
+**Errors:** `422` validation (auth_code required); `401` invalid or expired auth code.
 
 ---
 
@@ -861,6 +854,11 @@ Manage users within a business.
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch_id` | integer | No | Filter to users who have a role in this branch (or business-wide). Branch must belong to the business; requester must have access to the branch. |
 
 **Response:** `200 OK`
 ```json
@@ -5673,7 +5671,7 @@ Every API route. Base path: `/api`. All protected routes require `Authorization:
 | PUT | `user` | Update profile (name, profile_image) |
 | POST | `pin/set` | Set/update PIN (user_id, pin_code, password if own) |
 | POST | `pin/remove` | Remove PIN (user_id, password if own) |
-| POST | `business-details-with-branch-auth` | Get business + branch by auth_code (body: auth_code, business_id) |
+| POST | `business-details-with-branch-auth` | Get business + branch by auth_code (body: auth_code only; business derived from code) |
 | GET | `businesses` | List user's businesses |
 | POST | `businesses` | Create business |
 | GET | `permissions` | List all permissions (global) |

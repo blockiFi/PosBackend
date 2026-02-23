@@ -2,6 +2,8 @@
 
 This document provides detailed information about all API endpoints, validation rules, request structures, and response formats for building a comprehensive Postman collection.
 
+**Collection structure:** The generated `POS_Backend_API_Complete.postman_collection.json` includes a description on every folder (e.g. Authentication, Businesses, Business Users) summarizing what the group covers, and each request has a detailed description (method, purpose, query/body, permissions, and X-Business-Id where required). Use the collection's built-in descriptions in Postman for quick reference.
+
 ## Table of Contents
 1. [Global Headers](#global-headers)
 2. [Authentication](#authentication)
@@ -522,12 +524,13 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 ## 4. User Management
 
 ### 4.1 List Users in Business
-**Endpoint:** `GET /api/user-business`
+**Endpoint:** `GET /api/business-users`
 
-**Headers:** `Authorization: Bearer {token}`
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
 
 **Query Parameters:**
-- `current_business_id` or `business_id`: required
+- `X-Business-Id` (or `current_business_id`): required
+- `branch_id`: optional – filter to users who have a role in this branch or a business-wide role; branch must belong to the business and requester must have branch access
 
 **Response (200):**
 ```json
