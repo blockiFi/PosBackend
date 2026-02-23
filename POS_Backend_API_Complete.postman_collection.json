@@ -2,7 +2,7 @@
     "info": {
         "_postman_id": "pos-backend-api-complete-v1",
         "name": "POS Backend API - Complete Reference",
-        "description": "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000/api).\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
+        "description": "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000). Paths include api/ automatically.\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "auth": {
@@ -18,7 +18,7 @@
     "variable": [
         {
             "key": "base_url",
-            "value": "http://127.0.0.1:8000/api",
+            "value": "http://127.0.0.1:8000",
             "type": "string"
         },
         {
@@ -97,11 +97,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/user",
+                            "raw": "{{base_url}}/api/user",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "user"
                             ]
                         },
@@ -124,11 +125,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/register",
+                            "raw": "{{base_url}}/api/register",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "register"
                             ]
                         },
@@ -169,11 +171,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/login",
+                            "raw": "{{base_url}}/api/login",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "login"
                             ]
                         },
@@ -214,11 +217,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/pin-login",
+                            "raw": "{{base_url}}/api/pin-login",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "pin-login"
                             ]
                         },
@@ -248,11 +252,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/pin/set",
+                            "raw": "{{base_url}}/api/pin/set",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "pin",
                                 "set"
                             ]
@@ -280,11 +285,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/pin/remove",
+                            "raw": "{{base_url}}/api/pin/remove",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "pin",
                                 "remove"
                             ]
@@ -316,11 +322,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-details-with-branch-auth",
+                            "raw": "{{base_url}}/api/business-details-with-branch-auth",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-details-with-branch-auth"
                             ]
                         },
@@ -352,11 +359,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/businesses",
+                            "raw": "{{base_url}}/api/businesses",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "businesses"
                             ]
                         },
@@ -379,11 +387,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/businesses",
+                            "raw": "{{base_url}}/api/businesses",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "businesses"
                             ]
                         },
@@ -414,11 +423,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
@@ -446,11 +456,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
@@ -482,11 +493,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
@@ -515,11 +527,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/permissions",
+                            "raw": "{{base_url}}/api/permissions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "permissions"
                             ]
                         },
@@ -551,11 +564,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches",
+                            "raw": "{{base_url}}/api/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches"
                             ]
                         },
@@ -582,11 +596,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches/generate-auth-codes",
+                            "raw": "{{base_url}}/api/branches/generate-auth-codes",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches",
                                 "generate-auth-codes"
                             ]
@@ -614,11 +629,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches",
+                            "raw": "{{base_url}}/api/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches"
                             ]
                         },
@@ -649,11 +665,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
@@ -681,11 +698,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
@@ -717,11 +735,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
@@ -754,11 +773,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles",
+                            "raw": "{{base_url}}/api/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles"
                             ]
                         },
@@ -785,11 +805,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles",
+                            "raw": "{{base_url}}/api/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles"
                             ]
                         },
@@ -820,11 +841,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/addpermission",
+                            "raw": "{{base_url}}/api/roles/addpermission",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "addpermission"
                             ]
@@ -856,11 +878,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/removepermission",
+                            "raw": "{{base_url}}/api/roles/removepermission",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "removepermission"
                             ]
@@ -892,11 +915,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/1",
+                            "raw": "{{base_url}}/api/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -924,11 +948,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/1",
+                            "raw": "{{base_url}}/api/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -960,11 +985,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/1",
+                            "raw": "{{base_url}}/api/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -992,11 +1018,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/assign",
+                            "raw": "{{base_url}}/api/roles/assign",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "assign"
                             ]
@@ -1028,11 +1055,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/roles/remove",
+                            "raw": "{{base_url}}/api/roles/remove",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "roles",
                                 "remove"
                             ]
@@ -1064,11 +1092,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/users/{{user_id}}/roles",
+                            "raw": "{{base_url}}/api/users/{{user_id}}/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "users",
                                 "{{user_id}}",
                                 "roles"
@@ -1102,11 +1131,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-users",
+                            "raw": "{{base_url}}/api/business-users",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-users"
                             ]
                         },
@@ -1133,11 +1163,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-users",
+                            "raw": "{{base_url}}/api/business-users",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-users"
                             ]
                         },
@@ -1168,11 +1199,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1200,11 +1232,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1236,11 +1269,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1273,11 +1307,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories",
+                            "raw": "{{base_url}}/api/categories",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories"
                             ]
                         },
@@ -1304,11 +1339,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories",
+                            "raw": "{{base_url}}/api/categories",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories"
                             ]
                         },
@@ -1339,11 +1375,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories/{{category_id}}",
+                            "raw": "{{base_url}}/api/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1371,11 +1408,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories/{{category_id}}",
+                            "raw": "{{base_url}}/api/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1407,11 +1445,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories/{{category_id}}",
+                            "raw": "{{base_url}}/api/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1439,11 +1478,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/categories/{{category_id}}/breadcrumb",
+                            "raw": "{{base_url}}/api/categories/{{category_id}}/breadcrumb",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "categories",
                                 "{{category_id}}",
                                 "breadcrumb"
@@ -1477,11 +1517,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products",
+                            "raw": "{{base_url}}/api/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products"
                             ]
                         },
@@ -1508,11 +1549,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products",
+                            "raw": "{{base_url}}/api/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products"
                             ]
                         },
@@ -1543,11 +1585,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "raw": "{{base_url}}/api/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1575,11 +1618,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "raw": "{{base_url}}/api/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1611,11 +1655,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}",
+                            "raw": "{{base_url}}/api/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1643,11 +1688,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}/branches",
+                            "raw": "{{base_url}}/api/products/{{product_id}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "branches"
@@ -1680,11 +1726,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}/branches",
+                            "raw": "{{base_url}}/api/products/{{product_id}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "branches"
@@ -1723,11 +1770,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}/price",
+                            "raw": "{{base_url}}/api/products/{{product_id}}/price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "price"
@@ -1760,11 +1808,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branches/{{branch_id}}/products",
+                            "raw": "{{base_url}}/api/branches/{{branch_id}}/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branches",
                                 "{{branch_id}}",
                                 "products"
@@ -1798,11 +1847,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products",
+                            "raw": "{{base_url}}/api/branch-products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products"
                             ]
                         },
@@ -1829,11 +1879,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/by-category",
+                            "raw": "{{base_url}}/api/branch-products/by-category",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "by-category"
                             ]
@@ -1861,11 +1912,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products",
+                            "raw": "{{base_url}}/api/branch-products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products"
                             ]
                         },
@@ -1896,11 +1948,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/assign-multiple",
+                            "raw": "{{base_url}}/api/branch-products/assign-multiple",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "assign-multiple"
                             ]
@@ -1932,11 +1985,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1",
+                            "raw": "{{base_url}}/api/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -1964,11 +2018,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1",
+                            "raw": "{{base_url}}/api/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -2000,11 +2055,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1/selling-price",
+                            "raw": "{{base_url}}/api/branch-products/1/selling-price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1",
                                 "selling-price"
@@ -2037,11 +2093,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1",
+                            "raw": "{{base_url}}/api/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -2069,11 +2126,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1/stock",
+                            "raw": "{{base_url}}/api/branch-products/1/stock",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1",
                                 "stock"
@@ -2106,11 +2164,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1/move-to-shelf",
+                            "raw": "{{base_url}}/api/branch-products/1/move-to-shelf",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1",
                                 "move-to-shelf"
@@ -2143,11 +2202,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/1/move-to-store",
+                            "raw": "{{base_url}}/api/branch-products/1/move-to-store",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "1",
                                 "move-to-store"
@@ -2180,11 +2240,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/summary/stock",
+                            "raw": "{{base_url}}/api/branch-products/summary/stock",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "summary",
                                 "stock"
@@ -2213,11 +2274,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/branch-products/bulk-update",
+                            "raw": "{{base_url}}/api/branch-products/bulk-update",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "branch-products",
                                 "bulk-update"
                             ]
@@ -2254,11 +2316,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/inventory/transactions",
+                            "raw": "{{base_url}}/api/inventory/transactions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "inventory",
                                 "transactions"
                             ]
@@ -2286,11 +2349,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/inventory/transactions",
+                            "raw": "{{base_url}}/api/inventory/transactions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "inventory",
                                 "transactions"
                             ]
@@ -2322,11 +2386,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/inventory/transactions/1",
+                            "raw": "{{base_url}}/api/inventory/transactions/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "inventory",
                                 "transactions",
                                 "1"
@@ -2355,11 +2420,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/inventory/stock-summary",
+                            "raw": "{{base_url}}/api/inventory/stock-summary",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "inventory",
                                 "stock-summary"
                             ]
@@ -2392,11 +2458,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/customers",
+                            "raw": "{{base_url}}/api/customers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "customers"
                             ]
                         },
@@ -2423,11 +2490,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/customers",
+                            "raw": "{{base_url}}/api/customers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "customers"
                             ]
                         },
@@ -2458,11 +2526,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -2490,11 +2559,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -2526,11 +2596,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -2563,11 +2634,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/payment-methods",
+                            "raw": "{{base_url}}/api/payment-methods",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "payment-methods"
                             ]
                         },
@@ -2594,11 +2666,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/payment-methods",
+                            "raw": "{{base_url}}/api/payment-methods",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "payment-methods"
                             ]
                         },
@@ -2629,11 +2702,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -2661,11 +2735,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -2697,11 +2772,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -2734,11 +2810,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sales",
+                            "raw": "{{base_url}}/api/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sales"
                             ]
                         },
@@ -2765,11 +2842,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sales",
+                            "raw": "{{base_url}}/api/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sales"
                             ]
                         },
@@ -2800,11 +2878,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sales/{{sale_id}}",
+                            "raw": "{{base_url}}/api/sales/{{sale_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sales",
                                 "{{sale_id}}"
                             ]
@@ -2832,11 +2911,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sales/{{sale_id}}/payments",
+                            "raw": "{{base_url}}/api/sales/{{sale_id}}/payments",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sales",
                                 "{{sale_id}}",
                                 "payments"
@@ -2869,11 +2949,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sales/{{sale_id}}/cancel",
+                            "raw": "{{base_url}}/api/sales/{{sale_id}}/cancel",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sales",
                                 "{{sale_id}}",
                                 "cancel"
@@ -2907,11 +2988,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts",
+                            "raw": "{{base_url}}/api/shifts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts"
                             ]
                         },
@@ -2938,11 +3020,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts",
+                            "raw": "{{base_url}}/api/shifts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts"
                             ]
                         },
@@ -2973,11 +3056,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/current",
+                            "raw": "{{base_url}}/api/shifts/current",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "current"
                             ]
@@ -3005,11 +3089,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}"
                             ]
@@ -3037,11 +3122,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}/sales",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "sales"
@@ -3070,11 +3156,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}/close",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/close",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "close"
@@ -3107,11 +3194,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}/pause",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/pause",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "pause"
@@ -3144,11 +3232,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}/resume",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/resume",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "resume"
@@ -3181,11 +3270,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/shifts/{{shift_id}}/resolve-discrepancy",
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/resolve-discrepancy",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "resolve-discrepancy"
@@ -3223,11 +3313,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/batches",
+                            "raw": "{{base_url}}/api/batches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "batches"
                             ]
                         },
@@ -3254,11 +3345,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/batches/near-expiry",
+                            "raw": "{{base_url}}/api/batches/near-expiry",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "batches",
                                 "near-expiry"
                             ],
@@ -3296,11 +3388,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/batches/expired",
+                            "raw": "{{base_url}}/api/batches/expired",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "batches",
                                 "expired"
                             ]
@@ -3328,11 +3421,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/batches/1",
+                            "raw": "{{base_url}}/api/batches/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "batches",
                                 "1"
                             ]
@@ -3360,11 +3454,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/batches/1",
+                            "raw": "{{base_url}}/api/batches/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "batches",
                                 "1"
                             ]
@@ -3396,11 +3491,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/products/{{product_id}}/batches",
+                            "raw": "{{base_url}}/api/products/{{product_id}}/batches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "batches"
@@ -3434,11 +3530,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/analytics/organization",
+                            "raw": "{{base_url}}/api/analytics/organization",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "analytics",
                                 "organization"
                             ]
@@ -3466,11 +3563,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/analytics/branches",
+                            "raw": "{{base_url}}/api/analytics/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "analytics",
                                 "branches"
                             ]
@@ -3498,11 +3596,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/analytics/products",
+                            "raw": "{{base_url}}/api/analytics/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "analytics",
                                 "products"
                             ]
@@ -3530,11 +3629,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/analytics/profit-loss",
+                            "raw": "{{base_url}}/api/analytics/profit-loss",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "analytics",
                                 "profit-loss"
                             ]
@@ -3562,11 +3662,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/analytics/growth-trends",
+                            "raw": "{{base_url}}/api/analytics/growth-trends",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "analytics",
                                 "growth-trends"
                             ]
@@ -3599,11 +3700,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests",
+                            "raw": "{{base_url}}/api/stock-transfer-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests"
                             ]
                         },
@@ -3630,11 +3732,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests",
+                            "raw": "{{base_url}}/api/stock-transfer-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests"
                             ]
                         },
@@ -3665,11 +3768,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1"
                             ]
@@ -3697,11 +3801,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/approve",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "approve"
@@ -3734,11 +3839,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/accept",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/accept",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "accept"
@@ -3771,11 +3877,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/reject-in",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/reject-in",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "reject-in"
@@ -3808,11 +3915,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/reject",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "reject"
@@ -3845,11 +3953,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/confirm",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/confirm",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "confirm"
@@ -3882,11 +3991,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-transfer-requests/1/cancel",
+                            "raw": "{{base_url}}/api/stock-transfer-requests/1/cancel",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "cancel"
@@ -3924,11 +4034,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-writeoffs",
+                            "raw": "{{base_url}}/api/stock-writeoffs",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-writeoffs"
                             ]
                         },
@@ -3955,18 +4066,19 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-writeoffs",
+                            "raw": "{{base_url}}/api/stock-writeoffs",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-writeoffs"
                             ]
                         },
-                        "description": "Create write-off. current_business_id, branch_id, sku, quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.",
+                        "description": "Create write-off. Pass product_id + branch_id, or branch_product_id. quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"current_business_id\": 1,\n  \"branch_id\": 1,\n  \"sku\": \"SKU-MOUSE-001\",\n  \"quantity\": 5,\n  \"source\": \"shelf\",\n  \"reason\": \"Damaged - water damage\"\n}"
+                            "raw": "{\n  \"current_business_id\": 1,\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"quantity\": 5,\n  \"source\": \"shelf\",\n  \"reason\": \"Damaged - water damage\"\n}"
                         }
                     },
                     "response": []
@@ -3990,11 +4102,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/stock-writeoffs/1",
+                            "raw": "{{base_url}}/api/stock-writeoffs/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "stock-writeoffs",
                                 "1"
                             ]
@@ -4027,11 +4140,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/refund-requests",
+                            "raw": "{{base_url}}/api/refund-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "refund-requests"
                             ]
                         },
@@ -4058,11 +4172,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/refund-requests",
+                            "raw": "{{base_url}}/api/refund-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "refund-requests"
                             ]
                         },
@@ -4093,11 +4208,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/refund-requests/1",
+                            "raw": "{{base_url}}/api/refund-requests/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "refund-requests",
                                 "1"
                             ]
@@ -4125,11 +4241,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/refund-requests/1/approve",
+                            "raw": "{{base_url}}/api/refund-requests/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "refund-requests",
                                 "1",
                                 "approve"
@@ -4162,11 +4279,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/refund-requests/1/reject",
+                            "raw": "{{base_url}}/api/refund-requests/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "refund-requests",
                                 "1",
                                 "reject"
@@ -4204,11 +4322,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales",
+                            "raw": "{{base_url}}/api/quick-sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales"
                             ]
                         },
@@ -4235,11 +4354,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales",
+                            "raw": "{{base_url}}/api/quick-sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales"
                             ]
                         },
@@ -4270,11 +4390,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales/1",
+                            "raw": "{{base_url}}/api/quick-sales/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales",
                                 "1"
                             ]
@@ -4302,11 +4423,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales/1/approve",
+                            "raw": "{{base_url}}/api/quick-sales/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales",
                                 "1",
                                 "approve"
@@ -4339,11 +4461,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales/1/reject",
+                            "raw": "{{base_url}}/api/quick-sales/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales",
                                 "1",
                                 "reject"
@@ -4376,11 +4499,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/quick-sales/1/end",
+                            "raw": "{{base_url}}/api/quick-sales/1/end",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "quick-sales",
                                 "1",
                                 "end"
@@ -4418,11 +4542,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/register-device",
+                            "raw": "{{base_url}}/api/sync/register-device",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "register-device"
                             ]
@@ -4458,11 +4583,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/bootstrap",
+                            "raw": "{{base_url}}/api/sync/bootstrap",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "bootstrap"
                             ]
@@ -4498,11 +4624,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/pull",
+                            "raw": "{{base_url}}/api/sync/pull",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "pull"
                             ]
@@ -4538,11 +4665,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/push",
+                            "raw": "{{base_url}}/api/sync/push",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "push"
                             ]
@@ -4578,11 +4706,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/resolve-conflicts",
+                            "raw": "{{base_url}}/api/sync/resolve-conflicts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "resolve-conflicts"
                             ]
@@ -4618,11 +4747,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/status",
+                            "raw": "{{base_url}}/api/sync/status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "status"
                             ]
@@ -4654,11 +4784,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/sync/heartbeat",
+                            "raw": "{{base_url}}/api/sync/heartbeat",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "sync",
                                 "heartbeat"
                             ]
@@ -4695,11 +4826,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/push",
+                            "raw": "{{base_url}}/api/server-sync/push",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "push"
                             ]
@@ -4731,11 +4863,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/pull",
+                            "raw": "{{base_url}}/api/server-sync/pull",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "pull"
                             ]
@@ -4767,11 +4900,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/status",
+                            "raw": "{{base_url}}/api/server-sync/status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "status"
                             ]
@@ -4799,11 +4933,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/health",
+                            "raw": "{{base_url}}/api/server-sync/health",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "health"
                             ]
@@ -4831,11 +4966,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/receive",
+                            "raw": "{{base_url}}/api/server-sync/receive",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "receive"
                             ]
@@ -4867,11 +5003,12 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/server-sync/provide-changes",
+                            "raw": "{{base_url}}/api/server-sync/provide-changes",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
+                                "api",
                                 "server-sync",
                                 "provide-changes"
                             ]

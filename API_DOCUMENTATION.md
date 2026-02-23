@@ -4097,28 +4097,32 @@ X-Business-Id: {business_id}
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| `branch_id` | integer | ✅ Yes | ❌ No | exists:branches,id | Branch where write-off occurs |
-| `sku` | string | ✅ Yes | ❌ No | string | Product SKU or barcode (product must exist in business and be assigned to this branch) |
+| `branch_id` | integer | When using `product_id` | ❌ No | exists:branches,id | Branch where write-off occurs (required when passing `product_id`) |
+| `product_id` | integer | One of with `branch_product_id` | ❌ No | exists:products,id | Product to write off (must belong to business and be in the branch) |
+| `branch_product_id` | integer | One of with `product_id` | ❌ No | exists:branch_products,id | Branch product to write off (branch is inferred) |
 | `quantity` | integer | ✅ Yes | ❌ No | integer, min:1 | Quantity to write off |
 | `source` | string | ✅ Yes | ❌ No | in:shelf,store | Where to deduct: `shelf` or `store` |
 | `reason` | string | ✅ Yes | ❌ No | max:1000 | Reason for write-off (free text) |
 
-**Request Example (deduct from shelf):**
+Pass either `product_id` + `branch_id`, or `branch_product_id`.
+
+**Request Example (product_id + branch_id, deduct from shelf):**
 ```json
 {
+  "current_business_id": 1,
   "branch_id": 1,
-  "sku": "SKU-MOUSE-001",
+  "product_id": 1,
   "quantity": 5,
   "source": "shelf",
   "reason": "Damaged - water damage"
 }
 ```
 
-**Request Example (deduct from store):**
+**Request Example (branch_product_id, deduct from store):**
 ```json
 {
-  "branch_id": 1,
-  "sku": "SKU-MOUSE-001",
+  "current_business_id": 1,
+  "branch_product_id": 1,
   "quantity": 3,
   "source": "store",
   "reason": "Expired in warehouse"
@@ -4126,8 +4130,8 @@ X-Business-Id: {business_id}
 ```
 
 **Business Rules:**
-- Product is looked up by SKU or barcode within the business.
-- Product must be assigned to the branch. Quantity is deducted from the location given by `source` (shelf or store).
+- Identify the product by `product_id` (with `branch_id`) or by `branch_product_id`. Product must belong to the business and be available in the branch.
+- Quantity is deducted from the location given by `source` (shelf or store).
 - Requires `write off stock` permission (or business owner).
 
 **Response:** `201 Created`

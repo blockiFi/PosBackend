@@ -93,16 +93,19 @@ class StockWriteoffController extends Controller
     {
         $request->validate([
             'current_business_id' => 'required|exists:businesses,id',
-            'branch_id' => 'required|exists:branches,id',
-            'sku' => 'required|string',
+            'branch_id' => 'required_with:product_id|nullable|exists:branches,id',
+            'product_id' => 'required_without:branch_product_id|nullable|exists:products,id',
+            'branch_product_id' => 'required_without:product_id|nullable|exists:branch_products,id',
             'quantity' => 'required|integer|min:1',
             'source' => 'required|in:shelf,store',
             'reason' => 'required|string|max:1000',
+        ], [
+            'product_id.required_without' => 'Either product_id or branch_product_id is required.',
+            'branch_product_id.required_without' => 'Either product_id or branch_product_id is required.',
         ]);
 
         $user = auth()->user();
         $businessId = $request->current_business_id;
-        $branchId = $request->branch_id;
 
         // Verify user has access to the business
         $business = $user->businesses()
@@ -119,40 +122,61 @@ class StockWriteoffController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        // Verify user has access to this branch
+        $branchProduct = null;
+        $product = null;
+        $branchId = null;
+
+        if ($request->filled('branch_product_id')) {
+            $branchProduct = BranchProduct::with(['branch', 'product'])
+                ->where('id', $request->branch_product_id)
+                ->first();
+
+            if (! $branchProduct || $branchProduct->branch->business_id != $businessId) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => [
+                        'branch_product_id' => ['Branch product not found or does not belong to this business.'],
+                    ],
+                ], 422);
+            }
+
+            $branchId = $branchProduct->branch_id;
+            $product = $branchProduct->product;
+        } else {
+            $branchId = $request->branch_id;
+            $product = Product::where('id', $request->product_id)
+                ->where('business_id', $businessId)
+                ->first();
+
+            if (! $product) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => [
+                        'product_id' => ['Product not found or does not belong to this business.'],
+                    ],
+                ], 422);
+            }
+
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+
+            $branchProduct = BranchProduct::where('branch_id', $branchId)
+                ->where('product_id', $product->id)
+                ->first();
+
+            if (! $branchProduct) {
+                return response()->json([
+                    'message' => 'The given data was invalid.',
+                    'errors' => [
+                        'product_id' => ['Product not available in this branch.'],
+                    ],
+                ], 422);
+            }
+        }
+
         if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
             return response()->json(['message' => 'You do not have access to this branch'], 403);
-        }
-
-        // Find the product by SKU or barcode
-        $product = Product::where('business_id', $businessId)
-            ->where(function ($query) use ($request) {
-                $query->where('sku', $request->sku)
-                    ->orWhere('barcode', $request->sku);
-            })
-            ->first();
-
-        if (! $product) {
-            return response()->json([
-                'message' => 'The given data was invalid.',
-                'errors' => [
-                    'sku' => ['Product not found with this SKU or barcode'],
-                ],
-            ], 422);
-        }
-
-        // Find the branch product
-        $branchProduct = BranchProduct::where('branch_id', $branchId)
-            ->where('product_id', $product->id)
-            ->first();
-
-        if (! $branchProduct) {
-            return response()->json([
-                'message' => 'The given data was invalid.',
-                'errors' => [
-                    'sku' => ['Product not available in this branch'],
-                ],
-            ], 422);
         }
 
         $source = $request->source;

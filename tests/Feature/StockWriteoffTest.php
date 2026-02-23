@@ -84,13 +84,13 @@ class StockWriteoffTest extends TestCase
         ]);
     }
 
-    public function test_user_with_permission_can_write_off_stock_by_sku(): void
+    public function test_user_with_permission_can_write_off_stock_by_product_id(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged during handling',
@@ -134,13 +134,12 @@ class StockWriteoffTest extends TestCase
         ]);
     }
 
-    public function test_user_can_write_off_stock_by_barcode(): void
+    public function test_user_can_write_off_stock_by_branch_product_id(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
-                'branch_id' => $this->branch->id,
-                'sku' => '1234567890123', // Using barcode instead of SKU
+                'branch_product_id' => $this->branchProduct->id,
                 'quantity' => 5,
                 'source' => 'shelf',
                 'reason' => 'Expired product',
@@ -158,7 +157,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 20,
                 'source' => 'store',
                 'reason' => 'Expired in warehouse',
@@ -182,7 +181,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
@@ -201,7 +200,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 150, // More than available shelf_quantity (100)
                 'source' => 'shelf',
                 'reason' => 'Damaged',
@@ -221,7 +220,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 60, // More than available store_quantity (50)
                 'source' => 'store',
                 'reason' => 'Damaged',
@@ -234,20 +233,20 @@ class StockWriteoffTest extends TestCase
         $this->assertEquals(50, $this->branchProduct->store_quantity);
     }
 
-    public function test_writeoff_fails_with_invalid_sku(): void
+    public function test_writeoff_fails_with_invalid_product_id(): void
     {
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'INVALID-SKU',
+                'product_id' => 99999,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['sku']);
+            ->assertJsonValidationErrors(['product_id']);
     }
 
     public function test_writeoff_fails_when_product_not_in_branch(): void
@@ -262,14 +261,14 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'OTHER-SKU',
+                'product_id' => $otherProduct->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['sku']);
+            ->assertJsonValidationErrors(['product_id']);
     }
 
     public function test_validates_required_fields(): void
@@ -280,7 +279,11 @@ class StockWriteoffTest extends TestCase
             ]);
 
         $response->assertStatus(422)
-            ->assertJsonValidationErrors(['branch_id', 'sku', 'quantity', 'source', 'reason']);
+            ->assertJsonValidationErrors(['quantity', 'source', 'reason']);
+        $this->assertTrue(
+            $response->json('errors.product_id') !== null || $response->json('errors.branch_product_id') !== null,
+            'Expected validation error for product_id or branch_product_id'
+        );
     }
 
     public function test_validates_quantity_is_positive(): void
@@ -289,7 +292,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => -5,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
@@ -516,7 +519,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
@@ -532,7 +535,7 @@ class StockWriteoffTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/stock-writeoffs', [
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',
@@ -547,7 +550,7 @@ class StockWriteoffTest extends TestCase
         $response = $this->postJson('/api/stock-writeoffs', [
             'current_business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
-            'sku' => 'TEST-SKU-001',
+            'product_id' => $this->product->id,
             'quantity' => 10,
             'source' => 'shelf',
             'reason' => 'Damaged',
@@ -565,7 +568,7 @@ class StockWriteoffTest extends TestCase
             ->postJson('/api/stock-writeoffs', [
                 'current_business_id' => $this->business->id,
                 'branch_id' => $this->branch->id,
-                'sku' => 'TEST-SKU-001',
+                'product_id' => $this->product->id,
                 'quantity' => 10,
                 'source' => 'shelf',
                 'reason' => 'Damaged',

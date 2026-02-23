@@ -8,12 +8,12 @@ $base = [
     'info' => [
         '_postman_id' => 'pos-backend-api-complete-v1',
         'name' => 'POS Backend API - Complete Reference',
-        'description' => "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000/api).\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
+        'description' => "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000). Paths include api/ automatically.\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
         'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
     ],
     'auth' => ['type' => 'bearer', 'bearer' => [['key' => 'token', 'value' => '{{auth_token}}', 'type' => 'string']]],
     'variable' => [
-        ['key' => 'base_url', 'value' => 'http://127.0.0.1:8000/api', 'type' => 'string'],
+        ['key' => 'base_url', 'value' => 'http://127.0.0.1:8000', 'type' => 'string'],
         ['key' => 'auth_token', 'value' => '', 'type' => 'string'],
         ['key' => 'business_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'branch_id', 'value' => '1', 'type' => 'string'],
@@ -30,8 +30,9 @@ $base = [
 
 function req(string $name, string $method, string $path, string $description, ?string $body = null, array $extraHeaders = [], bool $noAuth = false, array $query = []): array
 {
-    $pathParts = array_values(array_filter(explode('/', $path)));
-    $url = ['raw' => '{{base_url}}/'.$path, 'host' => ['{{base_url}}'], 'path' => $pathParts];
+    $fullPath = 'api/'.ltrim($path, '/');
+    $pathParts = array_values(array_filter(explode('/', $fullPath)));
+    $url = ['raw' => '{{base_url}}/'.$fullPath, 'host' => ['{{base_url}}'], 'path' => $pathParts];
     if ($query !== []) {
         $url['query'] = array_map(fn ($q) => ['key' => $q[0], 'value' => $q[1]], $query);
     }
@@ -553,10 +554,10 @@ $items[] = [
     'name' => '18. Stock Write-offs',
     'item' => [
         req('List Stock Write-offs', 'GET', 'stock-writeoffs', 'List write-offs. Query: branch_id, product_id, start_date, end_date. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. current_business_id, branch_id, sku, quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.', '{
+        req('Create Stock Write-off', 'POST', 'stock-writeoffs', 'Create write-off. Pass product_id + branch_id, or branch_product_id. quantity, source (shelf|store), reason required. reason max 1000 chars. Deducts from batches (FEFO) when product uses batch tracking.', '{
   "current_business_id": 1,
   "branch_id": 1,
-  "sku": "SKU-MOUSE-001",
+  "product_id": 1,
   "quantity": 5,
   "source": "shelf",
   "reason": "Damaged - water damage"
