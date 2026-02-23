@@ -9,6 +9,8 @@ use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use DB;
+use Spatie\Permission\Models\Role;
 
 class AuthenticationController extends Controller
 {
@@ -121,7 +123,26 @@ class AuthenticationController extends Controller
         $branches = $business
             ? $business->branches()->get(['id', 'name', 'business_id'])
             : collect();
+            // Fetch all roles assigned to the user within this business, with permissions
+            $roleIds = DB::table('model_has_roles')
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->where('business_id', $business->id)
+                ->pluck('role_id');
 
+            
+
+            $roles = Role::whereIn('id', $roleIds)
+                ->where('business_id', $business->id)
+                ->with('permissions')
+                ->get()
+                ->map(function ($role) {
+                    return [
+                        'id' => $role->id,
+                        'name' => $role->name,
+                        'permissions' => $role->permissions->pluck('name')->values(),
+                    ];
+                });
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
@@ -135,7 +156,7 @@ class AuthenticationController extends Controller
             ],
             'business' => $business,
             'branches' => $branches,
-            'roles' => $user->roles()->get(['id', 'name']),
+            'roles' => $roles,
         ]);
     }
 

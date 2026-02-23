@@ -1,4 +1,4 @@
-# POS Backend - Complete Postman Collection Documentation
+leree # POS Backend - Complete Postman Collection Documentation
 
 This document provides detailed information about all API endpoints, validation rules, request structures, and response formats for building a comprehensive Postman collection.
 
