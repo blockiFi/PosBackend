@@ -49,34 +49,54 @@ class UserBusinessController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        $query = $business->users()->withPivot('is_active', 'created_at');
+
+        // Optional branch filter: only users with a role in this branch (or business-wide)
+        if ($request->filled('branch_id')) {
+            $branchId = (int) $request->branch_id;
+            $branch = $business->branches()->find($branchId);
+            if (! $branch) {
+                return response()->json(['message' => 'Branch not found or does not belong to this business'], 404);
+            }
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+            }
+            $userIdsInBranch = DB::table('model_has_roles')
+                ->where('model_type', User::class)
+                ->where('business_id', $businessId)
+                ->where(function ($q) use ($branchId) {
+                    $q->where('branch_id', $branchId)->orWhereNull('branch_id');
+                })
+                ->distinct()
+                ->pluck('model_id');
+            $query->whereIn('users.id', $userIdsInBranch);
+        }
+
         // Get all users in this business with their pivot data
-        $users = $business->users()
-            ->withPivot('is_active', 'created_at')
-            ->get()
-            ->map(function (User $user) use ($businessId) {
-                // Get user's roles in this business
-                $roleIds = DB::table('model_has_roles')
-                    ->where('model_type', User::class)
-                    ->where('model_id', $user->id)
-                    ->where('business_id', $businessId)
-                    ->pluck('role_id');
+        $users = $query->get()->map(function (User $user) use ($businessId) {
+            // Get user's roles in this business
+            $roleIds = DB::table('model_has_roles')
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->where('business_id', $businessId)
+                ->pluck('role_id');
 
-                $roles = DB::table('roles')
-                    ->whereIn('id', $roleIds)
-                    ->where('business_id', $businessId)
-                    ->get(['id', 'name']);
+            $roles = DB::table('roles')
+                ->whereIn('id', $roleIds)
+                ->where('business_id', $businessId)
+                ->get(['id', 'name']);
 
-                return [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'profile_image' => $user->profile_image,
-                    'profile_image_url' => $user->profile_image_url,
-                    'is_active' => $user->pivot->is_active,
-                    'joined_at' => $user->pivot->created_at,
-                    'roles' => $roles,
-                ];
-            });
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'profile_image' => $user->profile_image,
+                'profile_image_url' => $user->profile_image_url,
+                'is_active' => $user->pivot->is_active,
+                'joined_at' => $user->pivot->created_at,
+                'roles' => $roles,
+            ];
+        });
 
         return response()->json(['data' => $users]);
     }
