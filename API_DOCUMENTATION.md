@@ -3712,31 +3712,38 @@ X-Business-Id: {business_id}
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
 | `sale_id` | integer | ✅ Yes | ❌ No | exists:sales,id | Sale to refund |
-| `reason` | text | ✅ Yes | ❌ No | max:1000 | Reason for refund |
-| `items` | array | ❌ No | ✅ Yes | - | Specific items to refund (if partial) |
-| `items.*.sale_item_id` | integer | ✅ Yes | ❌ No | exists:sale_items,id | Sale item ID |
-| `items.*.quantity` | decimal | ✅ Yes | ❌ No | numeric, min:0.01 | Quantity to refund |
-| `refund_amount` | decimal | ❌ No | ✅ Yes | numeric, min:0 | Custom refund amount (if different from sale) |
-| `restore_inventory` | boolean | ❌ No | ❌ No | boolean | Restore items to inventory (default: true) |
-| `notes` | text | ❌ No | ✅ Yes | max:1000 | Additional notes |
+| `reason` | text | ✅ Yes | ❌ No | min:10, max:1000 | Reason for refund |
+| `refund_scope` | string | ❌ No | ✅ Yes | in:whole_sale,items | `whole_sale` (default) = refund entire sale; `items` = refund specific line items only |
+| `items` | array | When scope=items | ✅ Yes | - | Required when `refund_scope` is `items`. Each element: `sale_item_id`, `quantity` |
+| `items.*.sale_item_id` | integer | When scope=items | ❌ No | exists:sale_items,id | Sale line item ID (must belong to the sale) |
+| `items.*.quantity` | decimal | When scope=items | ❌ No | numeric, min:0.01 | Quantity to refund for that line (cannot exceed remaining refundable qty) |
 
-**Request Example:**
+**Whole-sale request example:**
 ```json
 {
   "sale_id": 42,
-  "reason": "Product defective - customer returned item within 7 days with receipt",
-  "restore_inventory": true,
-  "notes": "Customer has receipt"
+  "reason": "Customer returned entire order with receipt"
+}
+```
+
+**Partial (specific items) request example:**
+```json
+{
+  "sale_id": 42,
+  "reason": "Customer returned 2 of 5 units - defective",
+  "refund_scope": "items",
+  "items": [
+    { "sale_item_id": 101, "quantity": 2 }
+  ]
 }
 ```
 
 **Business Rules:**
-- Can only refund sales from current or recent shifts
-- Amount cannot exceed sale total
-- Requires manager approval
-- Stock can be restored to inventory if specified
+- Sale must be completed and not fully refunded (`refunded_amount` < `total_amount`). Only one pending refund request per sale at a time.
+- **Whole sale:** Refund amount = sale total. On approval, all line items are restored to inventory and sale is marked fully refunded when applicable.
+- **Items:** Refund amount is computed from the selected lines (proportional to quantity). Each line's quantity cannot exceed (sale_item.quantity minus already refunded for that line). On approval, only the requested items/quantities are restored to inventory; `refunded_amount` on the sale is incremented; sale is marked fully refunded when `refunded_amount` >= `total_amount`.
 
-**Response:** `201 Created`
+**Response:** `201 Created` — includes `refund_request` with `refund_scope`, `amount`, and when `items`, the `items` relation (sale_item_id, quantity, saleItem.product).
 
 ---
 
@@ -3766,26 +3773,10 @@ X-Business-Id: {business_id}
 
 **Permission Required:** `approve refund`
 
-**Request Schema:**
-
-| Field | Type | Required | Nullable | Validation | Description |
-|-------|------|----------|----------|------------|-------------|
-| notes | text | ❌ No | ✅ Yes | max:1000 | Approval notes or comments |
-| restore_stock | boolean | ❌ No | ❌ No | - | Whether to restore inventory (default: true) |
-
 **Business Rules:**
-- Creates reverse sale transaction
-- Updates shift totals
-- Restores stock if approved
-- Updates customer loyalty points
-
-**Request Example:**
-```json
-{
-  "notes": "Approved - customer provided receipt",
-  "restore_stock": true
-}
-```
+- Only pending requests can be approved. Approver cannot be the requester.
+- **Whole sale:** Restores inventory for all sale items; adds request amount to sale `refunded_amount`; marks sale fully refunded when total is reached.
+- **Items:** Restores inventory only for the requested line items/quantities; adds request amount to sale `refunded_amount`; marks sale fully refunded when `refunded_amount` >= sale total.
 
 **Response:** `200 OK`
 

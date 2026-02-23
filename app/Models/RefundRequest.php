@@ -9,10 +9,15 @@ class RefundRequest extends Model
 {
     use HasFactory;
 
+    const SCOPE_WHOLE_SALE = 'whole_sale';
+
+    const SCOPE_ITEMS = 'items';
+
     protected $fillable = [
         'sale_id',
         'business_id',
         'branch_id',
+        'refund_scope',
         'requested_by',
         'reviewed_by',
         'amount',
@@ -29,8 +34,11 @@ class RefundRequest extends Model
 
     // Status constants
     const STATUS_PENDING = 'pending';
+
     const STATUS_APPROVED = 'approved';
+
     const STATUS_REJECTED = 'rejected';
+
     const STATUS_PROCESSED = 'processed';
 
     /**
@@ -59,6 +67,11 @@ class RefundRequest extends Model
     public function reviewedBy()
     {
         return $this->belongsTo(User::class, 'reviewed_by');
+    }
+
+    public function items()
+    {
+        return $this->hasMany(RefundRequestItem::class, 'refund_request_id');
     }
 
     /**

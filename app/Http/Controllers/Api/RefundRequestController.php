@@ -7,7 +7,9 @@ use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\RefundRequest;
+use App\Models\RefundRequestItem;
 use App\Models\Sale;
+use App\Models\SaleItem;
 use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -54,6 +56,7 @@ class RefundRequestController extends Controller
             'sale.branch',
             'requestedBy',
             'reviewedBy',
+            'items.saleItem.product',
         ])->forBusiness($businessId);
 
         // Filter by accessible branches
@@ -115,7 +118,13 @@ class RefundRequestController extends Controller
         $validated = $request->validate([
             'sale_id' => 'required|exists:sales,id',
             'reason' => 'required|string|min:10|max:1000',
+            'refund_scope' => 'sometimes|string|in:whole_sale,items',
+            'items' => 'required_if:refund_scope,items|array',
+            'items.*.sale_item_id' => 'required_with:items|integer|exists:sale_items,id',
+            'items.*.quantity' => 'required_with:items|numeric|min:0.01',
         ]);
+
+        $refundScope = $validated['refund_scope'] ?? RefundRequest::SCOPE_WHOLE_SALE;
 
         // Get the sale
         $sale = Sale::with(['items', 'branch'])
@@ -131,8 +140,8 @@ class RefundRequestController extends Controller
         if (! $sale->isRefundable()) {
             return response()->json([
                 'message' => 'Sale is not eligible for refund',
-                'reason' => $sale->is_refunded
-                    ? 'Sale has already been refunded'
+                'reason' => (float) $sale->refunded_amount >= (float) $sale->total_amount
+                    ? 'Sale has already been fully refunded'
                     : ($sale->trashed() ? 'Sale has been deleted' : 'Sale status does not allow refund'),
             ], 400);
         }
@@ -144,23 +153,78 @@ class RefundRequestController extends Controller
             ], 400);
         }
 
+        $amount = (float) $sale->total_amount;
+        $refundItems = [];
+
+        if ($refundScope === RefundRequest::SCOPE_ITEMS) {
+            $itemsInput = $validated['items'] ?? [];
+            if (empty($itemsInput)) {
+                return response()->json([
+                    'message' => 'When refund_scope is items, at least one item with sale_item_id and quantity is required',
+                ], 422);
+            }
+
+            $saleItemIds = $sale->items->pluck('id')->all();
+            $seenSaleItemIds = [];
+            $amount = 0;
+
+            foreach ($itemsInput as $row) {
+                $saleItemId = (int) $row['sale_item_id'];
+                $qty = (float) $row['quantity'];
+
+                if (! in_array($saleItemId, $saleItemIds, true)) {
+                    return response()->json([
+                        'message' => "Sale item {$saleItemId} does not belong to this sale",
+                    ], 422);
+                }
+                if (isset($seenSaleItemIds[$saleItemId])) {
+                    return response()->json([
+                        'message' => 'Duplicate sale_item_id in items',
+                    ], 422);
+                }
+                $seenSaleItemIds[$saleItemId] = true;
+
+                $saleItem = $sale->items->firstWhere('id', $saleItemId);
+                $alreadyRefunded = $this->getRefundedQuantityForSaleItem($saleItemId);
+                $remaining = (float) $saleItem->quantity - $alreadyRefunded;
+
+                if ($qty > $remaining) {
+                    return response()->json([
+                        'message' => "Quantity for sale_item_id {$saleItemId} exceeds remaining refundable quantity ({$remaining})",
+                    ], 422);
+                }
+
+                $refundItems[] = ['sale_item_id' => $saleItemId, 'quantity' => $qty];
+                $amount += (float) $saleItem->total * ($qty / (float) $saleItem->quantity);
+            }
+        }
+
         DB::beginTransaction();
         try {
             $refundRequest = RefundRequest::create([
                 'sale_id' => $sale->id,
                 'business_id' => $businessId,
                 'branch_id' => $sale->branch_id,
+                'refund_scope' => $refundScope,
                 'requested_by' => $user->id,
-                'amount' => $sale->total_amount,
+                'amount' => round($amount, 2),
                 'reason' => $validated['reason'],
                 'status' => RefundRequest::STATUS_PENDING,
             ]);
+
+            foreach ($refundItems as $row) {
+                RefundRequestItem::create([
+                    'refund_request_id' => $refundRequest->id,
+                    'sale_item_id' => $row['sale_item_id'],
+                    'quantity' => $row['quantity'],
+                ]);
+            }
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Refund request submitted successfully',
-                'refund_request' => $refundRequest->load(['sale', 'requestedBy']),
+                'refund_request' => $refundRequest->load(['sale', 'requestedBy', 'items.saleItem.product']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -171,6 +235,64 @@ class RefundRequestController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Restore inventory for a refunded quantity of a sale item.
+     *
+     * @param  \App\Models\SaleItem  $saleItem  SaleItem model (has product_id, batch_id, etc.)
+     * @param  float  $quantity  Quantity to restore
+     */
+    private function restoreInventoryForRefund(Sale $sale, SaleItem $saleItem, float $quantity, int $businessId, int $userId): void
+    {
+        $branchProduct = BranchProduct::where('branch_id', $sale->branch_id)
+            ->where('product_id', $saleItem->product_id)
+            ->first();
+
+        if (! $branchProduct) {
+            return;
+        }
+
+        $branchProduct->increment('stock_quantity', $quantity);
+
+        $adjTransaction = InventoryTransaction::create([
+            'uuid' => Str::uuid(),
+            'business_id' => $businessId,
+            'branch_id' => $sale->branch_id,
+            'product_id' => $saleItem->product_id,
+            'user_id' => $userId,
+            'type' => 'adjustment',
+            'quantity' => $quantity,
+            'quantity_before' => $branchProduct->stock_quantity - $quantity,
+            'quantity_after' => $branchProduct->stock_quantity,
+            'unit_cost' => $branchProduct->cost_price,
+            'total_cost' => $branchProduct->cost_price * $quantity,
+            'reference_number' => $sale->sale_number,
+            'notes' => "Refund approved for sale: {$sale->sale_number}",
+        ]);
+
+        $this->batchService->addStockIn(
+            $saleItem->product_id,
+            $sale->branch_id,
+            $businessId,
+            $quantity,
+            $adjTransaction,
+            $saleItem->batch_id ?? null,
+            []
+        );
+    }
+
+    /**
+     * Sum of refunded quantity for a sale item from approved/processed refund requests.
+     */
+    private function getRefundedQuantityForSaleItem(int $saleItemId): float
+    {
+        return (float) RefundRequestItem::query()
+            ->where('sale_item_id', $saleItemId)
+            ->whereHas('refundRequest', function ($q) {
+                $q->whereIn('status', [RefundRequest::STATUS_APPROVED, RefundRequest::STATUS_PROCESSED]);
+            })
+            ->sum('quantity');
     }
 
     /**
@@ -206,6 +328,7 @@ class RefundRequestController extends Controller
             'sale.branch',
             'requestedBy',
             'reviewedBy',
+            'items.saleItem.product',
         ])->forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
@@ -244,7 +367,7 @@ class RefundRequestController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $refundRequest = RefundRequest::with('sale.items')
+        $refundRequest = RefundRequest::with(['sale.items', 'items.saleItem'])
             ->forBusiness($businessId)
             ->findOrFail($id);
 
@@ -272,50 +395,33 @@ class RefundRequestController extends Controller
         try {
             $sale = $refundRequest->sale;
 
-            // Restore inventory for each item
-            foreach ($sale->items as $item) {
-                $branchProduct = BranchProduct::where('branch_id', $sale->branch_id)
-                    ->where('product_id', $item->product_id)
-                    ->first();
-
-                if ($branchProduct) {
-                    $branchProduct->increment('stock_quantity', $item->quantity);
-
-                    $adjTransaction = InventoryTransaction::create([
-                        'uuid' => Str::uuid(),
-                        'business_id' => $businessId,
-                        'branch_id' => $sale->branch_id,
-                        'product_id' => $item->product_id,
-                        'user_id' => $user->id,
-                        'type' => 'adjustment',
-                        'quantity' => $item->quantity,
-                        'quantity_before' => $branchProduct->stock_quantity - $item->quantity,
-                        'quantity_after' => $branchProduct->stock_quantity,
-                        'unit_cost' => $branchProduct->cost_price,
-                        'total_cost' => $branchProduct->cost_price * $item->quantity,
-                        'reference_number' => $sale->sale_number,
-                        'notes' => "Refund approved for sale: {$sale->sale_number}",
-                    ]);
-
-                    $this->batchService->addStockIn(
-                        $item->product_id,
-                        $sale->branch_id,
+            if ($refundRequest->refund_scope === RefundRequest::SCOPE_WHOLE_SALE) {
+                // Restore inventory for every sale item
+                foreach ($sale->items as $item) {
+                    $this->restoreInventoryForRefund(
+                        $sale,
+                        $item,
+                        (float) $item->quantity,
                         $businessId,
-                        $item->quantity,
-                        $adjTransaction,
-                        $item->batch_id,
-                        []
+                        $user->id
+                    );
+                }
+            } else {
+                // Restore inventory only for requested items/quantities
+                foreach ($refundRequest->items as $refundItem) {
+                    $saleItem = $refundItem->saleItem;
+                    $this->restoreInventoryForRefund(
+                        $sale,
+                        $saleItem,
+                        (float) $refundItem->quantity,
+                        $businessId,
+                        $user->id
                     );
                 }
             }
 
-            // Mark refund request as approved
             $refundRequest->markAsApproved($user->id);
-
-            // Mark sale as refunded
-            $sale->markAsRefunded();
-
-            // Mark refund as processed
+            $sale->addRefundedAmount((float) $refundRequest->amount);
             $refundRequest->markAsProcessed();
 
             DB::commit();
@@ -326,6 +432,7 @@ class RefundRequestController extends Controller
                     'sale',
                     'requestedBy',
                     'reviewedBy',
+                    'items.saleItem.product',
                 ]),
             ]);
 

@@ -589,10 +589,16 @@ $items[] = [
     'name' => '19. Refund Requests',
     'item' => [
         req('List Refund Requests', 'GET', 'refund-requests', 'List refund requests. Query: status, branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Refund Request', 'POST', 'refund-requests', 'Create refund request. sale_id, reason required. amount optional (full refund if omitted).', '{
+        req('Create Refund Request', 'POST', 'refund-requests', 'Create refund request. sale_id, reason required. refund_scope: whole_sale (default) or items. For items, pass items: [{ sale_item_id, quantity }].', '{
   "sale_id": 1,
   "reason": "Customer return",
-  "amount": 29.99
+  "refund_scope": "whole_sale"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Create Refund Request (Partial)', 'POST', 'refund-requests', 'Partial refund: pass refund_scope: items and items array.', '{
+  "sale_id": 1,
+  "reason": "Return 2 units only",
+  "refund_scope": "items",
+  "items": [{"sale_item_id": 1, "quantity": 2}]
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Refund Request', 'GET', 'refund-requests/1', 'Get one request. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Approve Refund', 'POST', 'refund-requests/1/approve', 'Approve refund. Requires approver permission. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),

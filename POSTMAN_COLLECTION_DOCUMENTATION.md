@@ -3230,7 +3230,7 @@ Or with branch_product_id:
 **Headers (Additional):**
 - `X-Business-Id` or query param `current_business_id`: required
 
-**Request Body:**
+**Request Body (whole sale – default):**
 ```json
 {
   "sale_id": 1,
@@ -3238,22 +3238,37 @@ Or with branch_product_id:
 }
 ```
 
+**Request Body (partial – specific items):**
+```json
+{
+  "sale_id": 1,
+  "reason": "Customer returned 2 units only.",
+  "refund_scope": "items",
+  "items": [
+    { "sale_item_id": 1, "quantity": 2 }
+  ]
+}
+```
+
 **Validation Rules:**
 - `sale_id`: required, exists:sales,id
 - `reason`: required, string, min:10, max:1000
+- `refund_scope`: optional, in:whole_sale,items (default whole_sale)
+- When `refund_scope` is `items`: `items` array required; each element must have `sale_item_id` (belongs to sale) and `quantity` (min 0.01, cannot exceed remaining refundable quantity for that line)
 
 **Response (201):**
 ```json
 {
   "message": "Refund request submitted successfully",
-  "refund_request": { /* refund request object */ }
+  "refund_request": { "id", "sale_id", "refund_scope", "amount", "reason", "status", "items": [ { "sale_item_id", "quantity", "saleItem": { "product": { ... } } } ], ... }
 }
 ```
 
 **Notes:**
 - Requires 'request refund' permission
-- Sale must be refundable (completed, not already refunded)
+- Sale must be refundable (completed, refunded_amount < total_amount)
 - Cannot create duplicate pending requests for same sale
+- **Whole sale:** amount = sale total; on approval all items restored. **Items:** amount computed from selected lines; on approval only those items/quantities restored; sale refunded_amount incremented
 
 ### 18.3 Get Refund Request Details
 **Endpoint:** `GET /api/refund-requests/{id}`
@@ -3303,11 +3318,8 @@ Or with branch_product_id:
 - Requires 'approve refund' permission
 - Cannot approve own requests
 - Only pending requests can be approved
-- Automatically:
-  - Restores stock for all items
-  - Creates inventory transactions
-  - Marks sale as refunded
-  - Marks request as processed
+- **Whole sale:** Restores stock for all sale items; adds request amount to sale refunded_amount; marks sale fully refunded when total reached.
+- **Items:** Restores stock only for requested line items/quantities; adds request amount to sale refunded_amount; marks sale fully refunded when refunded_amount >= total.
 
 ### 18.5 Reject Refund Request
 **Endpoint:** `POST /api/refund-requests/{id}/reject`

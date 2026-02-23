@@ -183,7 +183,7 @@ class RefundRequestTest extends TestCase
         $response->assertStatus(400)
             ->assertJson([
                 'message' => 'Sale is not eligible for refund',
-                'reason' => 'Sale has already been refunded',
+                'reason' => 'Sale has already been fully refunded',
             ]);
     }
 
@@ -469,6 +469,123 @@ class RefundRequestTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonCount(2, 'data');
+    }
+
+    /** @test */
+    public function can_create_partial_refund_request_with_specific_items()
+    {
+        $sale = $this->createCompletedSale();
+        $saleItem = $sale->items()->first();
+
+        $response = $this->actingAs($this->requester)
+            ->postJson('/api/refund-requests', [
+                'sale_id' => $sale->id,
+                'reason' => 'Customer returned 3 units only',
+                'refund_scope' => 'items',
+                'items' => [
+                    ['sale_item_id' => $saleItem->id, 'quantity' => 3],
+                ],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('refund_request.refund_scope', 'items')
+            ->assertJsonPath('refund_request.status', RefundRequest::STATUS_PENDING);
+
+        $this->assertDatabaseHas('refund_requests', [
+            'sale_id' => $sale->id,
+            'refund_scope' => 'items',
+        ]);
+        $this->assertDatabaseHas('refund_request_items', [
+            'sale_item_id' => $saleItem->id,
+            'quantity' => 3,
+        ]);
+        // Amount should be proportional: 3/10 of 150 = 45
+        $refundRequest = RefundRequest::where('sale_id', $sale->id)->first();
+        $this->assertEquals(45.00, (float) $refundRequest->amount);
+    }
+
+    /** @test */
+    public function approve_partial_refund_restores_only_requested_quantity()
+    {
+        $sale = $this->createCompletedSale();
+        $saleItem = $sale->items()->first();
+        $initialStock = BranchProduct::where('branch_id', $this->branch->id)
+            ->where('product_id', $this->product->id)->first()->stock_quantity;
+
+        $createResponse = $this->actingAs($this->requester)
+            ->postJson('/api/refund-requests', [
+                'sale_id' => $sale->id,
+                'reason' => 'Partial return',
+                'refund_scope' => 'items',
+                'items' => [
+                    ['sale_item_id' => $saleItem->id, 'quantity' => 4],
+                ],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+        $createResponse->assertStatus(201);
+        $refundRequestId = $createResponse->json('refund_request.id');
+
+        $this->actingAs($this->approver)
+            ->postJson("/api/refund-requests/{$refundRequestId}/approve", [], [
+                'X-Business-Id' => $this->business->id,
+            ])
+            ->assertStatus(200);
+
+        $sale->refresh();
+        $this->assertFalse($sale->is_refunded);
+        $this->assertEquals(60.00, (float) $sale->refunded_amount);
+
+        $finalStock = BranchProduct::where('branch_id', $this->branch->id)
+            ->where('product_id', $this->product->id)->first()->stock_quantity;
+        $this->assertEquals($initialStock + 4, $finalStock);
+    }
+
+    /** @test */
+    public function partial_refund_quantity_exceeding_remaining_fails()
+    {
+        $sale = $this->createCompletedSale();
+        $saleItem = $sale->items()->first();
+
+        $response = $this->actingAs($this->requester)
+            ->postJson('/api/refund-requests', [
+                'sale_id' => $sale->id,
+                'reason' => 'Too many units',
+                'refund_scope' => 'items',
+                'items' => [
+                    ['sale_item_id' => $saleItem->id, 'quantity' => 15],
+                ],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonFragment(['message' => "Quantity for sale_item_id {$saleItem->id} exceeds remaining refundable quantity (10)"]);
+    }
+
+    /** @test */
+    public function partial_refund_with_sale_item_from_another_sale_fails()
+    {
+        $sale1 = $this->createCompletedSale();
+        $sale2 = $this->createCompletedSale();
+        $sale2Item = $sale2->items()->first();
+
+        $response = $this->actingAs($this->requester)
+            ->postJson('/api/refund-requests', [
+                'sale_id' => $sale1->id,
+                'reason' => 'Wrong sale item',
+                'refund_scope' => 'items',
+                'items' => [
+                    ['sale_item_id' => $sale2Item->id, 'quantity' => 1],
+                ],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonFragment(['message' => "Sale item {$sale2Item->id} does not belong to this sale"]);
     }
 
     /** @test */

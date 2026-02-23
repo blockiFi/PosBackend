@@ -28,6 +28,7 @@ class Sale extends Model
         'paid_amount',
         'is_refunded',
         'refunded_at',
+        'refunded_amount',
         'sale_type',
         'notes',
         'metadata',
@@ -174,7 +175,7 @@ class Sale extends Model
 
     public function isRefundable(): bool
     {
-        return ! $this->is_refunded
+        return $this->refunded_amount < $this->total_amount
             && in_array($this->status, ['completed'])
             && ! $this->trashed();
     }
@@ -191,6 +192,20 @@ class Sale extends Model
         $this->update([
             'is_refunded' => true,
             'refunded_at' => now(),
+            'refunded_amount' => $this->total_amount,
+        ]);
+    }
+
+    /**
+     * Add refunded amount (for partial refunds). Sets is_refunded when total is reached.
+     */
+    public function addRefundedAmount(float $amount): void
+    {
+        $newRefunded = $this->refunded_amount + $amount;
+        $this->update([
+            'refunded_amount' => $newRefunded,
+            'is_refunded' => $newRefunded >= (float) $this->total_amount,
+            'refunded_at' => $newRefunded >= (float) $this->total_amount ? now() : $this->refunded_at,
         ]);
     }
 }
