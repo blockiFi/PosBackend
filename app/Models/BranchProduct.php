@@ -71,6 +71,22 @@ class BranchProduct extends Model
     }
 
     /**
+     * Get unit-specific prices for this branch product (pack of 6, carton, etc.)
+     */
+    public function unitPrices()
+    {
+        return $this->hasMany(BranchProductUnitPrice::class);
+    }
+
+    /**
+     * Get quantity-based price tiers (e.g. 1-5 = 500, 6-19 = 450)
+     */
+    public function quantityTiers()
+    {
+        return $this->hasMany(BranchProductQuantityTier::class)->orderBy('min_quantity');
+    }
+
+    /**
      * Get the effective cost price (branch-specific or base)
      */
     public function getEffectiveCostPrice(): float
@@ -100,8 +116,8 @@ class BranchProduct extends Model
     public function getFinalPrice(): float
     {
         $price = $this->getEffectiveSellingPrice();
-        
-        if (!$this->discount_amount || !$this->discount_type) {
+
+        if (! $this->discount_amount || ! $this->discount_type) {
             return $price;
         }
 
@@ -111,6 +127,7 @@ class BranchProduct extends Model
 
         if ($this->discount_type === 'percentage') {
             $discount = ($price * (float) $this->discount_amount) / 100;
+
             return max(0, $price - $discount);
         }
 
@@ -122,13 +139,13 @@ class BranchProduct extends Model
      */
     public function getTaxAmount(): float
     {
-        if (!$this->product->is_taxable) {
+        if (! $this->product->is_taxable) {
             return 0;
         }
 
         $finalPrice = $this->getFinalPrice();
         $taxRate = $this->getEffectiveTaxRate();
-        
+
         return ($finalPrice * $taxRate) / 100;
     }
 
@@ -147,12 +164,13 @@ class BranchProduct extends Model
     {
         $sellingPrice = $this->getEffectiveSellingPrice();
         $costPrice = $this->getEffectiveCostPrice();
-        
+
         if ($sellingPrice <= 0) {
             return 0;
         }
 
         $profit = $sellingPrice - $costPrice;
+
         return ($profit / $sellingPrice) * 100;
     }
 
@@ -178,7 +196,7 @@ class BranchProduct extends Model
         }
 
         $threshold = $this->low_stock_threshold ?? $this->product->low_stock_threshold ?? 0;
-        
+
         return $this->stock_quantity <= $threshold && $this->stock_quantity > 0;
     }
 
@@ -191,7 +209,7 @@ class BranchProduct extends Model
             return false;
         }
 
-        return $this->stock_quantity <= 0 && !$this->allow_backorder;
+        return $this->stock_quantity <= 0 && ! $this->allow_backorder;
     }
 
     /**
@@ -199,7 +217,7 @@ class BranchProduct extends Model
      */
     public function needsReorder(): bool
     {
-        if (!$this->reorder_point) {
+        if (! $this->reorder_point) {
             return false;
         }
 
@@ -328,6 +346,7 @@ class BranchProduct extends Model
     public function shelfNeedsRestocking(): bool
     {
         $threshold = $this->low_stock_threshold ?? $this->product->low_stock_threshold ?? 0;
+
         return $this->shelf_quantity <= $threshold && $this->store_quantity > 0;
     }
 
@@ -382,7 +401,7 @@ class BranchProduct extends Model
     public function verifyAndCleanQuickSaleDiscount(): void
     {
         // If no discount is applied, nothing to do
-        if (!$this->discount_type || !$this->discount_amount) {
+        if (! $this->discount_type || ! $this->discount_amount) {
             return;
         }
 
@@ -397,7 +416,7 @@ class BranchProduct extends Model
             ->first();
 
         // If no active quick sale matches this discount, remove it
-        if (!$activeQuickSale) {
+        if (! $activeQuickSale) {
             $this->update([
                 'discount_type' => null,
                 'discount_amount' => null,

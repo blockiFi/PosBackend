@@ -364,6 +364,125 @@ class ProductController extends Controller
     }
 
     /**
+     * List unit definitions for a product (for tiered pricing).
+     */
+    public function indexUnits(Request $request, int $id)
+    {
+        $product = $this->getProductForBusiness($request, $id, 'view products');
+        if ($product instanceof \Illuminate\Http\JsonResponse) {
+            return $product;
+        }
+
+        $units = $product->units()->orderBy('display_order')->orderBy('quantity_multiplier')->get();
+
+        return response()->json(['data' => $units]);
+    }
+
+    /**
+     * Create a unit definition for a product.
+     */
+    public function storeUnit(Request $request, int $id)
+    {
+        $product = $this->getProductForBusiness($request, $id, 'manage branch products');
+        if ($product instanceof \Illuminate\Http\JsonResponse) {
+            return $product;
+        }
+
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:100'],
+            'quantity_multiplier' => ['required', 'integer', 'min:1'],
+            'min_quantity' => ['nullable', 'integer', 'min:1'],
+            'display_order' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $unit = $product->units()->create($validated);
+
+        return response()->json(['message' => 'Unit created', 'data' => $unit], 201);
+    }
+
+    /**
+     * Update a product unit.
+     */
+    public function updateUnit(Request $request, int $id, int $unitId)
+    {
+        $product = $this->getProductForBusiness($request, $id, 'manage branch products');
+        if ($product instanceof \Illuminate\Http\JsonResponse) {
+            return $product;
+        }
+
+        $unit = $product->units()->find($unitId);
+        if (! $unit) {
+            return response()->json(['message' => 'Unit not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'name' => ['sometimes', 'required', 'string', 'max:100'],
+            'quantity_multiplier' => ['sometimes', 'required', 'integer', 'min:1'],
+            'min_quantity' => ['nullable', 'integer', 'min:1'],
+            'display_order' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $unit->update($validated);
+
+        return response()->json(['message' => 'Unit updated', 'data' => $unit->fresh()]);
+    }
+
+    /**
+     * Delete a product unit.
+     */
+    public function destroyUnit(Request $request, int $id, int $unitId)
+    {
+        $product = $this->getProductForBusiness($request, $id, 'manage branch products');
+        if ($product instanceof \Illuminate\Http\JsonResponse) {
+            return $product;
+        }
+
+        $unit = $product->units()->find($unitId);
+        if (! $unit) {
+            return response()->json(['message' => 'Unit not found'], 404);
+        }
+
+        $unit->delete();
+
+        return response()->json(['message' => 'Unit deleted']);
+    }
+
+    /**
+     * Get product for current business and permission; return JSON error response or Product.
+     */
+    private function getProductForBusiness(Request $request, int $productId, string $permission): Product|\Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo($permission)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $product = Product::where('id', $productId)->where('business_id', $businessId)->first();
+
+        if (! $product) {
+            return response()->json(['message' => 'Product not found'], 404);
+        }
+
+        return $product;
+    }
+
+    /**
      * Add or update product in a branch
      */
     public function addToBranch(Request $request, int $id)

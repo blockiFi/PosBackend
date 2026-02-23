@@ -14,6 +14,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Services\InventoryBatchService;
+use App\Services\TieredPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Str;
@@ -23,7 +24,8 @@ class SaleController extends Controller
     use HasBranchAccess;
 
     public function __construct(
-        protected InventoryBatchService $batchService
+        protected InventoryBatchService $batchService,
+        protected TieredPricingService $tieredPricingService
     ) {}
 
     /**
@@ -129,7 +131,7 @@ class SaleController extends Controller
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
             'items.*.quantity' => 'required|numeric|min:0.01',
-            'items.*.unit_price' => 'required|numeric|min:0',
+            'items.*.unit_price' => 'nullable|numeric|min:0', // optional: computed from tiers unless override permission
             'items.*.batch_id' => 'nullable|exists:product_batches,id',
             'items.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
@@ -236,7 +238,29 @@ class SaleController extends Controller
                     }
                 }
 
-                $unitPrice = (float) $itemData['unit_price'];
+                $unitPrice = isset($itemData['unit_price']) ? (float) $itemData['unit_price'] : null;
+                $metadata = [];
+
+                if ($unitPrice !== null && $user->hasPermissionTo('override sale price')) {
+                    $metadata['is_manual_override'] = true;
+                    $metadata['tier_type'] = 'manual';
+                } else {
+                    if ($unitPrice !== null && ! $user->hasPermissionTo('override sale price')) {
+                        $unitPrice = null;
+                    }
+                    if ($unitPrice === null) {
+                        $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
+                        $unitPrice = $tierResult['unit_price'];
+                        $metadata['tier_type'] = $tierResult['tier_type'];
+                        if ($tierResult['product_unit_id'] !== null) {
+                            $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                        }
+                        if ($tierResult['quantity_tier_id'] !== null) {
+                            $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                        }
+                    }
+                }
+
                 if ($batchId) {
                     $quickSaleForBatch = QuickSale::getActiveQuickSale($product->id, $branchId, null, $batchId);
                     if ($quickSaleForBatch) {
@@ -254,6 +278,7 @@ class SaleController extends Controller
                     'unit_price' => $unitPrice,
                     'discount_percentage' => $itemData['discount_percentage'] ?? 0,
                     'tax_rate' => $itemData['tax_rate'] ?? 0,
+                    'metadata' => $metadata ?: null,
                 ]);
 
                 $item->calculateTotals();

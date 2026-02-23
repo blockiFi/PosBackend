@@ -20,6 +20,7 @@ class ProductPermissionSeeder extends Seeder
             'manage branch products',
             'update product price',
             'update base selling price',
+            'override sale price',
         ];
 
         foreach ($permissions as $permission) {

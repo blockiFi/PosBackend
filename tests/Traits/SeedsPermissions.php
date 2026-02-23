@@ -16,7 +16,7 @@ trait SeedsPermissions
             // Products
             'create-products', 'view-products', 'edit-products', 'delete-products',
             'create products', 'view products', 'edit products', 'delete products',
-            'manage branch products', 'update product price', 'set branch product selling price',
+            'manage branch products', 'update product price', 'override sale price', 'set branch product selling price',
 
             // Categories
             'view categories', 'create categories', 'edit categories', 'delete categories',

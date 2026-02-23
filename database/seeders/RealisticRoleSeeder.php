@@ -43,6 +43,7 @@ class RealisticRoleSeeder extends Seeder
                     'delete products',
                     'manage branch products',
                     'update product price',
+                    'override sale price',
                     'manage inventory',
                     'view inventory',
 
@@ -115,6 +116,7 @@ class RealisticRoleSeeder extends Seeder
                     'edit products',
                     'manage branch products',
                     'update product price',
+                    'override sale price',
                     'manage inventory',
                     'view inventory',
 

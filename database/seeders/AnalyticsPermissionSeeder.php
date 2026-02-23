@@ -16,7 +16,6 @@ class AnalyticsPermissionSeeder extends Seeder
         // Reset cached roles and permissions
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Create permissions for analytics
         $permissions = [
             'view analytics',
             'view financial reports',
@@ -24,9 +23,12 @@ class AnalyticsPermissionSeeder extends Seeder
             'export analytics',
         ];
 
+        Permission::whereIn('name', $permissions)->where('guard_name', 'sanctum')->delete();
+
         foreach ($permissions as $permission) {
             Permission::firstOrCreate(
-                ['name' => $permission, 'guard_name' => 'sanctum']
+                ['name' => $permission, 'guard_name' => 'api'],
+                ['name' => $permission, 'guard_name' => 'api']
             );
         }
 

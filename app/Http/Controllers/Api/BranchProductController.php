@@ -7,6 +7,8 @@ use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Product;
+use App\Models\ProductUnit;
+use App\Services\TieredPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
@@ -494,6 +496,65 @@ class BranchProductController extends Controller
 
         return response()->json([
             'data' => $this->transformBranchProduct($branchProduct),
+        ]);
+    }
+
+    /**
+     * Get tiered price for a branch product and quantity (for POS dynamic total).
+     */
+    public function getPrice(Request $request, int $id)
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+        $quantity = (float) $request->input('quantity', 1);
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view products', 'api', $businessId) && ! $user->hasPermissionTo('view inventory', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($id);
+
+        if (! $branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $branchProduct->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        if ($quantity <= 0) {
+            return response()->json(['message' => 'Quantity must be greater than 0'], 422);
+        }
+
+        $result = app(TieredPricingService::class)->getUnitPrice($branchProduct, $quantity);
+
+        return response()->json([
+            'data' => [
+                'unit_price' => $result['unit_price'],
+                'total' => $result['total'],
+                'tier_type' => $result['tier_type'],
+                'product_unit_id' => $result['product_unit_id'],
+                'quantity_tier_id' => $result['quantity_tier_id'],
+                'cost_per_unit' => $result['cost_per_unit'],
+            ],
         ]);
     }
 
@@ -1327,6 +1388,216 @@ class BranchProductController extends Controller
                 'branch_product' => $this->transformBranchProduct($branchProduct),
             ],
         ]);
+    }
+
+    /**
+     * List unit prices for a branch product.
+     */
+    public function indexUnitPrices(Request $request, int $id)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'view products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $prices = $branchProduct->unitPrices()->with('productUnit')->get();
+
+        return response()->json(['data' => $prices]);
+    }
+
+    /**
+     * Create a unit price for a branch product.
+     */
+    public function storeUnitPrice(Request $request, int $id)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $validated = $request->validate([
+            'product_unit_id' => ['required', 'integer', 'exists:product_units,id'],
+            'selling_price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        if ($branchProduct->product_id !== ProductUnit::findOrFail($validated['product_unit_id'])->product_id) {
+            return response()->json(['message' => 'Product unit does not belong to this product'], 422);
+        }
+
+        $unitPrice = $branchProduct->unitPrices()->create($validated);
+
+        return response()->json(['message' => 'Unit price created', 'data' => $unitPrice->load('productUnit')], 201);
+    }
+
+    /**
+     * Update a branch product unit price.
+     */
+    public function updateUnitPrice(Request $request, int $id, int $unitPriceId)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $unitPrice = $branchProduct->unitPrices()->find($unitPriceId);
+        if (! $unitPrice) {
+            return response()->json(['message' => 'Unit price not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'selling_price' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $unitPrice->update($validated);
+
+        return response()->json(['message' => 'Unit price updated', 'data' => $unitPrice->fresh()->load('productUnit')]);
+    }
+
+    /**
+     * Delete a branch product unit price.
+     */
+    public function destroyUnitPrice(Request $request, int $id, int $unitPriceId)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $unitPrice = $branchProduct->unitPrices()->find($unitPriceId);
+        if (! $unitPrice) {
+            return response()->json(['message' => 'Unit price not found'], 404);
+        }
+
+        $unitPrice->delete();
+
+        return response()->json(['message' => 'Unit price deleted']);
+    }
+
+    /**
+     * List quantity tiers for a branch product.
+     */
+    public function indexQuantityTiers(Request $request, int $id)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'view products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $tiers = $branchProduct->quantityTiers()->orderBy('min_quantity')->get();
+
+        return response()->json(['data' => $tiers]);
+    }
+
+    /**
+     * Create a quantity tier for a branch product.
+     */
+    public function storeQuantityTier(Request $request, int $id)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $validated = $request->validate([
+            'min_quantity' => ['required', 'integer', 'min:0'],
+            'max_quantity' => ['nullable', 'integer', 'min:0'],
+            'price_per_unit' => ['required', 'numeric', 'min:0'],
+        ]);
+        if (isset($validated['max_quantity']) && $validated['max_quantity'] < $validated['min_quantity']) {
+            return response()->json(['message' => 'max_quantity must be greater than or equal to min_quantity'], 422);
+        }
+
+        $tier = $branchProduct->quantityTiers()->create($validated);
+
+        return response()->json(['message' => 'Quantity tier created', 'data' => $tier], 201);
+    }
+
+    /**
+     * Update a quantity tier.
+     */
+    public function updateQuantityTier(Request $request, int $id, int $tierId)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $tier = $branchProduct->quantityTiers()->find($tierId);
+        if (! $tier) {
+            return response()->json(['message' => 'Quantity tier not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'min_quantity' => ['sometimes', 'required', 'integer', 'min:0'],
+            'max_quantity' => ['nullable', 'integer', 'min:0'],
+            'price_per_unit' => ['sometimes', 'required', 'numeric', 'min:0'],
+        ]);
+
+        $tier->update($validated);
+
+        return response()->json(['message' => 'Quantity tier updated', 'data' => $tier->fresh()]);
+    }
+
+    /**
+     * Delete a quantity tier.
+     */
+    public function destroyQuantityTier(Request $request, int $id, int $tierId)
+    {
+        $branchProduct = $this->getBranchProductForRequest($request, $id, 'manage branch products');
+        if ($branchProduct instanceof \Illuminate\Http\JsonResponse) {
+            return $branchProduct;
+        }
+
+        $tier = $branchProduct->quantityTiers()->find($tierId);
+        if (! $tier) {
+            return response()->json(['message' => 'Quantity tier not found'], 404);
+        }
+
+        $tier->delete();
+
+        return response()->json(['message' => 'Quantity tier deleted']);
+    }
+
+    /**
+     * Get branch product for request; return JSON error or BranchProduct.
+     */
+    private function getBranchProductForRequest(Request $request, int $branchProductId, string $permission): BranchProduct|\Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo($permission)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $branchProduct = BranchProduct::with('branch')->find($branchProductId);
+        if (! $branchProduct) {
+            return response()->json(['message' => 'Branch product not found'], 404);
+        }
+
+        if ($branchProduct->branch->business_id != $businessId) {
+            return response()->json(['message' => 'Access denied'], 403);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $branchProduct->branch_id)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        return $branchProduct;
     }
 
     /**

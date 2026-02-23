@@ -9,6 +9,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class BusinessSeeder extends Seeder
 {
@@ -97,11 +98,11 @@ class BusinessSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        // Create users with roles
-        $this->createUsersForBusiness($business, $mainBranch, $downtownBranch, $owner);
-
-        // Create roles for this business
+        // Create roles for this business first (required before assigning roles to users)
         $this->createRolesForBusiness($business);
+
+        // Create users and assign roles
+        $this->createUsersForBusiness($business, $mainBranch, $downtownBranch, $owner);
 
         $this->command->info('Demo retail business created successfully!');
     }
@@ -160,10 +161,18 @@ class BusinessSeeder extends Seeder
             'is_active' => true,
         ]);
 
-        $this->command->info('Demo wholesale business created successfully!');
-
-        // Create roles for this business
+        // Create roles for this business first
         $this->createRolesForBusiness($business);
+
+        // Attach owner to business and assign Owner role
+        $owner->businesses()->attach($business->id, [
+            'is_active' => true,
+        ]);
+        app()[PermissionRegistrar::class]->setPermissionsTeamId($business->id);
+        $owner->assignRole('Owner');
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+
+        $this->command->info('Demo wholesale business created successfully!');
     }
 
     /**
@@ -181,7 +190,7 @@ class BusinessSeeder extends Seeder
             'Manager' => [
                 'manage-users', 'manage-branches', 'manage-settings', 'manage-roles',
                 'view products', 'create products', 'edit products', 'delete products',
-                'manage branch products', 'update product price', 'manage inventory', 'view inventory',
+                'manage branch products', 'update product price', 'override sale price', 'manage inventory', 'view inventory',
                 'view categories', 'create categories', 'edit categories', 'delete categories',
                 'view sales', 'create sales', 'manage sales', 'view customers', 'create customers',
                 'edit customers', 'view analytics', 'view reports', 'view financial reports',
@@ -229,12 +238,15 @@ class BusinessSeeder extends Seeder
 
     private function createUsersForBusiness(Business $business, Branch $mainBranch, Branch $downtownBranch, User $owner): void
     {
-        // Attach owner to business
+        app()[PermissionRegistrar::class]->setPermissionsTeamId($business->id);
+
+        // Attach owner to business and assign Owner role
         $owner->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
+        $owner->assignRole('Owner');
 
-        // Create admin user
+        // Create admin user and assign Manager role
         $admin = User::create([
             'name' => 'Admin User',
             'email' => 'admin@acmeretail.com',
@@ -243,6 +255,7 @@ class BusinessSeeder extends Seeder
         $admin->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
+        $admin->assignRole('Manager');
 
         // Create manager users
         $manager1 = User::create([
@@ -253,6 +266,7 @@ class BusinessSeeder extends Seeder
         $manager1->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
+        $manager1->assignRole('Manager');
 
         $manager2 = User::create([
             'name' => 'Jane Manager',
@@ -262,6 +276,7 @@ class BusinessSeeder extends Seeder
         $manager2->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
+        $manager2->assignRole('Manager');
 
         // Create cashier users
         for ($i = 1; $i <= 4; $i++) {
@@ -274,6 +289,7 @@ class BusinessSeeder extends Seeder
             $cashier->businesses()->attach($business->id, [
                 'is_active' => true,
             ]);
+            $cashier->assignRole('Cashier');
         }
 
         // Enable PIN login for cashier1 (demo PIN: 123456)
@@ -285,6 +301,7 @@ class BusinessSeeder extends Seeder
             ]);
         }
 
-        $this->command->info('Users created for business');
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
+        $this->command->info('Users created and roles assigned for business');
     }
 }

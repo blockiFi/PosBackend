@@ -34,6 +34,7 @@ Route::put('/user', [AuthenticationController::class, 'updateProfile'])->middlew
 Route::post('register', [AuthenticationController::class, 'register']);
 Route::post('login', [AuthenticationController::class, 'login']);
 Route::post('pin-login', [AuthenticationController::class, 'pinLogin']);
+Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -41,7 +42,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('pin/set', [AuthenticationController::class, 'setPin']);
     Route::post('pin/remove', [AuthenticationController::class, 'removePin']);
     // Get business and branch by auth code (branch authorization)
-    Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
     // Business listing & creation (scoped to authenticated user's memberships)
     Route::get('businesses', [BusinessController::class, 'index']);
     Route::post('businesses', [BusinessController::class, 'store']);
@@ -102,6 +102,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::delete('products/{id}/branches', [ProductController::class, 'removeFromBranch']);
         Route::patch('products/{id}/price', [ProductController::class, 'updatePrice']);
         Route::patch('products/{id}/base-selling-price', [ProductController::class, 'updateBaseSellingPrice']);
+        Route::get('products/{id}/units', [ProductController::class, 'indexUnits']);
+        Route::post('products/{id}/units', [ProductController::class, 'storeUnit']);
+        Route::put('products/{id}/units/{unitId}', [ProductController::class, 'updateUnit']);
+        Route::delete('products/{id}/units/{unitId}', [ProductController::class, 'destroyUnit']);
 
         // Get products for a specific branch (with permission check)
         Route::get('branches/{branchId}/products', [ProductController::class, 'getProductsByBranch']);
@@ -112,6 +116,15 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('branch-products', [BranchProductController::class, 'store']);
         Route::post('branch-products/assign-multiple', [BranchProductController::class, 'assignMultiple']);
         Route::get('branch-products/{id}', [BranchProductController::class, 'show']);
+        Route::get('branch-products/{id}/price', [BranchProductController::class, 'getPrice']);
+        Route::get('branch-products/{id}/unit-prices', [BranchProductController::class, 'indexUnitPrices']);
+        Route::post('branch-products/{id}/unit-prices', [BranchProductController::class, 'storeUnitPrice']);
+        Route::put('branch-products/{id}/unit-prices/{unitPriceId}', [BranchProductController::class, 'updateUnitPrice']);
+        Route::delete('branch-products/{id}/unit-prices/{unitPriceId}', [BranchProductController::class, 'destroyUnitPrice']);
+        Route::get('branch-products/{id}/quantity-tiers', [BranchProductController::class, 'indexQuantityTiers']);
+        Route::post('branch-products/{id}/quantity-tiers', [BranchProductController::class, 'storeQuantityTier']);
+        Route::put('branch-products/{id}/quantity-tiers/{tierId}', [BranchProductController::class, 'updateQuantityTier']);
+        Route::delete('branch-products/{id}/quantity-tiers/{tierId}', [BranchProductController::class, 'destroyQuantityTier']);
         Route::put('branch-products/{id}', [BranchProductController::class, 'update']);
         Route::patch('branch-products/{id}/selling-price', [BranchProductController::class, 'updateSellingPrice']);
         Route::delete('branch-products/{id}', [BranchProductController::class, 'destroy']);

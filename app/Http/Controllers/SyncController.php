@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
+use App\Models\BranchProductQuantityTier;
+use App\Models\BranchProductUnitPrice;
 use App\Models\ChangeLog;
 use App\Models\Customer;
 use App\Models\DeviceRegistration;
@@ -11,6 +13,7 @@ use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\ProductUnit;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
@@ -99,7 +102,7 @@ class SyncController extends Controller
             'branch_id' => 'required|exists:branches,id',
             'business_id' => 'nullable|exists:businesses,id',
             'entities' => 'nullable|array',
-            'entities.*' => 'in:products,categories,payment_methods,customers,branch_products',
+            'entities.*' => 'in:products,categories,payment_methods,customers,branch_products,product_units,branch_product_unit_prices,branch_product_quantity_tiers',
             'include_history' => 'nullable|boolean',
         ]);
 
@@ -166,8 +169,22 @@ class SyncController extends Controller
 
         if (in_array('branch_products', $entities)) {
             $data['branch_products'] = BranchProduct::where('branch_id', $branchId)
-                // ->select('id', 'branch_id', 'product_id', 'version', 'synced_at')
                 ->get();
+        }
+
+        if (in_array('product_units', $entities)) {
+            $productIds = Product::where('business_id', $businessId)->pluck('id');
+            $data['product_units'] = ProductUnit::whereIn('product_id', $productIds)->get();
+        }
+
+        if (in_array('branch_product_unit_prices', $entities)) {
+            $bpIds = BranchProduct::where('branch_id', $branchId)->pluck('id');
+            $data['branch_product_unit_prices'] = BranchProductUnitPrice::whereIn('branch_product_id', $bpIds)->get();
+        }
+
+        if (in_array('branch_product_quantity_tiers', $entities)) {
+            $bpIds = BranchProduct::where('branch_id', $branchId)->pluck('id');
+            $data['branch_product_quantity_tiers'] = BranchProductQuantityTier::whereIn('branch_product_id', $bpIds)->get();
         }
 
         $totalRecords = collect($data)->sum(fn ($items) => $items->count());
@@ -576,7 +593,7 @@ class SyncController extends Controller
         // Create items
         if (isset($data['items'])) {
             foreach ($data['items'] as $item) {
-                SaleItem::create([
+                $payload = [
                     'sale_id' => $sale->id,
                     'product_id' => $item['product_id'],
                     'product_name' => $item['product_name'] ?? 'Unknown Product',
@@ -587,7 +604,14 @@ class SyncController extends Controller
                     'tax_amount' => $item['tax'] ?? 0,
                     'subtotal' => $item['subtotal'],
                     'total' => $item['total'] ?? $item['subtotal'],
-                ]);
+                ];
+                if (isset($item['metadata'])) {
+                    $payload['metadata'] = $item['metadata'];
+                }
+                if (isset($item['batch_id'])) {
+                    $payload['batch_id'] = $item['batch_id'];
+                }
+                SaleItem::create($payload);
             }
         }
 
