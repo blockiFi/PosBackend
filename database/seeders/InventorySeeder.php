@@ -2,15 +2,14 @@
 
 namespace Database\Seeders;
 
-use App\Models\Business;
 use App\Models\Branch;
-use App\Models\Product;
-use App\Models\BranchProduct;
-use App\Models\ProductBatch;
+use App\Models\Business;
 use App\Models\InventoryTransaction;
+use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\User;
-use Illuminate\Database\Seeder;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 
 class InventorySeeder extends Seeder
 {
@@ -20,9 +19,10 @@ class InventorySeeder extends Seeder
     public function run(): void
     {
         $businesses = Business::with('branches')->get();
-        
+
         if ($businesses->isEmpty()) {
             $this->command->warn('No businesses found. Please run BusinessSeeder first.');
+
             return;
         }
 
@@ -35,15 +35,16 @@ class InventorySeeder extends Seeder
     private function createInventoryForBusiness(Business $business): void
     {
         $products = Product::where('business_id', $business->id)->get();
-        
+
         if ($products->isEmpty()) {
             $this->command->warn("No products found for {$business->name}. Skipping inventory.");
+
             return;
         }
 
         $branches = $business->branches;
         $users = $business->users;
-        
+
         if ($users->isEmpty()) {
             $user = User::factory()->create();
             $user->businesses()->attach($business->id, [
@@ -54,7 +55,7 @@ class InventorySeeder extends Seeder
 
         foreach ($branches as $branch) {
             $this->command->info("  Creating inventory for branch: {$branch->name}");
-            
+
             foreach ($products as $product) {
                 $this->createInventoryForProduct($business, $branch, $product, $users->first());
             }
@@ -72,11 +73,11 @@ class InventorySeeder extends Seeder
         $perishableCategories = ['Groceries', 'Beverages', 'Dairy Products'];
         $categoryName = $product->category?->name;
         $usesBatchTracking = in_array($categoryName, $perishableCategories);
-        
+
         if ($usesBatchTracking) {
-            // Create 2-5 batches per product
-            $batchCount = fake()->numberBetween(2, 5);
-            
+            $batchRange = config('seeding.limits.'.config('seeding.size', 'large').'.batches_per_product', [2, 5]);
+            $batchCount = fake()->numberBetween($batchRange[0], $batchRange[1]);
+
             for ($i = 0; $i < $batchCount; $i++) {
                 $this->createBatch($branch, $product, $user, $i);
             }
@@ -89,16 +90,16 @@ class InventorySeeder extends Seeder
     private function createBatch(Branch $branch, Product $product, User $user, int $index): void
     {
         $initialQty = fake()->numberBetween(50, 500);
-        $soldQty = fake()->numberBetween(0, (int)($initialQty * 0.6));
+        $soldQty = fake()->numberBetween(0, (int) ($initialQty * 0.6));
         $currentQty = $initialQty - $soldQty;
-        
+
         // Manufacturing date in the past
         $manufacturingDate = Carbon::now()->subDays(fake()->numberBetween(30, 180));
-        
+
         // Expiry date in the future (or past for some items)
         $daysToExpiry = fake()->numberBetween(-30, 730); // Some expired, some valid
         $expiryDate = Carbon::now()->addDays($daysToExpiry);
-        
+
         // Determine status
         $status = 'active';
         if ($expiryDate->isPast()) {
@@ -111,15 +112,15 @@ class InventorySeeder extends Seeder
             'business_id' => $branch->business_id,
             'branch_id' => $branch->id,
             'product_id' => $product->id,
-            'batch_number' => 'BATCH-' . now()->format('Ymd') . '-' . str_pad($product->id, 4, '0', STR_PAD_LEFT) . '-' . str_pad($index + 1, 3, '0', STR_PAD_LEFT),
-            'lot_number' => 'LOT-' . fake()->numerify('######'),
+            'batch_number' => 'BATCH-'.now()->format('Ymd').'-'.str_pad($product->id, 4, '0', STR_PAD_LEFT).'-'.str_pad($index + 1, 3, '0', STR_PAD_LEFT),
+            'lot_number' => 'LOT-'.fake()->numerify('######'),
             'received_quantity' => $initialQty,
             'current_quantity' => $currentQty,
             'unit_cost' => $product->base_cost_price,
             'manufacturing_date' => $manufacturingDate,
             'expiry_date' => $expiryDate,
             'supplier_name' => fake()->company(),
-            'supplier_reference' => 'PO-' . fake()->numerify('######'),
+            'supplier_reference' => 'PO-'.fake()->numerify('######'),
             'status' => $status,
         ]);
 
@@ -142,10 +143,10 @@ class InventorySeeder extends Seeder
             // Split into multiple sale transactions
             $remainingSold = $soldQty;
             $transactionCount = fake()->numberBetween(1, 5);
-            
+
             for ($i = 0; $i < $transactionCount && $remainingSold > 0; $i++) {
                 $qtySold = min(fake()->numberBetween(1, 20), $remainingSold);
-                
+
                 InventoryTransaction::create([
                     'business_id' => $branch->business_id,
                     'branch_id' => $branch->id,
@@ -158,7 +159,7 @@ class InventorySeeder extends Seeder
                     'user_id' => $user->id,
                     'created_at' => fake()->dateTimeBetween($manufacturingDate, 'now'),
                 ]);
-                
+
                 $remainingSold -= $qtySold;
             }
         }
@@ -166,7 +167,7 @@ class InventorySeeder extends Seeder
         // Occasionally create adjustment transactions
         if (fake()->boolean(20)) {
             $adjustmentQty = fake()->numberBetween(-10, 10);
-            
+
             InventoryTransaction::create([
                 'business_id' => $branch->business_id,
                 'branch_id' => $branch->id,
@@ -186,7 +187,7 @@ class InventorySeeder extends Seeder
     {
         // Create initial purchase
         $initialQty = fake()->numberBetween(100, 500);
-        
+
         InventoryTransaction::create([
             'business_id' => $branch->business_id,
             'branch_id' => $branch->id,
@@ -227,7 +228,7 @@ class InventorySeeder extends Seeder
                 'type' => 'adjustment',
                 'quantity' => fake()->numberBetween(-20, 20),
                 'unit_cost' => $product->base_cost_price,
-                'notes' => 'Stock count adjustment - ' . fake()->randomElement(['count correction', 'damage', 'found stock']),
+                'notes' => 'Stock count adjustment - '.fake()->randomElement(['count correction', 'damage', 'found stock']),
                 'user_id' => $user->id,
                 'created_at' => fake()->dateTimeBetween('-30 days', 'now'),
             ]);

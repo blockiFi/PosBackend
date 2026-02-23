@@ -1179,10 +1179,13 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Set permission context and check permission
+        // Set permission context and check permission (direct move: owner, manage/adjust inventory, or approve shelf store move)
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage inventory', 'api', $businessId) && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if ($business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('approve shelf store move', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized. Use shelf-store-move-requests to request a move for approval.'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);
@@ -1263,10 +1266,13 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Set permission context and check permission
+        // Set permission context and check permission (direct move: owner, manage/adjust inventory, or approve shelf store move)
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage inventory', 'api', $businessId) && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+        if ($business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('approve shelf store move', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized. Use shelf-store-move-requests to request a move for approval.'], 403);
         }
 
         $branchProduct = BranchProduct::with('branch')->find($id);

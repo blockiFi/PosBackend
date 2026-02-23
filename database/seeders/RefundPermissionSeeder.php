@@ -18,7 +18,10 @@ class RefundPermissionSeeder extends Seeder
         ];
 
         foreach ($permissions as $permission) {
-            Permission::firstOrCreate(['name' => $permission]);
+            Permission::firstOrCreate(
+                ['name' => $permission, 'guard_name' => 'api'],
+                ['name' => $permission, 'guard_name' => 'api']
+            );
         }
 
         $this->command->info('Refund permissions created successfully!');

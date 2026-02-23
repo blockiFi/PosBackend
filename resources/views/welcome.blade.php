@@ -57,6 +57,7 @@
                     <h4>Inventory Management</h4>
                     <ul>
                         <li><strong>Shelf & Store</strong>: Dual-location tracking</li>
+                        <li><strong>Shelf/Store Move Requests</strong>: Request → approve/reject workflow</li>
                         <li><strong>Batch Management</strong>: FEFO with expiry tracking</li>
                         <li><strong>Stock Transfers</strong>: Request-based movement</li>
                         <li><strong>Write-offs</strong>: Damage tracking with approvals</li>
@@ -144,7 +145,7 @@ php artisan key:generate</code></pre>
                 <li><strong>Sales:</strong> sales (list, create, show, addPayment, cancel)</li>
                 <li><strong>Shifts:</strong> list, open, current, show, sales, close, pause, resume, resolve-discrepancy</li>
                 <li><strong>Analytics:</strong> organization, branches, products, profit-loss, growth-trends</li>
-                <li><strong>Workflows:</strong> stock-transfer-requests (approve, accept, reject-in, reject, confirm, cancel), stock-writeoffs, refund-requests (approve, reject), quick-sales (approve, reject, end)</li>
+                <li><strong>Workflows:</strong> stock-transfer-requests (approve, accept, reject-in, reject, confirm, cancel), shelf-store-move-requests (approve, reject), stock-writeoffs, refund-requests (approve, reject), quick-sales (approve, reject, end)</li>
                 <li><strong>Sync:</strong> register-device, bootstrap, pull, push, resolve-conflicts, status, heartbeat</li>
                 <li><strong>Server-Sync:</strong> push, pull, status, health, receive, provide-changes</li>
             </ul>

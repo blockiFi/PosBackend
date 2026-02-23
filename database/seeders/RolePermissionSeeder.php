@@ -42,6 +42,9 @@ class RolePermissionSeeder extends Seeder
             // Stock Transfer Workflow
             'request stock transfer', 'approve stock transfer', 'accept stock transfer',
 
+            // Shelf/Store Move (request → approve/reject)
+            'request shelf store move', 'approve shelf store move',
+
             // Stock Write-offs
             'write off stock',
 

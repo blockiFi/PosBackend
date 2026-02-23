@@ -2,19 +2,21 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
-use App\Models\Business;
 use App\Models\Branch;
+use App\Models\BranchAuthorization;
+use App\Models\Business;
+use App\Models\Customer;
+use App\Models\InventoryTransaction;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\Sale;
 use App\Models\SalesShift;
-use App\Models\Customer;
-use App\Models\ProductBatch;
-use App\Models\InventoryTransaction;
+use App\Models\StockWriteoff;
+use Illuminate\Database\Seeder;
 
 /**
  * Verification seeder to check data integrity after seeding
- * 
+ *
  * Run with: php artisan db:seed --class=VerifySeeder
  */
 class VerifySeeder extends Seeder
@@ -64,7 +66,7 @@ class VerifySeeder extends Seeder
         if ($salesWithoutItems > 0) {
             $errors[] = "{$salesWithoutItems} sales have no items";
         } else {
-            $this->command->info("✅ All sales have items");
+            $this->command->info('✅ All sales have items');
         }
 
         // Verify sales have payments
@@ -72,7 +74,7 @@ class VerifySeeder extends Seeder
         if ($salesWithoutPayments > 0) {
             $errors[] = "{$salesWithoutPayments} sales have no payments";
         } else {
-            $this->command->info("✅ All sales have payments");
+            $this->command->info('✅ All sales have payments');
         }
 
         // Check shifts
@@ -103,12 +105,27 @@ class VerifySeeder extends Seeder
             $warnings[] = 'No product batches found - did you run InventorySeeder?';
         } else {
             $this->command->info("✅ Found {$batchCount} product batches");
-            
-            // Check batch statuses
-            $nearExpiry = ProductBatch::where('status', 'near_expiry')->count();
+
+            $active = ProductBatch::where('status', 'active')->count();
             $expired = ProductBatch::where('status', 'expired')->count();
-            $this->command->line("   - Near expiry: {$nearExpiry}");
-            $this->command->line("   - Expired: {$expired}");
+            $depleted = ProductBatch::where('status', 'depleted')->count();
+            $this->command->line("   - Active: {$active}, Expired: {$expired}, Depleted: {$depleted}");
+        }
+
+        // Check branch authorizations
+        $authCount = BranchAuthorization::count();
+        if ($authCount === 0) {
+            $warnings[] = 'No branch authorizations - did you run BranchAuthorizationSeeder?';
+        } else {
+            $this->command->info("✅ Found {$authCount} branch authorization(s)");
+        }
+
+        // Check stock write-offs
+        $writeoffCount = StockWriteoff::count();
+        if ($writeoffCount === 0) {
+            $warnings[] = 'No stock write-offs - did you run WorkflowSeeder?';
+        } else {
+            $this->command->info("✅ Found {$writeoffCount} stock write-off(s)");
         }
 
         // Check inventory transactions
@@ -132,30 +149,30 @@ class VerifySeeder extends Seeder
         // Verify sales totals match
         $this->command->newLine();
         $this->command->info('🔢 Verifying sales calculations...');
-        
+
         $salesWithMismatch = 0;
         foreach (Sale::with('items')->get() as $sale) {
-            $itemsTotal = $sale->items->sum(function($item) {
+            $itemsTotal = $sale->items->sum(function ($item) {
                 return (float) $item->total;
             });
             $saleTotal = (float) $sale->total_amount;
-            
+
             // Allow small rounding differences
             if (abs($itemsTotal - $saleTotal) > 0.02) {
                 $salesWithMismatch++;
             }
         }
-        
+
         if ($salesWithMismatch > 0) {
             $warnings[] = "{$salesWithMismatch} sales have mismatched totals (items vs sale total)";
         } else {
-            $this->command->info("✅ All sales have correct totals");
+            $this->command->info('✅ All sales have correct totals');
         }
 
         // Print summary
         $this->command->newLine();
-        
-        if (!empty($errors)) {
+
+        if (! empty($errors)) {
             $this->command->error('❌ ERRORS FOUND:');
             foreach ($errors as $error) {
                 $this->command->line("   - {$error}");
@@ -163,7 +180,7 @@ class VerifySeeder extends Seeder
             $this->command->newLine();
         }
 
-        if (!empty($warnings)) {
+        if (! empty($warnings)) {
             $this->command->warn('⚠️  WARNINGS:');
             foreach ($warnings as $warning) {
                 $this->command->line("   - {$warning}");
@@ -186,18 +203,18 @@ class VerifySeeder extends Seeder
     private function printQuickStats(): void
     {
         $this->command->info('📊 Quick Statistics:');
-        
+
         $totalRevenue = Sale::where('status', 'completed')->sum('total_amount');
         $avgSaleValue = Sale::where('status', 'completed')->avg('total_amount');
         $totalCustomers = Customer::count();
         $totalProducts = Product::count();
         $totalBranches = Branch::count();
-        
+
         $this->command->table(
             ['Metric', 'Value'],
             [
-                ['Total Revenue', '$' . number_format($totalRevenue, 2)],
-                ['Average Sale', '$' . number_format($avgSaleValue, 2)],
+                ['Total Revenue', '$'.number_format($totalRevenue, 2)],
+                ['Average Sale', '$'.number_format($avgSaleValue, 2)],
                 ['Total Customers', number_format($totalCustomers)],
                 ['Total Products', number_format($totalProducts)],
                 ['Total Branches', number_format($totalBranches)],

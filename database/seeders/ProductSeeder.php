@@ -2,11 +2,10 @@
 
 namespace Database\Seeders;
 
-use App\Models\Business;
-use App\Models\Branch;
-use App\Models\ProductCategory;
-use App\Models\Product;
 use App\Models\BranchProduct;
+use App\Models\Business;
+use App\Models\Product;
+use App\Models\ProductCategory;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -19,18 +18,19 @@ class ProductSeeder extends Seeder
     {
         // Get existing businesses and branches
         $businesses = Business::all();
-        
+
         if ($businesses->isEmpty()) {
             $this->command->warn('No businesses found. Please run BusinessSeeder first.');
+
             return;
         }
 
         foreach ($businesses as $business) {
             $this->command->info("Seeding products for business: {$business->name}");
-            
+
             // Create categories
             $categories = $this->createCategories($business);
-            
+
             // Create products
             $this->createProducts($business, $categories);
         }
@@ -39,7 +39,7 @@ class ProductSeeder extends Seeder
     private function createCategories(Business $business): array
     {
         $categories = [];
-        
+
         // Electronics category with subcategories
         $electronics = ProductCategory::create([
             'business_id' => $business->id,
@@ -48,25 +48,25 @@ class ProductSeeder extends Seeder
             'parent_id' => null,
         ]);
         $categories['electronics'] = $electronics;
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Mobile Phones',
             'parent_id' => $electronics->id,
         ]);
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Laptops',
             'parent_id' => $electronics->id,
         ]);
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Accessories',
             'parent_id' => $electronics->id,
         ]);
-        
+
         // Groceries with subcategories
         $groceries = ProductCategory::create([
             'business_id' => $business->id,
@@ -75,25 +75,25 @@ class ProductSeeder extends Seeder
             'parent_id' => null,
         ]);
         $categories['groceries'] = $groceries;
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Dairy Products',
             'parent_id' => $groceries->id,
         ]);
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Beverages',
             'parent_id' => $groceries->id,
         ]);
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Snacks',
             'parent_id' => $groceries->id,
         ]);
-        
+
         // Beverages category
         $categories['beverages'] = ProductCategory::create([
             'business_id' => $business->id,
@@ -101,7 +101,7 @@ class ProductSeeder extends Seeder
             'description' => 'Soft drinks, juices, and water',
             'parent_id' => null,
         ]);
-        
+
         // Household Items
         $household = ProductCategory::create([
             'business_id' => $business->id,
@@ -110,13 +110,13 @@ class ProductSeeder extends Seeder
             'parent_id' => null,
         ]);
         $categories['household'] = $household;
-        
+
         ProductCategory::create([
             'business_id' => $business->id,
             'name' => 'Cleaning Supplies',
             'parent_id' => $household->id,
         ]);
-        
+
         // Personal Care
         $categories['personal_care'] = ProductCategory::create([
             'business_id' => $business->id,
@@ -124,7 +124,7 @@ class ProductSeeder extends Seeder
             'description' => 'Health and beauty products',
             'parent_id' => null,
         ]);
-        
+
         // Office Supplies
         $categories['office'] = ProductCategory::create([
             'business_id' => $business->id,
@@ -132,14 +132,14 @@ class ProductSeeder extends Seeder
             'description' => 'Stationery and office equipment',
             'parent_id' => null,
         ]);
-        
+
         return $categories;
     }
 
     private function createProducts(Business $business, array $categories): void
     {
         $branches = $business->branches;
-        
+
         // Electronics products
         $electronicsProducts = [
             ['name' => 'iPhone 14 Pro', 'sku' => 'IPH14PRO', 'cost' => 750.00, 'price' => 999.99],
@@ -151,13 +151,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Wireless Mouse', 'sku' => 'WMOUSE', 'cost' => 15.00, 'price' => 29.99],
             ['name' => 'Bluetooth Keyboard', 'sku' => 'BTKBD', 'cost' => 35.00, 'price' => 59.99],
         ];
-        
+
         foreach ($electronicsProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['electronics']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -169,10 +169,10 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 5,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches);
         }
-        
+
         // Groceries products
         $groceryProducts = [
             ['name' => 'Milk 1L', 'sku' => 'MLK1L', 'cost' => 1.50, 'price' => 2.99, 'perishable' => true],
@@ -184,13 +184,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Pasta 500g', 'sku' => 'PASTA', 'cost' => 1.20, 'price' => 2.49, 'perishable' => false],
             ['name' => 'Canned Tomatoes', 'sku' => 'TOMCAN', 'cost' => 0.80, 'price' => 1.79, 'perishable' => false],
         ];
-        
+
         foreach ($groceryProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['groceries']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -202,10 +202,10 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 20,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches, $productData['perishable']);
         }
-        
+
         // Beverages
         $beverageProducts = [
             ['name' => 'Coca-Cola 330ml', 'sku' => 'COKE330', 'cost' => 0.50, 'price' => 1.29],
@@ -214,13 +214,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Bottled Water 500ml', 'sku' => 'WATER500', 'cost' => 0.20, 'price' => 0.99],
             ['name' => 'Energy Drink', 'sku' => 'ENERGY', 'cost' => 1.50, 'price' => 2.99],
         ];
-        
+
         foreach ($beverageProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['beverages']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -232,10 +232,10 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 30,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches, true);
         }
-        
+
         // Household items
         $householdProducts = [
             ['name' => 'Dish Soap', 'sku' => 'DSOAP', 'cost' => 2.50, 'price' => 4.99],
@@ -244,13 +244,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Toilet Paper 12-pack', 'sku' => 'TP12', 'cost' => 6.00, 'price' => 10.99],
             ['name' => 'All-Purpose Cleaner', 'sku' => 'APCLN', 'cost' => 3.50, 'price' => 6.99],
         ];
-        
+
         foreach ($householdProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['household']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -262,10 +262,10 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 15,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches);
         }
-        
+
         // Personal care
         $personalCareProducts = [
             ['name' => 'Shampoo 500ml', 'sku' => 'SHAMP', 'cost' => 4.00, 'price' => 7.99],
@@ -273,13 +273,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Toothpaste', 'sku' => 'TPASTE', 'cost' => 2.00, 'price' => 3.99],
             ['name' => 'Deodorant', 'sku' => 'DEOD', 'cost' => 3.00, 'price' => 5.99],
         ];
-        
+
         foreach ($personalCareProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['personal_care']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -291,10 +291,10 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 10,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches);
         }
-        
+
         // Office supplies
         $officeProducts = [
             ['name' => 'A4 Paper Ream', 'sku' => 'A4REAM', 'cost' => 4.00, 'price' => 7.99],
@@ -302,13 +302,13 @@ class ProductSeeder extends Seeder
             ['name' => 'Notebook A5', 'sku' => 'NB-A5', 'cost' => 1.50, 'price' => 2.99],
             ['name' => 'Stapler', 'sku' => 'STAPLER', 'cost' => 3.00, 'price' => 5.99],
         ];
-        
+
         foreach ($officeProducts as $productData) {
             $product = Product::create([
                 'business_id' => $business->id,
                 'category_id' => $categories['office']->id,
                 'name' => $productData['name'],
-                'sku' => $productData['sku'] . '-' . Str::random(4),
+                'sku' => $productData['sku'].'-'.Str::random(4),
                 'barcode' => fake()->unique()->ean13(),
                 'description' => fake()->sentence(),
                 'base_cost_price' => $productData['cost'],
@@ -320,7 +320,7 @@ class ProductSeeder extends Seeder
                 'low_stock_threshold' => 10,
                 'is_active' => true,
             ]);
-            
+
             $this->addProductToBranches($product, $branches);
         }
     }
@@ -330,7 +330,7 @@ class ProductSeeder extends Seeder
         foreach ($branches as $branch) {
             $shelfQty = fake()->numberBetween(10, 100);
             $storeQty = fake()->numberBetween(50, 300);
-            
+
             BranchProduct::create([
                 'branch_id' => $branch->id,
                 'product_id' => $product->id,

@@ -172,6 +172,69 @@ class UserBusinessRoutesTest extends TestCase
         ]);
     }
 
+    public function test_adding_user_with_cashier_role_auto_generates_and_returns_pin(): void
+    {
+        $cashierRole = Role::create([
+            'name' => 'Cashier',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+
+        $response = $this->actingAs($this->owner)
+            ->postJson('/api/business-users', [
+                'email' => $this->thirdUser->email,
+                'name' => $this->thirdUser->name,
+                'is_active' => true,
+                'role_ids' => [$cashierRole->id],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonStructure([
+                'data' => [
+                    'user',
+                    'roles',
+                    'pin_code',
+                ],
+            ])
+            ->assertJsonPath('data.roles.0.name', 'Cashier');
+
+        $pinCode = $response->json('data.pin_code');
+        $this->assertNotNull($pinCode);
+        $this->assertMatchesRegularExpression('/^[0-9]{6}$/', $pinCode);
+
+        $this->thirdUser->refresh();
+        $this->assertSame($pinCode, $this->thirdUser->pin_code);
+    }
+
+    public function test_adding_cashier_with_existing_pin_does_not_overwrite_or_return_pin(): void
+    {
+        $this->thirdUser->update(['pin_code' => '123456']);
+
+        $cashierRole = Role::create([
+            'name' => 'Cashier',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+
+        $response = $this->actingAs($this->owner)
+            ->postJson('/api/business-users', [
+                'email' => $this->thirdUser->email,
+                'name' => $this->thirdUser->name,
+                'is_active' => true,
+                'role_ids' => [$cashierRole->id],
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201);
+        $this->assertArrayNotHasKey('pin_code', $response->json('data'));
+
+        $this->thirdUser->refresh();
+        $this->assertSame('123456', $this->thirdUser->pin_code);
+    }
+
     public function test_cannot_add_user_twice_to_business()
     {
         // Add user first time

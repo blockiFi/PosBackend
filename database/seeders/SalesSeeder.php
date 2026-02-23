@@ -2,18 +2,18 @@
 
 namespace Database\Seeders;
 
-use App\Models\Business;
 use App\Models\Branch;
-use App\Models\Product;
+use App\Models\Business;
 use App\Models\Customer;
+use App\Models\Payment;
 use App\Models\PaymentMethod;
+use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
-use App\Models\Payment;
 use App\Models\SalesShift;
 use App\Models\User;
-use Illuminate\Database\Seeder;
 use Carbon\Carbon;
+use Illuminate\Database\Seeder;
 
 class SalesSeeder extends Seeder
 {
@@ -22,16 +22,20 @@ class SalesSeeder extends Seeder
     /**
      * Run the database seeds.
      */
-    public function run(int $count = null): void
+    public function run(?int $count = null): void
     {
         if ($count !== null) {
             $this->salesCount = $count;
+        } else {
+            $size = config('seeding.size', 'large');
+            $this->salesCount = (int) config("seeding.limits.{$size}.sales", 1000);
         }
 
         $businesses = Business::with('branches')->get();
-        
+
         if ($businesses->isEmpty()) {
             $this->command->warn('No businesses found. Please run BusinessSeeder first.');
+
             return;
         }
 
@@ -47,9 +51,10 @@ class SalesSeeder extends Seeder
         $products = Product::where('business_id', $business->id)->get();
         $customers = Customer::where('business_id', $business->id)->get();
         $paymentMethods = PaymentMethod::where('business_id', $business->id)->get();
-        
+
         if ($products->isEmpty()) {
             $this->command->warn("No products found for {$business->name}. Skipping sales.");
+
             return;
         }
 
@@ -61,15 +66,16 @@ class SalesSeeder extends Seeder
 
         if ($customers->isEmpty()) {
             $this->command->info("Creating customers for {$business->name}...");
-            Customer::factory(50)->create(['business_id' => $business->id]);
+            $customerCount = (int) config('seeding.limits.'.config('seeding.size', 'large').'.customers', 50);
+            Customer::factory($customerCount)->create(['business_id' => $business->id]);
             $customers = Customer::where('business_id', $business->id)->get();
         }
 
-        // Generate sales over the past 60 days
-        $startDate = Carbon::now()->subDays(60);
+        $days = $this->salesCount <= 100 ? 14 : 60;
+        $startDate = Carbon::now()->subDays($days);
         $endDate = Carbon::now();
-        
-        $salesPerDay = (int) ceil($this->salesCount / 60);
+
+        $salesPerDay = (int) ceil($this->salesCount / $days);
         $currentDate = $startDate->copy();
         $totalSalesGenerated = 0;
 
@@ -77,6 +83,7 @@ class SalesSeeder extends Seeder
             // Skip some random days (business not operating)
             if (fake()->boolean(10)) { // 10% chance to skip
                 $currentDate->addDay();
+
                 continue;
             }
 
@@ -88,10 +95,10 @@ class SalesSeeder extends Seeder
             foreach ($branches as $branch) {
                 // Get or create shifts for this branch on this day
                 $shifts = $this->getOrCreateShiftsForDay($business, $branch, $currentDate);
-                
+
                 foreach ($shifts as $shift) {
                     $shiftSalesCount = (int) ceil($dailySalesCount / count($shifts) / count($branches));
-                    
+
                     for ($i = 0; $i < $shiftSalesCount && $totalSalesGenerated < $this->salesCount; $i++) {
                         $this->createSale(
                             $business,
@@ -111,7 +118,7 @@ class SalesSeeder extends Seeder
         }
 
         $this->command->info("Generated {$totalSalesGenerated} sales for {$business->name}");
-        
+
         // Close old shifts
         $this->closeOldShifts($business);
     }
@@ -127,10 +134,10 @@ class SalesSeeder extends Seeder
             return $shiftsForDay->all();
         }
 
-        // Create 1-3 shifts per day
-        $shiftCount = fake()->numberBetween(1, 3);
+        $shiftLimits = config('seeding.limits.'.config('seeding.size', 'large').'.shifts_per_day', [1, 3]);
+        $shiftCount = fake()->numberBetween($shiftLimits[0], $shiftLimits[1]);
         $shifts = [];
-        
+
         $users = $business->users()->get();
         if ($users->isEmpty()) {
             $users = User::factory(2)->create();
@@ -145,11 +152,11 @@ class SalesSeeder extends Seeder
             $startHour = 8 + ($i * 6); // Shifts at 8AM, 2PM, 8PM
             $startTime = $date->copy()->setTime($startHour, 0, 0);
             $endTime = $startTime->copy()->addHours(6);
-            
+
             $user = $users->random();
-            
+
             $shift = SalesShift::create([
-                'shift_number' => 'SHIFT-' . $branch->id . '-' . $date->format('Ymd') . '-' . str_pad($i + 1, 3, '0', STR_PAD_LEFT),
+                'shift_number' => 'SHIFT-'.$branch->id.'-'.$date->format('Ymd').'-'.str_pad($i + 1, 3, '0', STR_PAD_LEFT),
                 'business_id' => $business->id,
                 'branch_id' => $branch->id,
                 'user_id' => $user->id,
@@ -158,7 +165,7 @@ class SalesSeeder extends Seeder
                 'opening_balance' => 500.00,
                 'status' => $date->isPast() ? 'closed' : 'open',
             ]);
-            
+
             $shifts[] = $shift;
         }
 
@@ -176,13 +183,13 @@ class SalesSeeder extends Seeder
     ): void {
         // Random time within shift hours
         $saleTime = $shift->start_time->copy()->addMinutes(fake()->numberBetween(0, 360));
-        
+
         // 60% chance of having a customer
         $customer = fake()->boolean(60) ? $customers->random() : null;
-        
+
         // Create sale
         $sale = Sale::create([
-            'sale_number' => 'SALE-' . $saleTime->format('Ymd') . '-' . str_pad(fake()->unique()->numberBetween(1, 99999), 5, '0', STR_PAD_LEFT),
+            'sale_number' => 'SALE-'.$saleTime->format('Ymd').'-'.str_pad(fake()->unique()->numberBetween(1, 99999), 5, '0', STR_PAD_LEFT),
             'business_id' => $business->id,
             'branch_id' => $branch->id,
             'customer_id' => $customer?->id,
@@ -212,11 +219,11 @@ class SalesSeeder extends Seeder
             $quantity = fake()->numberBetween(1, 5);
             $unitPrice = (float) $product->base_selling_price;
             $itemSubtotal = $quantity * $unitPrice;
-            
+
             // Random discount (20% chance)
             $discountPercentage = fake()->boolean(20) ? fake()->randomFloat(2, 5, 20) : 0;
             $discountAmount = $discountPercentage > 0 ? round($itemSubtotal * ($discountPercentage / 100), 2) : 0;
-            
+
             $afterDiscount = $itemSubtotal - $discountAmount;
             $taxRate = $product->is_taxable ? (float) $product->default_tax_rate : 0;
             $taxAmount = round($afterDiscount * ($taxRate / 100), 2);
@@ -260,12 +267,12 @@ class SalesSeeder extends Seeder
         if (fake()->boolean(90)) {
             // Single payment
             $paymentMethod = $paymentMethods->random();
-            
+
             Payment::create([
                 'sale_id' => $sale->id,
                 'payment_method_id' => $paymentMethod->id,
                 'amount' => $totalAmount,
-                'reference_number' => $paymentMethod->type !== 'cash' ? 'TXN-' . fake()->numerify('##########') : null,
+                'reference_number' => $paymentMethod->type !== 'cash' ? 'TXN-'.fake()->numerify('##########') : null,
                 'payment_date' => $saleTime,
                 'status' => 'completed',
                 'created_at' => $saleTime,
@@ -275,26 +282,26 @@ class SalesSeeder extends Seeder
             // Split payment (2 methods)
             $payment1Amount = $totalAmount * fake()->randomFloat(2, 0.3, 0.7);
             $payment2Amount = $totalAmount - $payment1Amount;
-            
+
             $paymentMethod1 = $paymentMethods->random();
             $paymentMethod2 = $paymentMethods->where('id', '!=', $paymentMethod1->id)->random();
-            
+
             Payment::create([
                 'sale_id' => $sale->id,
                 'payment_method_id' => $paymentMethod1->id,
                 'amount' => $payment1Amount,
-                'reference_number' => $paymentMethod1->type !== 'cash' ? 'TXN-' . fake()->numerify('##########') : null,
+                'reference_number' => $paymentMethod1->type !== 'cash' ? 'TXN-'.fake()->numerify('##########') : null,
                 'payment_date' => $saleTime,
                 'status' => 'completed',
                 'created_at' => $saleTime,
                 'updated_at' => $saleTime,
             ]);
-            
+
             Payment::create([
                 'sale_id' => $sale->id,
                 'payment_method_id' => $paymentMethod2->id,
                 'amount' => $payment2Amount,
-                'reference_number' => $paymentMethod2->type !== 'cash' ? 'TXN-' . fake()->numerify('##########') : null,
+                'reference_number' => $paymentMethod2->type !== 'cash' ? 'TXN-'.fake()->numerify('##########') : null,
                 'payment_date' => $saleTime,
                 'status' => 'completed',
                 'created_at' => $saleTime,
@@ -311,12 +318,12 @@ class SalesSeeder extends Seeder
         $sales = Sale::where('shift_id', $shift->id)->get();
         $totalSales = $sales->sum('total_amount');
         $transactionsCount = $sales->count();
-        
+
         // Calculate payment method breakdown
         $cashSales = 0;
         $cardSales = 0;
         $otherSales = 0;
-        
+
         foreach ($sales as $sale) {
             foreach ($sale->payments as $payment) {
                 switch ($payment->paymentMethod->type) {

@@ -20,6 +20,7 @@ This document provides detailed information about all API endpoints, validation 
 15. [Batches](#batches)
 16. [Analytics](#analytics)
 17. [Stock Transfer Requests](#stock-transfer-requests)
+17b. [Shelf/Store Move Requests](#shelfstore-move-requests)
 18. [Stock Write-offs](#stock-write-offs)
 19. [Refund Requests](#refund-requests)
 20. [Quick Sales](#quick-sales)
@@ -2972,6 +2973,81 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 
 ---
 
+## 17b. Shelf/Store Move Requests
+
+Request-based workflow for moving stock between shelf and store. Users with **request shelf store move** create requests; users with **approve shelf store move** approve or reject. On approval, the move is performed. Direct moves (branch-products move-to-shelf / move-to-store) are available to users with **approve shelf store move** or **manage inventory** / **adjust inventory**.
+
+### 17b.1 List Shelf/Store Move Requests
+**Endpoint:** `GET /api/shelf-store-move-requests`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Query Parameters:**
+- `branch_id`: integer
+- `status`: pending, approved, rejected
+- `my_requests`: boolean
+- `pending_approval`: boolean
+- `per_page`: integer (default: 15)
+
+**Response (200):** Paginated list with `data` (array of move requests) and `meta`.
+
+**Notes:** Requires request or approve shelf store move permission.
+
+### 17b.2 Create Shelf/Store Move Request
+**Endpoint:** `POST /api/shelf-store-move-requests`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Request Body:**
+```json
+{
+  "branch_product_id": 1,
+  "direction": "to_shelf",
+  "quantity": 5,
+  "reason": "Restock shelf"
+}
+```
+
+**Validation Rules:**
+- `branch_product_id`: required, integer, exists:branch_products,id
+- `direction`: required, in:to_shelf,to_store
+- `quantity`: required, integer, min:1
+- `reason`: optional, string, max:500
+
+**Response (201):** Created request with `request_number`, status `pending`, `branch_product`, `requested_by`, etc.
+
+**Notes:** Requires **request shelf store move** permission.
+
+### 17b.3 Get Shelf/Store Move Request
+**Endpoint:** `GET /api/shelf-store-move-requests/{id}`
+
+**Response (200):** Single request with branch, branch_product, requestedBy, reviewedBy, status.
+
+### 17b.4 Approve Shelf/Store Move
+**Endpoint:** `POST /api/shelf-store-move-requests/{id}/approve`
+
+Performs the move (calls BranchProduct moveToShelf or moveToStore) and sets request status to `approved`.
+
+**Response (200):** Updated request and success message.
+
+**Notes:** Requires **approve shelf store move** permission. Request must be `pending`.
+
+### 17b.5 Reject Shelf/Store Move
+**Endpoint:** `POST /api/shelf-store-move-requests/{id}/reject`
+
+**Request Body (optional):**
+```json
+{
+  "reason": "Not needed at this time"
+}
+```
+
+**Response (200):** Updated request with status `rejected`, `reviewed_by`, `reviewed_at`, `review_notes`.
+
+**Notes:** Requires **approve shelf store move** permission.
+
+---
+
 ## 17. Stock Write-offs
 
 ### 17.1 List Stock Write-offs
@@ -3032,21 +3108,33 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 **Query Parameters:**
 - `current_business_id`: required
 
-**Request Body:**
+**Request Body (use product_id + branch_id, or branch_product_id):**
 ```json
 {
   "branch_id": 1,
-  "sku": "PROD001",
+  "product_id": 1,
   "quantity": 5,
+  "source": "shelf",
+  "reason": "Product damaged during transport"
+}
+```
+Or with branch_product_id:
+```json
+{
+  "branch_product_id": 1,
+  "quantity": 5,
+  "source": "shelf",
   "reason": "Product damaged during transport"
 }
 ```
 
 **Validation Rules:**
 - `current_business_id`: required, exists:businesses,id
-- `branch_id`: required, exists:branches,id
-- `sku`: required, string
+- `branch_id`: required when using product_id, exists:branches,id
+- `product_id`: required when not using branch_product_id, exists:products,id
+- `branch_product_id`: required when not using product_id, exists:branch_products,id
 - `quantity`: required, integer, min:1
+- `source`: required, in:shelf,store
 - `reason`: required, string, max:1000
 
 **Response (201):**
@@ -3059,7 +3147,7 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 
 **Notes:**
 - Requires 'write off stock' permission
-- SKU can be product SKU or barcode
+- Use product_id + branch_id, or branch_product_id to identify the product. Deducts from batches (FEFO) when product uses batch tracking.
 - Deducts from shelf quantity only
 - Creates inventory transaction with type 'damage'
 - Validates sufficient shelf stock

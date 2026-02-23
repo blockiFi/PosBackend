@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Business;
 use App\Models\User;
+use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -69,6 +70,8 @@ class UserBusinessController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
+                    'profile_image' => $user->profile_image,
+                    'profile_image_url' => $user->profile_image_url,
                     'is_active' => $user->pivot->is_active,
                     'joined_at' => $user->pivot->created_at,
                     'roles' => $roles,
@@ -114,6 +117,7 @@ class UserBusinessController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
+            'profile_image' => ['nullable', 'image', 'max:2048'],
         ]);
 
         if ($validator->fails()) {
@@ -132,10 +136,16 @@ class UserBusinessController extends Controller
             // User doesn't exist, create new user with random password
             $generatedPassword = Str::random(16);
 
+            $profileImagePath = null;
+            if ($request->hasFile('profile_image')) {
+                $profileImagePath = app(ProfileImageService::class)->store($request->file('profile_image'));
+            }
+
             $targetUser = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'password' => Hash::make($generatedPassword),
+                'profile_image' => $profileImagePath,
             ]);
 
             $isNewUser = true;
@@ -189,11 +199,20 @@ class UserBusinessController extends Controller
             app(PermissionRegistrar::class)->forgetCachedPermissions();
         }
 
+        $generatedPin = null;
+        $hasCashierRole = collect($assignedRoles)->contains('name', 'Cashier');
+        if ($hasCashierRole && ! $targetUser->pin_code) {
+            $generatedPin = $this->generateUniquePinCode();
+            $targetUser->update(['pin_code' => $generatedPin]);
+        }
+
         $responseData = [
             'user' => [
                 'id' => $targetUser->id,
                 'name' => $targetUser->name,
                 'email' => $targetUser->email,
+                'profile_image' => $targetUser->profile_image,
+                'profile_image_url' => $targetUser->profile_image_url,
             ],
             'business' => [
                 'id' => $business->id,
@@ -206,6 +225,10 @@ class UserBusinessController extends Controller
 
         if ($isNewUser && $generatedPassword !== null) {
             $responseData['password'] = $generatedPassword;
+        }
+
+        if ($generatedPin !== null) {
+            $responseData['pin_code'] = $generatedPin;
         }
 
         return response()->json([
@@ -434,5 +457,21 @@ class UserBusinessController extends Controller
                 'permissions' => $permissions->values(),
             ],
         ]);
+    }
+
+    /**
+     * Generate a unique 6-digit PIN code not already assigned to any user.
+     */
+    private function generateUniquePinCode(): string
+    {
+        $maxAttempts = 100;
+        for ($i = 0; $i < $maxAttempts; $i++) {
+            $pin = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            if (! User::where('pin_code', $pin)->exists()) {
+                return $pin;
+            }
+        }
+
+        throw new \RuntimeException('Unable to generate unique PIN code after '.$maxAttempts.' attempts.');
     }
 }

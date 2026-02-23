@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BranchAuthorization;
 use App\Models\Business;
 use App\Models\User;
+use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
@@ -58,11 +59,14 @@ class AuthenticationController extends Controller
     {
         $data = $request->all();
 
-        $validator = Validator::make($data, [
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
+            'profile_image' => ['nullable', 'image', 'max:2048'],
+        ];
+
+        $validator = Validator::make($data, $rules);
 
         if ($validator->fails()) {
             return response()->json([
@@ -71,10 +75,16 @@ class AuthenticationController extends Controller
             ], 422);
         }
 
+        $profileImagePath = null;
+        if ($request->hasFile('profile_image')) {
+            $profileImagePath = app(ProfileImageService::class)->store($request->file('profile_image'));
+        }
+
         $user = User::create([
             'name' => $data['name'],
             'email' => $data['email'],
             'password' => Hash::make($data['password']),
+            'profile_image' => $profileImagePath,
         ]);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -87,6 +97,8 @@ class AuthenticationController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'profile_image' => $user->profile_image,
+                'profile_image_url' => $user->profile_image_url,
             ],
         ], 201);
     }
@@ -117,6 +129,11 @@ class AuthenticationController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        $business = $user->businesses()->wherePivot('is_active', true)->first();
+        $branches = $business
+            ? $business->branches()->get(['id', 'name', 'business_id'])
+            : collect();
+
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
@@ -125,7 +142,12 @@ class AuthenticationController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'profile_image' => $user->profile_image,
+                'profile_image_url' => $user->profile_image_url,
             ],
+            'business' => $business,
+            'branches' => $branches,
+            'roles' => $user->roles()->get(['id', 'name']),
         ]);
     }
 
@@ -181,6 +203,8 @@ class AuthenticationController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'profile_image' => $user->profile_image,
+                'profile_image_url' => $user->profile_image_url,
             ],
         ]);
     }
@@ -314,6 +338,53 @@ class AuthenticationController extends Controller
 
         return response()->json([
             'message' => 'PIN code removed successfully',
+        ]);
+    }
+
+    /**
+     * Update the authenticated user's profile (name, profile image).
+     */
+    public function updateProfile(Request $request)
+    {
+        $user = $request->user();
+        $data = $request->all();
+
+        $rules = [
+            'name' => ['sometimes', 'string', 'max:255'],
+            'profile_image' => ['nullable', 'image', 'max:2048'],
+        ];
+
+        $validator = Validator::make($data, $rules);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        if ($request->hasFile('profile_image')) {
+            $user->profile_image = app(ProfileImageService::class)->replace(
+                $user->profile_image,
+                $request->file('profile_image')
+            );
+        }
+
+        if (array_key_exists('name', $data)) {
+            $user->name = $data['name'];
+        }
+
+        $user->save();
+
+        return response()->json([
+            'message' => 'Profile updated',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'profile_image' => $user->profile_image,
+                'profile_image_url' => $user->profile_image_url,
+            ],
         ]);
     }
 }

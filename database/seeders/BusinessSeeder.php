@@ -2,13 +2,13 @@
 
 namespace Database\Seeders;
 
-use App\Models\Business;
 use App\Models\Branch;
+use App\Models\Business;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class BusinessSeeder extends Seeder
 {
@@ -17,27 +17,29 @@ class BusinessSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create demo businesses
         $this->createDemoRetailBusiness();
-        $this->createDemoWholesaleBusiness();
+
+        if (config('seeding.size', 'large') === 'large') {
+            $this->createDemoWholesaleBusiness();
+        }
     }
 
     private function createDemoRetailBusiness(): void
     {
         $this->command->info('Creating demo retail business...');
-        
+
         // Create owner user first
         $owner = User::create([
             'name' => 'Business Owner',
             'email' => 'owner@acmeretail.com',
             'password' => Hash::make('password'),
         ]);
-        
+
         // Create business
         $business = Business::create([
             'owner_id' => $owner->id,
             'name' => 'Acme Retail Store',
-            'slug' => 'acme-retail-' . uniqid(),
+            'slug' => 'acme-retail-'.uniqid(),
             'legal_name' => 'Acme Retail Store LLC',
             'email' => 'contact@acmeretail.com',
             'phone' => '+1234567890',
@@ -59,7 +61,7 @@ class BusinessSeeder extends Seeder
             ],
             'is_active' => true,
         ]);
-        
+
         // Create branches
         $mainBranch = Branch::create([
             'business_id' => $business->id,
@@ -77,7 +79,7 @@ class BusinessSeeder extends Seeder
             'tax_rate' => 10.00,
             'is_active' => true,
         ]);
-        
+
         $downtownBranch = Branch::create([
             'business_id' => $business->id,
             'name' => 'Downtown Branch',
@@ -94,32 +96,32 @@ class BusinessSeeder extends Seeder
             'tax_rate' => 10.00,
             'is_active' => true,
         ]);
-        
+
         // Create users with roles
         $this->createUsersForBusiness($business, $mainBranch, $downtownBranch, $owner);
 
         // Create roles for this business
         $this->createRolesForBusiness($business);
-        
+
         $this->command->info('Demo retail business created successfully!');
     }
 
     private function createDemoWholesaleBusiness(): void
     {
         $this->command->info('Creating demo wholesale business...');
-        
+
         // Create owner user first
         $owner = User::create([
             'name' => 'Wholesale Owner',
             'email' => 'owner@supermart.com',
             'password' => Hash::make('password'),
         ]);
-        
+
         // Create business
         $business = Business::create([
             'owner_id' => $owner->id,
             'name' => 'SuperMart Wholesale',
-            'slug' => 'supermart-wholesale-' . uniqid(),
+            'slug' => 'supermart-wholesale-'.uniqid(),
             'legal_name' => 'SuperMart Wholesale Inc.',
             'email' => 'info@supermart.com',
             'phone' => '+1987654321',
@@ -139,7 +141,7 @@ class BusinessSeeder extends Seeder
             ],
             'is_active' => true,
         ]);
-        
+
         // Create main branch
         $mainBranch = Branch::create([
             'business_id' => $business->id,
@@ -157,7 +159,7 @@ class BusinessSeeder extends Seeder
             'tax_rate' => 8.50,
             'is_active' => true,
         ]);
-        
+
         $this->command->info('Demo wholesale business created successfully!');
 
         // Create roles for this business
@@ -218,7 +220,7 @@ class BusinessSeeder extends Seeder
 
             $role->syncPermissions($permissions);
 
-            $this->command->info("  ✓ {$roleName}: " . $permissions->count() . ' permissions assigned');
+            $this->command->info("  ✓ {$roleName}: ".$permissions->count().' permissions assigned');
         }
 
         // Clear permission cache
@@ -231,7 +233,7 @@ class BusinessSeeder extends Seeder
         $owner->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
-        
+
         // Create admin user
         $admin = User::create([
             'name' => 'Admin User',
@@ -241,7 +243,7 @@ class BusinessSeeder extends Seeder
         $admin->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
-        
+
         // Create manager users
         $manager1 = User::create([
             'name' => 'John Manager',
@@ -251,7 +253,7 @@ class BusinessSeeder extends Seeder
         $manager1->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
-        
+
         $manager2 = User::create([
             'name' => 'Jane Manager',
             'email' => 'jane.manager@acmeretail.com',
@@ -260,7 +262,7 @@ class BusinessSeeder extends Seeder
         $manager2->businesses()->attach($business->id, [
             'is_active' => true,
         ]);
-        
+
         // Create cashier users
         for ($i = 1; $i <= 4; $i++) {
             $cashier = User::create([
@@ -268,12 +270,21 @@ class BusinessSeeder extends Seeder
                 'email' => "cashier{$i}@acmeretail.com",
                 'password' => Hash::make('password'),
             ]);
-            
+
             $cashier->businesses()->attach($business->id, [
                 'is_active' => true,
             ]);
         }
-        
+
+        // Enable PIN login for cashier1 (demo PIN: 123456)
+        $cashier1 = User::where('email', 'cashier1@acmeretail.com')->first();
+        if ($cashier1) {
+            $cashier1->update([
+                'pin_code' => '123456',
+                'can_use_pin_login' => true,
+            ]);
+        }
+
         $this->command->info('Users created for business');
     }
 }

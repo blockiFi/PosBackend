@@ -23,6 +23,7 @@
    - [Quick Sale Module](#quick-sale-module)
    - [Refund Request Module](#refund-request-module)
    - [Stock Transfer Module](#stock-transfer-module)
+   - [Shelf/Store Move Requests](#shelfstore-move-requests)
    - [Stock Write-off Module](#stock-write-off-module)
    - [Analytics Module](#analytics-module)
    - [Offline Synchronization Module](#offline-synchronization-module)
@@ -72,7 +73,7 @@ Authorization: Bearer {token}
 
 **POST** `/register`
 
-Creates a new user account.
+Creates a new user account. Accepts JSON or multipart/form-data. Optional profile image: send as multipart with `profile_image` (image file, max 2MB).
 
 **Request Schema:**
 
@@ -82,8 +83,9 @@ Creates a new user account.
 | `email` | string | ✅ Yes | ❌ No | email, unique:users, max:255 | Valid email address |
 | `password` | string | ✅ Yes | ❌ No | min:8, confirmed | Minimum 8 characters |
 | `password_confirmation` | string | ✅ Yes | ❌ No | must match password | Password confirmation |
+| `profile_image` | file | ❌ No | ✅ Yes | image, max:2048 | Optional profile photo (multipart) |
 
-**Request Example:**
+**Request Example (JSON):**
 ```json
 {
   "name": "John Doe",
@@ -100,10 +102,11 @@ Creates a new user account.
     "id": 1,
     "name": "John Doe",
     "email": "john@example.com",
-    "created_at": "2026-02-08T10:00:00.000000Z",
-    "updated_at": "2026-02-08T10:00:00.000000Z"
+    "profile_image": "profile_images/abc123.jpg",
+    "profile_image_url": "http://your-domain.com/storage/profile_images/abc123.jpg"
   },
-  "token": "1|laravel_sanctum_token_here"
+  "token": "1|laravel_sanctum_token_here",
+  "token_type": "Bearer"
 }
 ```
 
@@ -200,7 +203,7 @@ Authenticates user and returns access token.
 
 **GET** `/user`
 
-Returns the authenticated user. Requires Bearer token.
+Returns the authenticated user (includes `profile_image`, `profile_image_url`). Requires Bearer token.
 
 **Headers:**
 ```
@@ -211,7 +214,29 @@ Authorization: Bearer {token}
 
 ---
 
-#### 5. Set PIN
+#### 5. Update Profile
+
+**PUT** `/user`
+
+Update the authenticated user's profile. Optional: `name`, `profile_image` (multipart file, image, max 2MB). When uploading a new profile image, the previous one is replaced.
+
+**Headers:**
+```
+Authorization: Bearer {token}
+```
+
+**Request:** JSON and/or multipart. For profile image use `multipart/form-data` with `profile_image` file.
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| name | string | No | max:255 | Display name |
+| profile_image | file | No | image, max:2048 | Profile photo |
+
+**Response:** `200 OK` — Updated user object with `profile_image`, `profile_image_url`.
+
+---
+
+#### 6. Set PIN
 
 **POST** `/pin/set`
 
@@ -248,7 +273,7 @@ Authorization: Bearer {token}
 
 ---
 
-#### 6. Remove PIN
+#### 7. Remove PIN
 
 **POST** `/pin/remove`
 
@@ -275,7 +300,7 @@ Authorization: Bearer {token}
 
 ---
 
-#### 7. Get Business Details With Branch Authorization
+#### 8. Get Business Details With Branch Authorization
 
 **POST** `/business-details-with-branch-auth`
 
@@ -877,6 +902,7 @@ X-Business-Id: {business_id}
 | name | string | ✅ Yes | ❌ No | max:255 | User's full name |
 | is_active | boolean | ❌ No | ❌ No | boolean | Whether user is active in business (default: true) |
 | role_ids | array | ❌ No | ✅ Yes | array of integers, exists:roles,id | Role IDs to assign (must belong to this business) |
+| profile_image | file | ❌ No | ✅ Yes | image, max:2048 | Optional profile photo when creating a new user (multipart) |
 
 **Request Example:**
 ```json
@@ -889,6 +915,8 @@ X-Business-Id: {business_id}
 ```
 
 **Response:** `201 Created`
+
+When the user is assigned the **Cashier** role and does not already have a PIN, a 6-digit PIN is automatically generated and returned in `data.pin_code`. Share this with the cashier for PIN login. When a new user is created, `data.password` is also returned (share for first login).
 
 ---
 
@@ -1969,19 +1997,21 @@ X-Business-Id: {business_id}
 
 **POST** `/branch-products/{id}/move-to-shelf`
 
+**Direct move** (no approval). For request-and-approve workflow, use **Shelf/Store Move Requests** instead.
+
 **Headers:**
 ```
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_inventory`
+**Permission Required:** Owner, or `manage inventory`, or `adjust inventory`, or `approve shelf store move`. Others must use `shelf-store-move-requests` to request a move for approval.
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| quantity | decimal | ✅ Yes | ❌ No | min:0.01 | Quantity to move from store to shelf |
+| quantity | integer | ✅ Yes | ❌ No | min:1 | Quantity to move from store to shelf |
 
 **Request Example:**
 ```json
@@ -2008,19 +2038,21 @@ X-Business-Id: {business_id}
 
 **POST** `/branch-products/{id}/move-to-store`
 
+**Direct move** (no approval). For request-and-approve workflow, use **Shelf/Store Move Requests** instead.
+
 **Headers:**
 ```
 Authorization: Bearer {token}
 X-Business-Id: {business_id}
 ```
 
-**Permission Required:** `manage_inventory`
+**Permission Required:** Owner, or `manage inventory`, or `adjust inventory`, or `approve shelf store move`. Others must use `shelf-store-move-requests` to request a move for approval.
 
 **Request Schema:**
 
 | Field | Type | Required | Nullable | Validation | Description |
 |-------|------|----------|----------|------------|-------------|
-| quantity | decimal | ✅ Yes | ❌ No | min:0.01 | Quantity to move from shelf to store |
+| quantity | integer | ✅ Yes | ❌ No | min:1 | Quantity to move from shelf to store |
 
 **Request Example:**
 ```json
@@ -4027,6 +4059,73 @@ X-Business-Id: {business_id}
 
 ---
 
+## Shelf/Store Move Requests
+
+Move requests allow users to **request** moving stock between shelf and store; approvers **approve** or **reject**. On approval, the move is performed. Direct move (branch-products move-to-shelf / move-to-store) remains available for users with **approve shelf store move** or **manage inventory** / **adjust inventory** (or owner).
+
+**Permissions:** `request shelf store move` (create request, list), `approve shelf store move` (approve/reject, or direct move).
+
+### 1. List Shelf/Store Move Requests
+
+**GET** `/shelf-store-move-requests`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Query:** `branch_id`, `status` (pending|approved|rejected), `my_requests` (bool), `pending_approval` (bool), `per_page`
+
+**Response:** `200 OK` — Paginated list with `data` (array of requests) and `meta`.
+
+### 2. Create Shelf/Store Move Request
+
+**POST** `/shelf-store-move-requests`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Request Schema:**
+
+| Field | Type | Required | Validation | Description |
+|-------|------|----------|------------|-------------|
+| branch_product_id | integer | Yes | exists:branch_products,id | Branch product to move |
+| direction | string | Yes | in:to_shelf,to_store | Move from store→shelf or shelf→store |
+| quantity | integer | Yes | min:1 | Quantity to move |
+| reason | string | No | max:500 | Optional reason |
+
+**Request Example:**
+```json
+{
+  "branch_product_id": 1,
+  "direction": "to_shelf",
+  "quantity": 5,
+  "reason": "Restock shelf"
+}
+```
+
+**Response:** `201 Created` — Created request (status pending) with `request_number`, `branch_product`, `requested_by`, etc.
+
+### 3. Get Shelf/Store Move Request
+
+**GET** `/shelf-store-move-requests/{id}`
+
+**Response:** `200 OK` — Single request with branch, branch_product, requestedBy, reviewedBy.
+
+### 4. Approve Request
+
+**POST** `/shelf-store-move-requests/{id}/approve`
+
+Performs the move (calls BranchProduct moveToShelf or moveToStore) and sets request status to `approved`. Requires `approve shelf store move`. Request must be `pending`.
+
+**Response:** `200 OK` — Updated request and success message.
+
+### 5. Reject Request
+
+**POST** `/shelf-store-move-requests/{id}/reject`
+
+**Body:** `reason` (optional, string, max 500). Sets status to `rejected`, `reviewed_by`, `reviewed_at`, `review_notes`.
+
+**Response:** `200 OK` — Updated request.
+
+---
+
 ## Stock Write-off Module
 
 Manage stock write-offs (damage, expiry, theft).
@@ -5580,6 +5679,7 @@ Every API route. Base path: `/api`. All protected routes require `Authorization:
 | POST | `pin-login` | 6-digit PIN login (use-pin-login) |
 | **Auth only** | | |
 | GET | `user` | Current authenticated user |
+| PUT | `user` | Update profile (name, profile_image) |
 | POST | `pin/set` | Set/update PIN (user_id, pin_code, password if own) |
 | POST | `pin/remove` | Remove PIN (user_id, password if own) |
 | POST | `business-details-with-branch-auth` | Get business + branch by auth_code (body: auth_code, business_id) |
@@ -5685,6 +5785,11 @@ Every API route. Base path: `/api`. All protected routes require `Authorization:
 | POST | `stock-transfer-requests/{id}/reject` | Reject |
 | POST | `stock-transfer-requests/{id}/confirm` | Confirm receipt |
 | POST | `stock-transfer-requests/{id}/cancel` | Cancel |
+| GET | `shelf-store-move-requests` | List shelf/store move requests |
+| POST | `shelf-store-move-requests` | Create move request |
+| GET | `shelf-store-move-requests/{id}` | Get move request |
+| POST | `shelf-store-move-requests/{id}/approve` | Approve and perform move |
+| POST | `shelf-store-move-requests/{id}/reject` | Reject move request |
 | GET | `stock-writeoffs` | List stock write-offs |
 | POST | `stock-writeoffs` | Create write-off |
 | GET | `stock-writeoffs/{id}` | Get write-off |

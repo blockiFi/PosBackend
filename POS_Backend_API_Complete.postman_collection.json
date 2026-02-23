@@ -106,7 +106,39 @@
                                 "user"
                             ]
                         },
-                        "description": "Returns the currently authenticated user. Requires valid Bearer token. Use to verify token or get user profile."
+                        "description": "Returns the currently authenticated user (includes profile_image_url). Requires valid Bearer token."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Profile",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/user",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user"
+                            ]
+                        },
+                        "description": "Update current user profile. Optional: name, profile_image (multipart file, image, max 2MB). Returns updated user.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"New Name\"\n}"
+                        }
                     },
                     "response": []
                 },
@@ -134,7 +166,7 @@
                                 "register"
                             ]
                         },
-                        "description": "**Public.** Create a new user. Body: name, email, password, password_confirmation (min 8 chars). Returns user + token. Test script saves token to collection variable auth_token.",
+                        "description": "**Public.** Create a new user. Body: name, email, password, password_confirmation (min 8 chars). Optional: profile_image (multipart). Returns user + token. Test script saves token to collection variable auth_token.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"password_confirmation\": \"SecurePassword123!\"\n}"
@@ -2175,7 +2207,7 @@
                                 "move-to-shelf"
                             ]
                         },
-                        "description": "Move quantity from store to shelf. quantity required. X-Business-Id required.",
+                        "description": "Direct move (store to shelf). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\"quantity\": 5}"
@@ -2213,7 +2245,7 @@
                                 "move-to-store"
                             ]
                         },
-                        "description": "Move quantity from shelf to store. quantity required. X-Business-Id required.",
+                        "description": "Direct move (shelf to store). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\"quantity\": 5}"
@@ -4006,6 +4038,106 @@
                         "body": {
                             "mode": "raw",
                             "raw": "{\"reason\": \"No longer needed\"}"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "17b. Shelf/Store Move Requests",
+            "item": [
+                {
+                    "name": "List Shelf/Store Move Requests",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shelf-store-move-requests",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "shelf-store-move-requests"]
+                        },
+                        "description": "List move requests. Query: branch_id, status, my_requests, pending_approval, per_page. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Shelf/Store Move Request",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shelf-store-move-requests",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "shelf-store-move-requests"]
+                        },
+                        "description": "Request to move stock. branch_product_id, direction (to_shelf|to_store), quantity required. reason optional. Requires request shelf store move.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_product_id\": 1,\n  \"direction\": \"to_shelf\",\n  \"quantity\": 5,\n  \"reason\": \"Restock shelf\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Shelf/Store Move Request",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shelf-store-move-requests/1",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "shelf-store-move-requests", "1"]
+                        },
+                        "description": "Get one request. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Approve Shelf/Store Move",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shelf-store-move-requests/1/approve",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "shelf-store-move-requests", "1", "approve"]
+                        },
+                        "description": "Approve and perform the move. Requires approve shelf store move."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject Shelf/Store Move",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {"key": "Accept", "value": "application/json"},
+                            {"key": "Content-Type", "value": "application/json"},
+                            {"key": "X-Business-Id", "value": "{{business_id}}"}
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shelf-store-move-requests/1/reject",
+                            "host": ["{{base_url}}"],
+                            "path": ["api", "shelf-store-move-requests", "1", "reject"]
+                        },
+                        "description": "Reject the request. reason optional (max 500).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"reason\": \"Not needed\"}"
                         }
                     },
                     "response": []

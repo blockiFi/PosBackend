@@ -30,7 +30,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        $size = config('seeding.size', 'large');
         $this->command->info('🌱 Starting database seeding...');
+        $this->command->info("   Mode: {$size}");
         $this->command->newLine();
 
         // Step 1: Permissions & Roles
@@ -44,6 +46,7 @@ class DatabaseSeeder extends Seeder
             ShiftPermissionSeeder::class,
             QuickSalePermissionSeeder::class,
             RefundPermissionSeeder::class,
+            ShelfStoreMovePermissionSeeder::class,
             AdjustInventoryPermissionSeeder::class,
             AnalyticsPermissionSeeder::class,
             BranchSyncPermissionSeeder::class,
@@ -56,6 +59,7 @@ class DatabaseSeeder extends Seeder
         // Step 2: Businesses & Branches
         $this->command->info('🏢 Step 2/6: Seeding businesses and branches...');
         $this->call(BusinessSeeder::class);
+        $this->call(BranchAuthorizationSeeder::class);
         $this->command->info('✅ Businesses and branches seeded successfully!');
         $this->command->newLine();
 
@@ -117,6 +121,8 @@ class DatabaseSeeder extends Seeder
                 ['Refund Requests', \App\Models\RefundRequest::count()],
                 ['Quick Sales', \App\Models\QuickSale::count()],
                 ['Stock Transfers', \App\Models\StockTransferRequest::count()],
+                ['Stock Write-offs', \App\Models\StockWriteoff::count()],
+                ['Branch Authorizations', \App\Models\BranchAuthorization::count()],
             ]
         );
         $this->command->newLine();
@@ -124,12 +130,13 @@ class DatabaseSeeder extends Seeder
         $this->command->info('🔑 Demo Users:');
         $this->command->line('  Email: admin@acmeretail.com | Password: password');
         $this->command->line('  Email: john.manager@acmeretail.com | Password: password');
-        $this->command->line('  Email: cashier1@acmeretail.com | Password: password');
+        $this->command->line('  Email: cashier1@acmeretail.com | Password: password | PIN: 123456 (pin-login)');
         $this->command->newLine();
 
         $this->command->info('💡 Tips:');
-        $this->command->line('  • Use --class flag to run specific seeders');
-        $this->command->line('  • Adjust SalesSeeder::$salesCount to generate more/less sales');
+        $this->command->line('  • Small data (fast): SEED_SIZE=small php artisan db:seed');
+        $this->command->line('  • Or: php artisan seed:run --size=small');
+        $this->command->line('  • Large data (full): php artisan db:seed or php artisan seed:run --size=large');
         $this->command->line('  • Run "php artisan migrate:fresh --seed" to reset and reseed');
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -27,7 +28,15 @@ class User extends Authenticatable
         'email',
         'password',
         'pin_code',
+        'profile_image',
     ];
+
+    /**
+     * The accessors to append to the model's array form.
+     *
+     * @var list<string>
+     */
+    protected $appends = ['profile_image_url'];
 
     /**
      * The attributes that should be hidden for serialization.
@@ -51,6 +60,18 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Get the full URL for the user's profile image.
+     */
+    public function getProfileImageUrlAttribute(): ?string
+    {
+        if (! $this->profile_image) {
+            return null;
+        }
+
+        return Storage::disk('public')->url($this->profile_image);
     }
 
     /**
@@ -101,10 +122,9 @@ class User extends Authenticatable
      * Check if user has a permission in a specific branch within a business context.
      * This checks permissions from roles that are assigned to the user for the specific branch.
      *
-     * @param string $permission The permission name to check
-     * @param int $businessId The business ID context
-     * @param int|null $branchId The branch ID to check (null checks for business-wide permissions)
-     * @return bool
+     * @param  string  $permission  The permission name to check
+     * @param  int  $businessId  The business ID context
+     * @param  int|null  $branchId  The branch ID to check (null checks for business-wide permissions)
      */
     public function hasPermissionInBranch(string $permission, int $businessId, ?int $branchId = null): bool
     {
@@ -137,7 +157,7 @@ class User extends Authenticatable
             ->where('guard_name', 'api')
             ->value('id');
 
-        if (!$permissionId) {
+        if (! $permissionId) {
             return false;
         }
 
@@ -152,8 +172,8 @@ class User extends Authenticatable
      * Get all permissions for a user in a specific branch.
      * Returns unique permissions from all roles assigned to the user in that branch.
      *
-     * @param int $businessId The business ID context
-     * @param int|null $branchId The branch ID (null for business-wide)
+     * @param  int  $businessId  The business ID context
+     * @param  int|null  $branchId  The branch ID (null for business-wide)
      * @return \Illuminate\Support\Collection Collection of permission names
      */
     public function getPermissionsInBranch(int $businessId, ?int $branchId = null): \Illuminate\Support\Collection
@@ -192,8 +212,8 @@ class User extends Authenticatable
     /**
      * Get all branches where the user has a specific role in a business.
      *
-     * @param int $businessId The business ID context
-     * @param string|null $roleName Optional role name to filter by
+     * @param  int  $businessId  The business ID context
+     * @param  string|null  $roleName  Optional role name to filter by
      * @return \Illuminate\Support\Collection Collection of branch IDs
      */
     public function getBranchesInBusiness(int $businessId, ?string $roleName = null): \Illuminate\Support\Collection

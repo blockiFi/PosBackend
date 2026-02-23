@@ -10,6 +10,7 @@ use App\Models\QuickSale;
 use App\Models\RefundRequest;
 use App\Models\Sale;
 use App\Models\StockTransferRequest;
+use App\Models\StockWriteoff;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 
@@ -62,14 +63,17 @@ class WorkflowSeeder extends Seeder
         if ($branches->count() > 1) {
             $this->createStockTransferRequests($business, $branches, $products, $batches, $users);
         }
+
+        // Create stock write-offs
+        $this->createStockWriteoffs($business, $users);
     }
 
     private function createRefundRequests(Business $business, $sales, $users): void
     {
         $this->command->info('  Creating refund requests...');
 
-        // Create 10-20 refund requests
-        $refundCount = fake()->numberBetween(10, 20);
+        $range = config('seeding.limits.'.config('seeding.size', 'large').'.refund_requests', [10, 20]);
+        $refundCount = fake()->numberBetween($range[0], $range[1]);
         $completedSales = $sales->where('status', 'completed')->take($refundCount * 2);
 
         foreach ($completedSales->random($refundCount) as $sale) {
@@ -115,18 +119,25 @@ class WorkflowSeeder extends Seeder
             $perishableProducts = $products->random(min(10, $products->count()));
         }
 
+        $quickSalesLimit = (int) config('seeding.limits.'.config('seeding.size', 'large').'.quick_sales', 15);
         $quickSalesCount = 0;
-        foreach ($perishableProducts->take(15) as $product) {
+        foreach ($perishableProducts->take($quickSalesLimit) as $product) {
+            $branch = $branches->random();
+            $branchId = $branch->id;
+            $matchingBatches = $batches->where('product_id', $product->id)->where('branch_id', $branchId);
+            $batch = $matchingBatches->isNotEmpty() ? $matchingBatches->random() : null;
+
             $status = fake()->randomElement(['pending', 'approved', 'approved', 'rejected', 'ended']);
 
             $discountType = fake()->randomElement(['percentage', 'fixed']);
             $discountValue = $discountType === 'percentage'
                 ? fake()->randomFloat(2, 20, 50)
-                : fake()->randomFloat(2, 5, $product->base_selling_price * 0.3);
+                : fake()->randomFloat(2, 5, ($product->base_selling_price ?? 0) * 0.3);
 
             QuickSale::create([
                 'business_id' => $business->id,
-                'branch_id' => $branches->random()->id,
+                'branch_id' => $branchId,
+                'batch_id' => $batch?->id,
                 'product_id' => $product->id,
                 'reason' => fake()->randomElement([
                     'Product expiring in '.fake()->numberBetween(5, 30).' days',
@@ -168,7 +179,8 @@ class WorkflowSeeder extends Seeder
             return;
         }
 
-        $transferCount = min(fake()->numberBetween(5, 15), $branchProducts->count());
+        $trRange = config('seeding.limits.'.config('seeding.size', 'large').'.stock_transfers', [5, 15]);
+        $transferCount = min(fake()->numberBetween($trRange[0], $trRange[1]), $branchProducts->count());
         $created = 0;
 
         $branchIds = $branches->pluck('id')->toArray();
@@ -219,5 +231,53 @@ class WorkflowSeeder extends Seeder
         }
 
         $this->command->info("    Created {$created} stock transfer requests");
+    }
+
+    private function createStockWriteoffs(Business $business, $users): void
+    {
+        $this->command->info('  Creating stock write-offs...');
+
+        $branchProducts = \App\Models\BranchProduct::whereHas('branch', function ($q) use ($business) {
+            $q->where('business_id', $business->id);
+        })->with(['branch', 'product'])->get();
+
+        if ($branchProducts->isEmpty()) {
+            $this->command->info('    No branch products found for write-offs');
+
+            return;
+        }
+
+        $woRange = config('seeding.limits.'.config('seeding.size', 'large').'.stock_writeoffs', [5, 15]);
+        $count = min(fake()->numberBetween($woRange[0], $woRange[1]), $branchProducts->count());
+        $created = 0;
+
+        foreach ($branchProducts->random($count) as $bp) {
+            $qty = min(fake()->numberBetween(1, 20), (int) $bp->shelf_quantity + (int) $bp->store_quantity);
+            if ($qty < 1) {
+                $qty = 1;
+            }
+
+            StockWriteoff::create([
+                'business_id' => $business->id,
+                'branch_id' => $bp->branch_id,
+                'branch_product_id' => $bp->id,
+                'product_id' => $bp->product_id,
+                'sku' => $bp->product->sku ?? 'N/A',
+                'quantity' => $qty,
+                'source' => fake()->randomElement(['shelf', 'store']),
+                'reason' => fake()->randomElement([
+                    'Damaged in storage',
+                    'Expired',
+                    'Quality defect',
+                    'Lost or missing',
+                    'Pilot write-off',
+                ]),
+                'written_off_by' => $users->random()->id,
+                'written_off_at' => fake()->dateTimeBetween('-30 days', 'now'),
+            ]);
+            $created++;
+        }
+
+        $this->command->info("    Created {$created} stock write-offs");
     }
 }

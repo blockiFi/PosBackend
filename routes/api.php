@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\RefundRequestController;
 use App\Http\Controllers\Api\RolePermissionController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SalesShiftController;
+use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
 use App\Http\Controllers\Api\StockTransferRequestController;
 use App\Http\Controllers\Api\UserBusinessController;
 use App\Http\Controllers\StockWriteoffController;
@@ -26,6 +27,8 @@ use Illuminate\Support\Facades\Route;
 Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
+
+Route::put('/user', [AuthenticationController::class, 'updateProfile'])->middleware('auth:sanctum');
 
 // Public auth
 Route::post('register', [AuthenticationController::class, 'register']);
@@ -183,6 +186,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('stock-transfer-requests/{id}/reject', [StockTransferRequestController::class, 'reject']);
         Route::post('stock-transfer-requests/{id}/confirm', [StockTransferRequestController::class, 'confirm']);
         Route::post('stock-transfer-requests/{id}/cancel', [StockTransferRequestController::class, 'cancel']);
+
+        // Shelf/Store Move Request routes (request → approve/reject)
+        Route::get('shelf-store-move-requests', [ShelfStoreMoveRequestController::class, 'index']);
+        Route::post('shelf-store-move-requests', [ShelfStoreMoveRequestController::class, 'store']);
+        Route::get('shelf-store-move-requests/{id}', [ShelfStoreMoveRequestController::class, 'show']);
+        Route::post('shelf-store-move-requests/{id}/approve', [ShelfStoreMoveRequestController::class, 'approve']);
+        Route::post('shelf-store-move-requests/{id}/reject', [ShelfStoreMoveRequestController::class, 'reject']);
 
         // Stock Write-off routes
         Route::get('stock-writeoffs', [StockWriteoffController::class, 'index']);

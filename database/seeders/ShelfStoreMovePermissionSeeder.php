@@ -5,7 +5,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 
-class ShiftPermissionSeeder extends Seeder
+class ShelfStoreMovePermissionSeeder extends Seeder
 {
     /**
      * Run the database seeds.
@@ -13,11 +13,8 @@ class ShiftPermissionSeeder extends Seeder
     public function run(): void
     {
         $permissions = [
-            'view user shift',
-            'view all shifts',
-            'create shift',
-            'close shift',
-            'manage shifts',
+            'request shelf store move',
+            'approve shelf store move',
         ];
 
         foreach ($permissions as $permission) {
@@ -27,6 +24,6 @@ class ShiftPermissionSeeder extends Seeder
             );
         }
 
-        $this->command->info('Shift permissions created successfully!');
+        $this->command->info('Shelf/store move permissions created successfully!');
     }
 }

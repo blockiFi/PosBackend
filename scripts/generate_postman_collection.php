@@ -84,8 +84,9 @@ $items[] = [
     'name' => '1. Authentication',
     'description' => 'Public and protected auth endpoints. Register and Login store the token in collection variable `auth_token`.',
     'item' => [
-        req('Get Current User', 'GET', 'user', 'Returns the currently authenticated user. Requires valid Bearer token. Use to verify token or get user profile.', null, [], false),
-        array_merge(req('Register', 'POST', 'register', '**Public.** Create a new user. Body: name, email, password, password_confirmation (min 8 chars). Returns user + token. Test script saves token to collection variable auth_token.', '{
+        req('Get Current User', 'GET', 'user', 'Returns the currently authenticated user (includes profile_image_url). Requires valid Bearer token.', null, [], false),
+        req('Update Profile', 'PUT', 'user', 'Update current user profile. Optional: name, profile_image (multipart file, image, max 2MB). Returns updated user.', '{"name": "New Name"}', []),
+        array_merge(req('Register', 'POST', 'register', '**Public.** Create a new user. Body: name, email, password, password_confirmation (min 8 chars). Optional: profile_image (multipart). Returns user + token. Test script saves token to collection variable auth_token.', '{
   "name": "Jane Doe",
   "email": "jane.doe@example.com",
   "password": "SecurePassword123!",
@@ -229,7 +230,7 @@ $items[] = [
     'name' => '6. Business Users',
     'item' => [
         req('List Business Users', 'GET', 'business-users', 'List all users in the business with roles. Owner or manage-users. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Add User to Business', 'POST', 'business-users', 'Add a user by email. If email does not exist, creates new user with random password; password returned in data.password. name required. role_ids: optional array of role ids (business roles) to assign. Only owner can add.', '{
+        req('Add User to Business', 'POST', 'business-users', 'Add a user by email. If email does not exist, creates new user with random password; password returned in data.password. If user is assigned the Cashier role and has no PIN, a PIN is auto-generated and returned in data.pin_code. name required. Optional: profile_image (multipart) when creating new user. role_ids: optional array of role ids. Only owner can add.', '{
   "email": "newstaff@example.com",
   "name": "New Staff",
   "is_active": true,
@@ -356,8 +357,8 @@ $items[] = [
         req('Update Branch Product Selling Price', 'PATCH', 'branch-products/1/selling-price', "Set selling price for branch product. Requires 'set branch product selling price' permission. selling_price required.", '{"selling_price": 32.99}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Delete Branch Product', 'DELETE', 'branch-products/1', 'Remove product from branch. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Update Branch Product Stock', 'POST', 'branch-products/1/stock', 'Adjust stock. quantity (integer), operation: add|subtract|set. X-Business-Id required.', '{"quantity": 10, "operation": "add"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Move Stock to Shelf', 'POST', 'branch-products/1/move-to-shelf', 'Move quantity from store to shelf. quantity required. X-Business-Id required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Move Stock to Store', 'POST', 'branch-products/1/move-to-store', 'Move quantity from shelf to store. quantity required. X-Business-Id required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Move Stock to Shelf', 'POST', 'branch-products/1/move-to-shelf', 'Direct move (store to shelf). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Move Stock to Store', 'POST', 'branch-products/1/move-to-store', 'Direct move (shelf to store). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Branch Products Stock Summary', 'GET', 'branch-products/summary/stock', 'Stock summary. Query: branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Bulk Update Branch Products', 'POST', 'branch-products/bulk-update', 'Bulk update. updates: array of { id: branch_product_id, data: { ...fields } }. X-Business-Id required.', '{
   "updates": [
@@ -546,6 +547,23 @@ $items[] = [
         req('Reject (Sending Branch)', 'POST', 'stock-transfer-requests/1/reject', 'Reject out-request at sending branch. reason required (max 500). X-Business-Id required.', '{"reason": "Insufficient stock"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Confirm Transfer', 'POST', 'stock-transfer-requests/1/confirm', 'Confirm receipt at destination (in-request). actual_quantity (optional, default=requested), notes optional. X-Business-Id required.', '{"actual_quantity": null, "notes": null}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Cancel Transfer', 'POST', 'stock-transfer-requests/1/cancel', 'Cancel a request. reason required (max 500). X-Business-Id required.', '{"reason": "No longer needed"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
+// ---- 17b. Shelf/Store Move Requests ----
+$items[] = [
+    'name' => '17b. Shelf/Store Move Requests',
+    'item' => [
+        req('List Shelf/Store Move Requests', 'GET', 'shelf-store-move-requests', 'List move requests. Query: branch_id, status, my_requests, pending_approval, per_page. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Create Shelf/Store Move Request', 'POST', 'shelf-store-move-requests', 'Request to move stock. branch_product_id, direction (to_shelf|to_store), quantity required. reason optional. Requires request shelf store move.', '{
+  "branch_product_id": 1,
+  "direction": "to_shelf",
+  "quantity": 5,
+  "reason": "Restock shelf"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Shelf/Store Move Request', 'GET', 'shelf-store-move-requests/1', 'Get one request. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Approve Shelf/Store Move', 'POST', 'shelf-store-move-requests/1/approve', 'Approve and perform the move. Requires approve shelf store move.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Reject Shelf/Store Move', 'POST', 'shelf-store-move-requests/1/reject', 'Reject the request. reason optional (max 500).', '{"reason": "Not needed"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 

@@ -16,9 +16,10 @@ class ProductCategorySeeder extends Seeder
     {
         // Get first business or create one for demo
         $business = Business::first();
-        
-        if (!$business) {
+
+        if (! $business) {
             $this->command->warn('No business found. Please create a business first.');
+
             return;
         }
 
