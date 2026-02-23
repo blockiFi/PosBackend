@@ -109,7 +109,7 @@ class ProductBatch extends Model
     public function productLevelQuickSales(): HasMany
     {
         return $this->hasMany(QuickSale::class, 'product_id', 'product_id')
-            ->whereColumn('quick_sales.branch_id', 'product_batches.branch_id')
+            ->where('quick_sales.branch_id', $this->branch_id)
             ->whereNull('quick_sales.batch_id');
     }
 
