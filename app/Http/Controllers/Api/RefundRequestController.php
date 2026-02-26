@@ -384,12 +384,12 @@ class RefundRequestController extends Controller
             ], 400);
         }
 
-        // Prevent self-approval
-        if ($refundRequest->requested_by === $user->id) {
-            return response()->json([
-                'message' => 'You cannot approve your own refund request',
-            ], 403);
-        }
+        // Prevent self-approval (commented out for now)
+        // if ($refundRequest->requested_by === $user->id) {
+        //     return response()->json([
+        //         'message' => 'You cannot approve your own refund request',
+        //     ], 403);
+        // }
 
         DB::beginTransaction();
         try {
@@ -488,12 +488,12 @@ class RefundRequestController extends Controller
             ], 400);
         }
 
-        // Prevent self-rejection
-        if ($refundRequest->requested_by === $user->id) {
-            return response()->json([
-                'message' => 'You cannot reject your own refund request',
-            ], 403);
-        }
+        // Prevent self-rejection (commented out for now)
+        // if ($refundRequest->requested_by === $user->id) {
+        //     return response()->json([
+        //         'message' => 'You cannot reject your own refund request',
+        //     ], 403);
+        // }
 
         DB::beginTransaction();
         try {

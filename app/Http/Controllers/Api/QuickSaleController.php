@@ -322,12 +322,12 @@ class QuickSaleController extends Controller
             ], 400);
         }
 
-        // Prevent self-approval
-        if ($quickSale->requested_by === $user->id) {
-            return response()->json([
-                'message' => 'You cannot approve your own quick sale request',
-            ], 403);
-        }
+        // Prevent self-approval (commented out for now)
+        // if ($quickSale->requested_by === $user->id) {
+        //     return response()->json([
+        //         'message' => 'You cannot approve your own quick sale request',
+        //     ], 403);
+        // }
 
         // When batch-scoped, re-check batch still has stock
         if ($quickSale->batch_id) {
@@ -449,12 +449,12 @@ class QuickSaleController extends Controller
             ], 400);
         }
 
-        // Prevent self-rejection
-        if ($quickSale->requested_by === $user->id) {
-            return response()->json([
-                'message' => 'You cannot reject your own quick sale request',
-            ], 403);
-        }
+        // Prevent self-rejection (commented out for now)
+        // if ($quickSale->requested_by === $user->id) {
+        //     return response()->json([
+        //         'message' => 'You cannot reject your own quick sale request',
+        //     ], 403);
+        // }
 
         DB::beginTransaction();
         try {

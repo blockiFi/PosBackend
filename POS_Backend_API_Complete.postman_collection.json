@@ -106,7 +106,7 @@
                                 "user"
                             ]
                         },
-                        "description": "Returns the currently authenticated user (includes profile_image_url). Requires valid Bearer token."
+                        "description": "Returns the currently authenticated user (includes profile_image_url). Requires valid Bearer token.\n\n**Response:** id, name, email, profile_image, profile_image_url."
                     },
                     "response": []
                 },
@@ -134,7 +134,7 @@
                                 "user"
                             ]
                         },
-                        "description": "Update current user profile. Optional: name, profile_image (multipart file, image, max 2MB). Returns updated user.",
+                        "description": "Update current user profile.\n\n**Fields:**\n- name: optional | string | max:255\n- profile_image: optional | file | image | max:2048\n\nReturns updated user.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\"name\": \"New Name\"}"
@@ -166,7 +166,7 @@
                                 "register"
                             ]
                         },
-                        "description": "**Public.** Create a new user. Body: name, email, password, password_confirmation (min 8 chars). Optional: profile_image (multipart). Returns user + token. Test script saves token to collection variable auth_token.",
+                        "description": "**Public.** Create a new user account.\n\n**Fields:**\n- name: required | string | max:255\n- email: required | string | email | max:255 | unique:users\n- password: required | string | min:8 | confirmed\n- password_confirmation: required | string\n- profile_image: optional | file | image | max:2048\n\nReturns user + token. Test script saves token.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Jane Doe\",\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"SecurePassword123!\",\n  \"password_confirmation\": \"SecurePassword123!\"\n}"
@@ -212,7 +212,7 @@
                                 "login"
                             ]
                         },
-                        "description": "**Public.** Login with email and password. Returns user + token. Test script saves token to collection variable auth_token.",
+                        "description": "**Public.** Login with email and password.\n\n**Fields:**\n- email: required | string | email\n- password: required | string\n\nReturns user + token. Test script saves token.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"email\": \"jane.doe@example.com\",\n  \"password\": \"SecurePassword123!\"\n}"
@@ -258,7 +258,7 @@
                                 "pin-login"
                             ]
                         },
-                        "description": "**Public.** Fast login with 6-digit PIN. User must have PIN set and 'use-pin-login' permission. pin_code: exactly 6 digits.",
+                        "description": "**Public.** Fast login with 6-digit PIN.\n\n**Fields:**\n- pin_code: required | string | size:6\n\nUser must have PIN set and 'use-pin-login' permission.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"pin_code\": \"123456\"\n}"
@@ -294,7 +294,7 @@
                                 "set"
                             ]
                         },
-                        "description": "Set or update a user's PIN. user_id: target user. pin_code: 6 digits. If setting own PIN, password is required. Requires manage-pin-codes for other users.",
+                        "description": "Set or update a user's PIN.\n\n**Fields:**\n- user_id: required | integer | exists:users,id\n- pin_code: required | string | size:6\n- password: required_if setting own PIN | string\n\nRequires manage-pin-codes for other users.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"user_id\": 1,\n  \"pin_code\": \"654321\",\n  \"password\": \"SecurePassword123!\"\n}"
@@ -327,7 +327,7 @@
                                 "remove"
                             ]
                         },
-                        "description": "Remove PIN for a user. Requires password (current user's) and manage-pin-codes when removing another user's PIN.",
+                        "description": "Remove PIN for a user.\n\n**Fields:**\n- user_id: required | integer | exists:users,id\n- password: required | string\n\nRequires manage-pin-codes when removing another user's PIN.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"user_id\": 1,\n  \"password\": \"SecurePassword123!\"\n}"
@@ -359,10 +359,13 @@
                                 "business-details-with-branch-auth"
                             ]
                         },
-                        "description": "Get business and branch by branch authorization code. Body: auth_code (required). Business is derived from the code; no business_id needed. Returns business + branch when code is valid and not expired. Requires Bearer token.",
+                        "description": "**Public.** Get business and branch by branch authorization code. Body: auth_code (required, string). Business is derived from the code; no business_id needed. Returns business + branch when code is valid and not expired.\n\n**Fields:**\n- auth_code: required | string",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"auth_code\": \"847291\"\n}"
+                        },
+                        "auth": {
+                            "type": "noauth"
                         }
                     },
                     "response": []
@@ -397,7 +400,7 @@
                                 "businesses"
                             ]
                         },
-                        "description": "List all businesses the authenticated user belongs to. No business context required. Returns id, name, branches, pivot branch_id, etc."
+                        "description": "List all businesses the authenticated user belongs to. No business context required.\n\n**Response:** Array of businesses with id, name, slug, branches, pivot (with branch_id)."
                     },
                     "response": []
                 },
@@ -425,7 +428,7 @@
                                 "businesses"
                             ]
                         },
-                        "description": "Create a new business. Creator becomes owner. All fields optional except name. Creates a main branch from main_branch_name/code. currency 3-letter (e.g. USD), country 2-letter. settings: arbitrary object.",
+                        "description": "Create a new business. Creator becomes owner and a main branch is auto-created.\n\n**Fields:**\n- name: required | string | max:255\n- legal_name: nullable | string | max:255\n- slug: nullable | string | max:255 | unique:businesses\n- email: nullable | email | max:255\n- phone: nullable | string | max:50\n- address: nullable | string | max:500\n- city: nullable | string | max:100\n- state: nullable | string | max:100\n- postal_code: nullable | string | max:20\n- country: nullable | string | max:2\n- currency: nullable | string | max:3\n- time_zone: nullable | string | max:50\n- tax_registration_number: nullable | string | max:100\n- default_tax_rate: nullable | numeric | min:0 | max:100\n- main_branch_name: nullable | string | max:255\n- main_branch_code: nullable | string | max:50\n- settings: nullable | array",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Acme Retail Ltd\",\n  \"legal_name\": \"Acme Retail Limited\",\n  \"slug\": \"acme-retail\",\n  \"email\": \"contact@acme.com\",\n  \"phone\": \"+1234567890\",\n  \"address\": \"100 Commerce Street\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10001\",\n  \"country\": \"US\",\n  \"currency\": \"USD\",\n  \"time_zone\": \"America/New_York\",\n  \"tax_registration_number\": \"TAX123\",\n  \"default_tax_rate\": 10,\n  \"main_branch_name\": \"Head Office\",\n  \"main_branch_code\": \"MAIN\",\n  \"settings\": {}\n}"
@@ -462,7 +465,7 @@
                                 "{{business_id}}"
                             ]
                         },
-                        "description": "Get one business by ID. Requires X-Business-Id header (business context)."
+                        "description": "Get one business by ID. Requires X-Business-Id header.\n\n**Response:** Business object with branches."
                     },
                     "response": []
                 },
@@ -495,7 +498,7 @@
                                 "{{business_id}}"
                             ]
                         },
-                        "description": "Update business. Same fields as create (all optional). Requires X-Business-Id.",
+                        "description": "Update business. Same fields as create (all optional).\n\n**Fields:** All fields from Create Business are accepted, none are required.\n\nRequires X-Business-Id.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Acme Retail Updated\",\n  \"email\": \"info@acme.com\",\n  \"phone\": \"+1987654321\",\n  \"address\": \"200 New Address\",\n  \"default_tax_rate\": 12\n}"
@@ -668,7 +671,7 @@
                                 "branches"
                             ]
                         },
-                        "description": "Create a branch. name, code required. code must be unique within business. tax_rate 0-100. is_main: mark as main branch.",
+                        "description": "Create a branch within the business.\n\n**Fields:**\n- name: required | string | max:255\n- code: required | string | max:50 | unique within business\n- email: nullable | string | email | max:255\n- phone: nullable | string | max:50\n- address: nullable | string | max:500\n- city: nullable | string | max:100\n- state: nullable | string | max:100\n- postal_code: nullable | string | max:20\n- country: nullable | string | max:2\n- time_zone: nullable | string | max:50\n- tax_rate: nullable | numeric | min:0 | max:100\n- settings: nullable | array\n- is_main: optional | boolean\n- is_active: optional | boolean",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Downtown Store\",\n  \"code\": \"DT001\",\n  \"email\": \"downtown@acme.com\",\n  \"phone\": \"+1555123456\",\n  \"address\": \"50 Main Ave\",\n  \"city\": \"New York\",\n  \"state\": \"NY\",\n  \"postal_code\": \"10002\",\n  \"country\": \"US\",\n  \"time_zone\": \"America/New_York\",\n  \"tax_rate\": 10,\n  \"settings\": {},\n  \"is_main\": false,\n  \"is_active\": true\n}"
@@ -1313,6 +1316,44 @@
                         "description": "Remove user from business and clear their roles. Owner only. Cannot remove self."
                     },
                     "response": []
+                },
+                {
+                    "name": "Set User Password",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/business-users/{{user_id}}/set-password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "business-users",
+                                "{{user_id}}",
+                                "set-password"
+                            ]
+                        },
+                        "description": "Set or clear password for a user in the business. Requires owner role.\n\n**Fields:**\n- password: nullable | string | min:8 | confirmed\n- password_confirmation: required_with:password | string",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"password\": \"NewPassword123!\",\n  \"password_confirmation\": \"NewPassword123!\"\n}"
+                        }
+                    },
+                    "response": []
                 }
             ]
         },
@@ -1556,9 +1597,27 @@
                             "path": [
                                 "api",
                                 "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "category_id",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                }
                             ]
                         },
-                        "description": "List products. Query: branch_id, category_id, search, per_page, is_active. X-Business-Id required."
+                        "description": "List products.\n\n**Query:**\n- branch_id: optional | integer\n- category_id: optional | integer\n- search: optional | string (name, sku, barcode)\n- per_page: optional | integer (default 15)\n- is_active: optional | boolean\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -1784,7 +1843,45 @@
                     "response": []
                 },
                 {
-                    "name": "Update Product Price",
+                    "name": "Update Product Base Selling Price",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/{{product_id}}/base-selling-price",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "{{product_id}}",
+                                "base-selling-price"
+                            ]
+                        },
+                        "description": "Update the base selling price for a product.\n\n**Fields:**\n- selling_price: required | numeric | min:0\n\n**Query:**\n- branch_id: optional | integer\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"selling_price\": 34.99}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Product Price (Legacy)",
                     "request": {
                         "method": "PATCH",
                         "header": [
@@ -1813,7 +1910,7 @@
                                 "price"
                             ]
                         },
-                        "description": "Update base selling price for product. selling_price required. Query: branch_id optional. X-Business-Id required.",
+                        "description": "**Deprecated.** Legacy endpoint for updating product price. Use `PATCH products/{id}/base-selling-price` instead.\n\n**Fields:**\n- selling_price: required | numeric | min:0\n- branch_id: optional | integer\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\"selling_price\": 34.99}"
@@ -2835,9 +2932,19 @@
                                 "api",
                                 "inventory",
                                 "transactions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                }
                             ]
                         },
-                        "description": "List transactions. Query: branch_id, product_id, type, start_date, end_date, reference_number, per_page. X-Business-Id required."
+                        "description": "List inventory transactions.\n\n**Query:**\n- branch_id: optional | integer\n- product_id: optional | integer\n- type: optional | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- start_date: optional | date\n- end_date: optional | date\n- reference_number: optional | string\n- per_page: optional | integer\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -2870,7 +2977,7 @@
                                 "transactions"
                             ]
                         },
-                        "description": "Create transaction. type: purchase|sale|adjustment|transfer_out|transfer_in|return|damage|initial. quantity required (non-zero; positive=in, negative=out). location: shelf|store|both. related_branch_id for transfers. Batch fields for purchase: batch_number, lot_number, manufacturing_date, expiry_date, supplier_name, supplier_reference. Server allocates batches (FEFO) for batch-tracked products.",
+                        "description": "Create an inventory transaction.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- product_id: required | integer | exists:products\n- type: required | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- quantity: required | numeric | not:0 (positive=in, negative=out)\n- shelf_quantity: nullable | numeric\n- store_quantity: nullable | numeric\n- location: optional | in:shelf,store,both (default: both)\n- unit_cost: nullable | numeric | min:0\n- reference_number: nullable | string | max:255\n- related_branch_id: nullable | integer | exists:branches (for transfers)\n- notes: nullable | string\n- meta_data: nullable | array\n- batch_number: nullable | string | max:100\n- lot_number: nullable | string | max:100\n- manufacturing_date: nullable | date\n- expiry_date: nullable | date\n- supplier_name: nullable | string | max:255\n- supplier_reference: nullable | string | max:255\n\nServer allocates batches (FEFO) for batch-tracked products.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"type\": \"adjustment\",\n  \"quantity\": 25,\n  \"shelf_quantity\": null,\n  \"store_quantity\": null,\n  \"location\": \"both\",\n  \"unit_cost\": 10.50,\n  \"reference_number\": \"ADJ-001\",\n  \"related_branch_id\": null,\n  \"notes\": \"Stock count correction\",\n  \"meta_data\": {},\n  \"batch_number\": null,\n  \"lot_number\": null,\n  \"manufacturing_date\": null,\n  \"expiry_date\": null,\n  \"supplier_name\": null,\n  \"supplier_reference\": null\n}"
@@ -3011,7 +3118,7 @@
                                 "customers"
                             ]
                         },
-                        "description": "Create customer. name required. type: walk-in|regular|vip. credit_limit numeric. metadata object.",
+                        "description": "Create customer.\n\n**Fields:**\n- name: required | string | max:255\n- email: nullable | email | max:255\n- phone: nullable | string | max:50\n- address: nullable | string | max:500\n- type: optional | in:walk-in,regular,vip (default: walk-in)\n- credit_limit: nullable | numeric | min:0\n- is_active: optional | boolean\n- metadata: nullable | array",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"John Customer\",\n  \"email\": \"john@example.com\",\n  \"phone\": \"+15559876543\",\n  \"address\": \"123 Customer Lane\",\n  \"type\": \"regular\",\n  \"credit_limit\": 500,\n  \"metadata\": {}\n}"
@@ -3187,7 +3294,7 @@
                                 "payment-methods"
                             ]
                         },
-                        "description": "Create payment method. name, type required. type: cash|card|mobile_money|bank_transfer|cheque|other. account_details object, sort_order.",
+                        "description": "Create payment method.\n\n**Fields:**\n- name: required | string | max:255\n- type: required | in:cash,card,mobile_money,bank_transfer,cheque,other\n- description: nullable | string | max:500\n- account_details: nullable | array\n- is_active: optional | boolean\n- sort_order: optional | integer",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"name\": \"Cash\",\n  \"type\": \"cash\",\n  \"description\": \"Cash payments\",\n  \"account_details\": {},\n  \"is_active\": true,\n  \"sort_order\": 10\n}"
@@ -3330,9 +3437,19 @@
                             "path": [
                                 "api",
                                 "sales"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                }
                             ]
                         },
-                        "description": "List sales. Query: branch_id, start_date, end_date, status, customer_id, per_page. X-Business-Id required."
+                        "description": "List sales.\n\n**Query:**\n- branch_id: optional | integer\n- start_date: optional | date (Y-m-d)\n- end_date: optional | date (Y-m-d)\n- status: optional | in:completed,voided\n- customer_id: optional | integer\n- per_page: optional | integer\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -3364,7 +3481,7 @@
                                 "sales"
                             ]
                         },
-                        "description": "Create sale. branch_id, items required. items: product_id, quantity; optional unit_price (manual override, requires override sale price permission), discount_percentage, tax_rate. payments optional: payment_method_id, amount, reference_number. customer_id, shift_id optional. sale_type: pos|online|delivery|wholesale. Shift must be open.",
+                        "description": "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale (default: pos)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"customer_id\": null,\n  \"shift_id\": null,\n  \"sale_type\": \"pos\",\n  \"discount_amount\": 0,\n  \"notes\": null,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2,\n      \"unit_price\": 29.99,\n      \"discount_percentage\": 0,\n      \"tax_rate\": 10\n    }\n  ],\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 65.98,\n      \"reference_number\": null\n    }\n  ]\n}"
@@ -3508,9 +3625,15 @@
                             "path": [
                                 "api",
                                 "shifts"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                }
                             ]
                         },
-                        "description": "List shifts. Query: status, branch_id, user_id, filter (today|last_7_days), start_date, end_date, has_discrepancy. X-Business-Id required."
+                        "description": "List shifts.\n\n**Query:**\n- status: optional | in:open,paused,closed\n- branch_id: optional | integer\n- user_id: optional | integer\n- filter: optional | in:today,last_7_days\n- start_date: optional | date\n- end_date: optional | date\n- has_discrepancy: optional | boolean\n- per_page: optional | integer\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -3801,6 +3924,79 @@
                         }
                     },
                     "response": []
+                },
+                {
+                    "name": "Branch Shifts Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shifts/branch-summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shifts",
+                                "branch-summary"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                }
+                            ]
+                        },
+                        "description": "Summary of shifts for a branch.\n\n**Query:**\n- branch_id: required | integer | exists:branches\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- user_id: optional | integer | exists:users\n\nX-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Shift Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "shifts",
+                                "{{shift_id}}",
+                                "summary"
+                            ]
+                        },
+                        "description": "Get summary for a specific shift (totals, payment breakdown, etc.). X-Business-Id required."
+                    },
+                    "response": []
                 }
             ]
         },
@@ -4052,9 +4248,23 @@
                                 "api",
                                 "analytics",
                                 "organization"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                },
+                                {
+                                    "key": "compare_previous",
+                                    "value": "true"
+                                }
                             ]
                         },
-                        "description": "Org-wide analytics. Query: start_date, end_date, compare_previous. X-Business-Id required."
+                        "description": "Organization-wide analytics.\n\n**Query:**\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- compare_previous: optional | boolean\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -4085,9 +4295,19 @@
                                 "api",
                                 "analytics",
                                 "branches"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                }
                             ]
                         },
-                        "description": "Analytics by branch. Query: start_date, end_date, branch_id. X-Business-Id required."
+                        "description": "Analytics by branch.\n\n**Query:**\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- branch_id: optional | integer (all branches if omitted)\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -4118,9 +4338,23 @@
                                 "api",
                                 "analytics",
                                 "products"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
                             ]
                         },
-                        "description": "Product performance. Query: start_date, end_date, branch_id, limit. X-Business-Id required."
+                        "description": "Product performance analytics.\n\n**Query:**\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- branch_id: optional | integer\n- limit: optional | integer (default 10)\n- sort_by: optional | in:quantity,revenue,profit\n- direction: optional | in:asc,desc\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -4151,9 +4385,19 @@
                                 "api",
                                 "analytics",
                                 "profit-loss"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                }
                             ]
                         },
-                        "description": "P&L report. Query: start_date, end_date, branch_id. X-Business-Id required."
+                        "description": "Profit & loss report.\n\n**Query:**\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- branch_id: optional | integer\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -4184,9 +4428,23 @@
                                 "api",
                                 "analytics",
                                 "growth-trends"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                },
+                                {
+                                    "key": "period",
+                                    "value": "day"
+                                }
                             ]
                         },
-                        "description": "Growth trends. Query: start_date, end_date, period (day|week|month), branch_id. X-Business-Id required."
+                        "description": "Growth trend analysis over time.\n\n**Query:**\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- period: optional | in:day,week,month (default: day)\n- branch_id: optional | integer\n\nX-Business-Id required."
                     },
                     "response": []
                 }
@@ -4813,6 +5071,43 @@
                         "description": "Get one write-off. X-Business-Id required."
                     },
                     "response": []
+                },
+                {
+                    "name": "Write Off Entire Batch",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/stock-writeoffs/writeoff-batch",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stock-writeoffs",
+                                "writeoff-batch"
+                            ]
+                        },
+                        "description": "Write off all remaining quantity from a batch.\n\n**Fields:**\n- batch_id: required | integer | exists:product_batches,id\n- reason: required | string | max:1000\n- current_business_id: required | integer | exists:businesses,id\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"batch_id\": 1,\n  \"reason\": \"Entire batch expired\",\n  \"current_business_id\": 1\n}"
+                        }
+                    },
+                    "response": []
                 }
             ]
         },
@@ -5025,10 +5320,10 @@
                                 "reject"
                             ]
                         },
-                        "description": "Reject refund. X-Business-Id required.",
+                        "description": "Reject refund request.\n\n**Fields:**\n- rejection_reason: required | string | max:500\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\"reason\": \"No receipt\"}"
+                            "raw": "{\"rejection_reason\": \"No receipt provided\"}"
                         }
                     },
                     "response": []
@@ -5067,7 +5362,7 @@
                                 "quick-sales"
                             ]
                         },
-                        "description": "List quick sale (near-expiry discount) requests. Query: status, branch_id. X-Business-Id required."
+                        "description": "List quick sale (near-expiry discount) requests.\n\n**Query:**\n- status: optional (pending|approved|rejected|ended)\n- branch_id: optional (integer)\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -5099,10 +5394,10 @@
                                 "quick-sales"
                             ]
                         },
-                        "description": "Request quick sale. branch_product_id, discount_percentage, start_date, end_date. X-Business-Id required.",
+                        "description": "Request quick sale for a near-expiry product.\n\n**Fields:**\n- product_id: required | integer | exists:products\n- branch_id: required | integer | exists:branches\n- batch_id: nullable | integer | exists:product_batches\n- reason: required | string | max:500\n- expiry_date: required | date\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_product_id\": 1,\n  \"discount_percentage\": 20,\n  \"start_date\": \"2026-02-01 00:00:00\",\n  \"end_date\": \"2026-02-28 23:59:59\"\n}"
+                            "raw": "{\n  \"product_id\": 1,\n  \"branch_id\": 1,\n  \"batch_id\": null,\n  \"reason\": \"Near expiry - 2 weeks left\",\n  \"expiry_date\": \"2026-03-15\"\n}"
                         }
                     },
                     "response": []
@@ -5136,7 +5431,7 @@
                                 "1"
                             ]
                         },
-                        "description": "Get one quick sale. X-Business-Id required."
+                        "description": "Get one quick sale with product, branch, batch details. X-Business-Id required."
                     },
                     "response": []
                 },
@@ -5170,10 +5465,10 @@
                                 "approve"
                             ]
                         },
-                        "description": "Approve quick sale. X-Business-Id required.",
+                        "description": "Approve quick sale and set discount details.\n\n**Fields:**\n- discount_type: required | in:percentage,fixed\n- discount_value: required | numeric | min:0\n- start_time: required | date\n- end_time: required | date | after:start_time\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"discount_type\": \"percentage\",\n  \"discount_value\": 20,\n  \"start_time\": \"2026-02-26 00:00:00\",\n  \"end_time\": \"2026-03-15 23:59:59\"\n}"
                         }
                     },
                     "response": []
@@ -5208,10 +5503,10 @@
                                 "reject"
                             ]
                         },
-                        "description": "Reject quick sale. X-Business-Id required.",
+                        "description": "Reject quick sale.\n\n**Fields:**\n- rejection_reason: required | string | max:500\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"rejection_reason\": \"Discount too steep, try 10%\"\n}"
                         }
                     },
                     "response": []
@@ -5246,7 +5541,7 @@
                                 "end"
                             ]
                         },
-                        "description": "End active quick sale early. X-Business-Id required.",
+                        "description": "End active quick sale early. No body needed. X-Business-Id required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{}"
@@ -5538,6 +5833,39 @@
                         }
                     },
                     "response": []
+                },
+                {
+                    "name": "Online Devices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/sync/online-devices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sync",
+                                "online-devices"
+                            ]
+                        },
+                        "description": "List devices currently online (heartbeat within threshold).\n\n**Query:**\n- branch_id: optional | integer\n\nX-Business-Id required."
+                    },
+                    "response": []
                 }
             ]
         },
@@ -5546,7 +5874,7 @@
             "description": "Server-to-server sync between edge and cloud. Push/pull from edge; receive/provide-changes on cloud. Status and health endpoints. X-Business-Id required.",
             "item": [
                 {
-                    "name": "Server Sync Push",
+                    "name": "Server Sync Push (Edge \u2192 Cloud)",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -5574,16 +5902,16 @@
                                 "push"
                             ]
                         },
-                        "description": "Edge: push data to cloud. Body and headers per server-sync implementation. X-Business-Id.",
+                        "description": "Edge server pushes local changes to cloud.\n\n**Fields:**\n- session_id: required | string\n- server_id: required | string\n- changes: required | array (keyed by entity type)\n- last_sync_at: nullable | date\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"session_id\": \"edge-session-001\",\n  \"server_id\": \"edge-server-001\",\n  \"changes\": {},\n  \"last_sync_at\": null\n}"
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Server Sync Pull",
+                    "name": "Server Sync Pull (Edge \u2190 Cloud)",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -5611,10 +5939,10 @@
                                 "pull"
                             ]
                         },
-                        "description": "Edge: pull changes from cloud. X-Business-Id.",
+                        "description": "Edge server pulls changes from cloud.\n\n**Fields:**\n- session_id: required | string\n- server_id: required | string\n- last_sync_at: nullable | date\n- entities: nullable | array\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"session_id\": \"edge-session-001\",\n  \"server_id\": \"edge-server-001\",\n  \"last_sync_at\": null,\n  \"entities\": null\n}"
                         }
                     },
                     "response": []
@@ -5648,7 +5976,7 @@
                                 "status"
                             ]
                         },
-                        "description": "Get server-sync status. X-Business-Id."
+                        "description": "Get server-sync status (last sync time, pending changes, etc.).\n\nX-Business-Id required."
                     },
                     "response": []
                 },
@@ -5681,12 +6009,12 @@
                                 "health"
                             ]
                         },
-                        "description": "Health check for server-sync. X-Business-Id."
+                        "description": "Health check for server-sync connectivity.\n\nX-Business-Id required."
                     },
                     "response": []
                 },
                 {
-                    "name": "Server Sync Receive",
+                    "name": "Server Sync Receive (Cloud \u2190 Edge)",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -5714,16 +6042,16 @@
                                 "receive"
                             ]
                         },
-                        "description": "Cloud: receive data from edge. X-Business-Id.",
+                        "description": "Cloud receives data pushed from edge.\n\n**Fields:**\n- session_id: required | string\n- server_id: required | string\n- changes: required | array\n- last_sync_at: nullable | date\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"session_id\": \"cloud-session-001\",\n  \"server_id\": \"edge-server-001\",\n  \"changes\": {},\n  \"last_sync_at\": null\n}"
                         }
                     },
                     "response": []
                 },
                 {
-                    "name": "Server Sync Provide Changes",
+                    "name": "Server Sync Provide Changes (Cloud \u2192 Edge)",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -5751,13 +6079,210 @@
                                 "provide-changes"
                             ]
                         },
-                        "description": "Cloud: provide changes to edge. X-Business-Id.",
+                        "description": "Cloud provides changes to edge.\n\n**Fields:**\n- session_id: required | string\n- server_id: required | string\n- last_sync_at: nullable | date\n- entities: nullable | array\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{}"
+                            "raw": "{\n  \"session_id\": \"cloud-session-001\",\n  \"server_id\": \"edge-server-001\",\n  \"last_sync_at\": null,\n  \"entities\": null\n}"
                         }
                     },
                     "response": []
+                }
+            ]
+        },
+        {
+            "name": "Sample Error Responses",
+            "description": "Reference examples for common error responses returned by the API.",
+            "item": [
+                {
+                    "name": "401 Unauthorized",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/user",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "user"
+                            ]
+                        },
+                        "description": "Example of an unauthenticated request (no or invalid Bearer token).",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "401 Unauthorized",
+                            "originalRequest": null,
+                            "status": "Unauthorized",
+                            "code": 401,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Unauthenticated.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "422 Validation Error",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/register",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "register"
+                            ]
+                        },
+                        "description": "Example of a validation error response.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"\", \"email\": \"invalid\"}"
+                        },
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "422 Validation Error",
+                            "originalRequest": null,
+                            "status": "Unprocessable Content",
+                            "code": 422,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"The name field is required. (and 2 more errors)\",\n    \"errors\": {\n        \"name\": [\n            \"The name field is required.\"\n        ],\n        \"email\": [\n            \"The email field must be a valid email address.\"\n        ],\n        \"password\": [\n            \"The password field is required.\"\n        ]\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "403 Forbidden",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/roles",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "roles"
+                            ]
+                        },
+                        "description": "Example of a forbidden action (insufficient permissions).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"Admin\"}"
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "403 Forbidden",
+                            "originalRequest": null,
+                            "status": "Forbidden",
+                            "code": 403,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"You do not have the required permissions.\"\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "404 Not Found",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/99999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "99999"
+                            ]
+                        },
+                        "description": "Example of a not-found response."
+                    },
+                    "response": [
+                        {
+                            "name": "404 Not Found",
+                            "originalRequest": null,
+                            "status": "Not Found",
+                            "code": 404,
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "body": "{\n    \"message\": \"Resource not found.\"\n}"
+                        }
+                    ]
                 }
             ]
         }
