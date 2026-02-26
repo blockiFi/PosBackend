@@ -1,4 +1,4 @@
-leree # POS Backend - Complete Postman Collection Documentation
+# POS Backend - Complete Postman Collection Documentation
 
 This document provides detailed information about all API endpoints, validation rules, request structures, and response formats for building a comprehensive Postman collection.
 
@@ -1181,6 +1181,58 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 **Notes:**
 - Requires 'delete products' permission
 
+### 7.6 List Product Units
+**Endpoint:** `GET /api/products/{id}/units`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Description:** List unit definitions for a product (e.g. piece, pack of 6, carton) used for tiered pricing.
+
+**Response (200):**
+```json
+{
+  "data": [
+    {
+      "id": 1,
+      "product_id": 1,
+      "name": "Pack of 6",
+      "quantity_multiplier": 6,
+      "min_quantity": null,
+      "display_order": 0
+    }
+  ]
+}
+```
+
+### 7.7 Create Product Unit
+**Endpoint:** `POST /api/products/{id}/units`
+
+**Headers:** `Authorization: Bearer {token}`, `X-Business-Id: {business_id}`
+
+**Request Body:**
+```json
+{
+  "name": "Pack of 6",
+  "quantity_multiplier": 6,
+  "min_quantity": null,
+  "display_order": 0
+}
+```
+
+**Validation Rules:** `name` required; `quantity_multiplier` required, integer, min:1; `min_quantity` nullable, integer, min:1; `display_order` nullable, integer, min:0.
+
+**Response (201):** `{ "message": "Unit created", "data": { /* unit object */ } }`
+
+### 7.8 Update Product Unit
+**Endpoint:** `PUT /api/products/{id}/units/{unitId}`
+
+**Request Body:** Same fields as create (all optional).
+
+### 7.9 Delete Product Unit
+**Endpoint:** `DELETE /api/products/{id}/units/{unitId}`
+
+**Response (200):** `{ "message": "Unit deleted" }`
+
 ---
 
 ## 8. Branch Products
@@ -1391,6 +1443,61 @@ X-Device-Id: {device_id}            (optional, for device tracking)
   "message": "Product removed from branch successfully"
 }
 ```
+
+### 8.6 Get Branch Product Tiered Price
+**Endpoint:** `GET /api/branch-products/{id}/price`
+
+**Query Parameters:** `quantity` (required) – quantity to compute price for.
+
+**Description:** Returns effective unit price and total using tiered pricing: exact pack match first, then quantity range tier, then single-unit price. Used by POS for dynamic totals.
+
+**Response (200):**
+```json
+{
+  "data": {
+    "unit_price": 83.33,
+    "total": 500,
+    "tier_type": "pack",
+    "product_unit_id": 1,
+    "quantity_tier_id": null,
+    "cost_per_unit": 50
+  }
+}
+```
+
+### 8.7 List Branch Product Unit Prices
+**Endpoint:** `GET /api/branch-products/{id}/unit-prices`
+
+**Response (200):** `{ "data": [ { "id", "branch_product_id", "product_unit_id", "selling_price", "product_unit": { ... } } ] }`
+
+### 8.8 Create Branch Product Unit Price
+**Endpoint:** `POST /api/branch-products/{id}/unit-prices`
+
+**Request Body:** `{ "product_unit_id": 1, "selling_price": 2500 }`
+
+### 8.9 Update Branch Product Unit Price
+**Endpoint:** `PUT /api/branch-products/{id}/unit-prices/{unitPriceId}`
+
+**Request Body:** `{ "selling_price": 2600 }`
+
+### 8.10 Delete Branch Product Unit Price
+**Endpoint:** `DELETE /api/branch-products/{id}/unit-prices/{unitPriceId}`
+
+### 8.11 List Branch Product Quantity Tiers
+**Endpoint:** `GET /api/branch-products/{id}/quantity-tiers`
+
+**Response (200):** `{ "data": [ { "id", "branch_product_id", "min_quantity", "max_quantity", "price_per_unit" } ] }`
+
+### 8.12 Create Branch Product Quantity Tier
+**Endpoint:** `POST /api/branch-products/{id}/quantity-tiers`
+
+**Request Body:** `{ "min_quantity": 6, "max_quantity": 19, "price_per_unit": 450 }` (max_quantity null = no upper limit)
+
+### 8.13 Update Branch Product Quantity Tier
+**Endpoint:** `PUT /api/branch-products/{id}/quantity-tiers/{tierId}`
+
+### 8.14 Delete Branch Product Quantity Tier
+**Endpoint:** `DELETE /api/branch-products/{id}/quantity-tiers/{tierId}`
 
 ---
 
@@ -1984,6 +2091,7 @@ X-Device-Id: {device_id}            (optional, for device tracking)
 
 **Notes:**
 - Requires 'create sales' permission
+- Unit price is optional: when omitted, the server computes it from tiered pricing (exact pack → quantity range → single-unit). When provided, the user must have **override sale price** permission or the sent price is ignored and the computed price is used.
 - Automatically deducts stock
 - Creates inventory transactions
 - Links to open shift if available

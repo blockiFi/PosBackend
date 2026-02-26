@@ -3,6 +3,7 @@
 namespace Tests\Feature\Sync;
 
 use App\Models\Branch;
+use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\DeviceRegistration;
@@ -101,6 +102,14 @@ class SyncWorkflowTest extends TestCase
         $product = Product::first();
         $paymentMethod = PaymentMethod::first();
 
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'cost_price' => 50.00,
+            'selling_price' => 100.00,
+        ]);
+
         $pushResponse = $this->postJson('/api/sync/push', [
             'session_id' => Str::uuid()->toString(),
             'changes' => [
@@ -155,6 +164,15 @@ class SyncWorkflowTest extends TestCase
             'sale_number' => 'SALE-WORKFLOW-001',
             'origin' => 'offline',
         ]);
+
+        $this->assertDatabaseHas('inventory_transactions', [
+            'reference_number' => 'SALE-WORKFLOW-001',
+            'type' => 'sale',
+            'quantity' => -2,
+        ]);
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->where('product_id', $product->id)->first();
+        $this->assertNotNull($branchProduct);
+        $this->assertEquals(8, $branchProduct->stock_quantity, 'Stock should be decremented by 2');
 
         // Step 4: Pull changes from server
         $lastSync = now()->subMinute()->toIso8601String();
@@ -309,6 +327,11 @@ class SyncWorkflowTest extends TestCase
     {
         $this->device = $this->registerTestDevice();
         $product = Product::factory()->create(['business_id' => $this->business->id]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+        ]);
         $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
 
         $sessionId = Str::uuid()->toString();

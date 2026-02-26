@@ -190,9 +190,7 @@ class QuickSale extends Model
             'rejection_reason' => $reason,
         ]);
 
-        if (! $this->isBatchScoped()) {
-            $this->removeDiscountFromBranchProduct();
-        }
+        $this->removeDiscountFromBranchProduct();
     }
 
     public function markAsActive(): void
@@ -201,9 +199,7 @@ class QuickSale extends Model
             'status' => self::STATUS_ACTIVE,
         ]);
 
-        if (! $this->isBatchScoped()) {
-            $this->applyDiscountToBranchProduct();
-        }
+        $this->applyDiscountToBranchProduct();
     }
 
     public function markAsExpired(): void
@@ -212,9 +208,7 @@ class QuickSale extends Model
             'status' => self::STATUS_EXPIRED,
         ]);
 
-        if (! $this->isBatchScoped()) {
-            $this->removeDiscountFromBranchProduct();
-        }
+        $this->removeDiscountFromBranchProduct();
     }
 
     public function markAsEnded(?int $userId): void
@@ -225,9 +219,7 @@ class QuickSale extends Model
             'ended_at' => now(),
         ]);
 
-        if (! $this->isBatchScoped()) {
-            $this->removeDiscountFromBranchProduct();
-        }
+        $this->removeDiscountFromBranchProduct();
     }
 
     /**

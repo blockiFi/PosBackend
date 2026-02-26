@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Product;
 use App\Models\ProductUnit;
+use App\Models\QuickSale;
 use App\Services\TieredPricingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -113,59 +114,9 @@ class BranchProductController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
-        // Transform data
-        $data = $branchProducts->map(function ($branchProduct) {
-            return [
-                'id' => $branchProduct->id,
-                'branch_id' => $branchProduct->branch_id,
-                'product_id' => $branchProduct->product_id,
-                'product' => [
-                    'id' => $branchProduct->product->id,
-                    'name' => $branchProduct->product->name,
-                    'sku' => $branchProduct->product->sku,
-                    'barcode' => $branchProduct->product->barcode,
-                    'image' => $branchProduct->product->image,
-                    'category' => $branchProduct->product->category ? [
-                        'id' => $branchProduct->product->category->id,
-                        'name' => $branchProduct->product->category->name,
-                    ] : null,
-                ],
-                'pricing' => [
-                    'cost_price' => $branchProduct->cost_price,
-                    'selling_price' => $branchProduct->selling_price,
-                    'compare_price' => $branchProduct->compare_price,
-                    'discount_amount' => $branchProduct->discount_amount,
-                    'discount_type' => $branchProduct->discount_type,
-                    'tax_rate' => $branchProduct->tax_rate,
-                    'final_price' => $branchProduct->getFinalPrice(),
-                    'price_with_tax' => $branchProduct->getPriceWithTax(),
-                    'profit_margin' => $branchProduct->getProfitMargin(),
-                ],
-                'inventory' => [
-                    'stock_quantity' => $branchProduct->stock_quantity,
-                    'shelf_quantity' => $branchProduct->shelf_quantity,
-                    'store_quantity' => $branchProduct->store_quantity,
-                    'low_stock_threshold' => $branchProduct->low_stock_threshold,
-                    'allow_backorder' => $branchProduct->allow_backorder,
-                    'reorder_point' => $branchProduct->reorder_point,
-                    'reorder_quantity' => $branchProduct->reorder_quantity,
-                    'is_in_stock' => $branchProduct->isInStock(),
-                    'is_low_stock' => $branchProduct->isLowStock(),
-                    'is_out_of_stock' => $branchProduct->isOutOfStock(),
-                    'needs_reorder' => $branchProduct->needsReorder(),
-                    'shelf_needs_restocking' => $branchProduct->shelfNeedsRestocking(),
-                    'bin_location' => $branchProduct->bin_location,
-                    'shelf_location' => $branchProduct->shelf_location,
-                ],
-                'settings' => [
-                    'is_available' => $branchProduct->is_available,
-                    'is_featured' => $branchProduct->is_featured,
-                    'display_order' => $branchProduct->display_order,
-                ],
-                'branch_meta_data' => $branchProduct->branch_meta_data,
-                'created_at' => $branchProduct->created_at,
-                'updated_at' => $branchProduct->updated_at,
-            ];
+        // Transform data (reuse shared transformer so shape matches other endpoints)
+        $data = $branchProducts->map(function (BranchProduct $branchProduct) {
+            return $this->transformBranchProduct($branchProduct);
         });
 
         return response()->json([
@@ -1605,6 +1556,24 @@ class BranchProductController extends Controller
      */
     private function transformBranchProduct(BranchProduct $branchProduct): array
     {
+        $activeQuickSale = QuickSale::getActiveQuickSale(
+            $branchProduct->product_id,
+            $branchProduct->branch_id
+        );
+
+        $quickSaleData = null;
+        if ($activeQuickSale) {
+            $quickSaleData = [
+                'id' => $activeQuickSale->id,
+                'discount_type' => $activeQuickSale->discount_type,
+                'discount_value' => $activeQuickSale->discount_value,
+                'batch_id' => $activeQuickSale->batch_id,
+                'start_time' => $activeQuickSale->start_time,
+                'end_time' => $activeQuickSale->end_time,
+                'status' => $activeQuickSale->status,
+            ];
+        }
+
         return [
             'id' => $branchProduct->id,
             'branch_id' => $branchProduct->branch_id,
@@ -1631,6 +1600,7 @@ class BranchProductController extends Controller
                 'price_with_tax' => $branchProduct->getPriceWithTax(),
                 'profit_margin' => $branchProduct->getProfitMargin(),
             ],
+            'quick_sale' => $quickSaleData,
             'inventory' => [
                 'stock_quantity' => $branchProduct->stock_quantity,
                 'shelf_quantity' => $branchProduct->shelf_quantity,

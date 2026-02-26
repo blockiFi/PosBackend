@@ -6,6 +6,7 @@ use App\Models\Business;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -532,5 +533,146 @@ class UserBusinessRoutesTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['is_active']);
+    }
+
+    public function test_owner_can_set_password_for_business_user(): void
+    {
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+
+        $response = $this->actingAs($this->owner)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [
+                'password' => 'newsecret123',
+                'password_confirmation' => 'newsecret123',
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Password updated successfully',
+                'data' => [
+                    'user' => [
+                        'id' => $this->otherUser->id,
+                        'name' => $this->otherUser->name,
+                        'email' => $this->otherUser->email,
+                    ],
+                ],
+            ]);
+
+        $this->otherUser->refresh();
+        $this->assertTrue(Hash::check('newsecret123', $this->otherUser->password));
+    }
+
+    public function test_user_with_set_user_password_permission_can_set_password(): void
+    {
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+        $this->business->users()->attach($this->thirdUser->id, ['is_active' => true]);
+
+        setPermissionsTeamId($this->business->id);
+        $permission = Permission::firstOrCreate(['name' => 'set user password', 'guard_name' => 'api']);
+        $role = Role::create([
+            'name' => 'Password Manager',
+            'guard_name' => 'api',
+            'business_id' => $this->business->id,
+        ]);
+        $role->givePermissionTo($permission);
+        $this->thirdUser->assignRole($role);
+
+        $response = $this->actingAs($this->thirdUser)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [
+                'password' => 'updatedpass456',
+                'password_confirmation' => 'updatedpass456',
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson(['message' => 'Password updated successfully']);
+
+        $this->otherUser->refresh();
+        $this->assertTrue(Hash::check('updatedpass456', $this->otherUser->password));
+    }
+
+    public function test_user_without_permission_cannot_set_password(): void
+    {
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+        $this->business->users()->attach($this->thirdUser->id, ['is_active' => true]);
+        setPermissionsTeamId($this->business->id);
+
+        $response = $this->actingAs($this->thirdUser)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [
+                'password' => 'newsecret123',
+                'password_confirmation' => 'newsecret123',
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(403)
+            ->assertJson(['message' => 'Unauthorized']);
+    }
+
+    public function test_set_password_validates_password_confirmation(): void
+    {
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+
+        $response = $this->actingAs($this->owner)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [
+                'password' => 'newsecret123',
+                'password_confirmation' => 'different',
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_set_password_rejects_user_not_in_business(): void
+    {
+        $response = $this->actingAs($this->owner)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [
+                'password' => 'newsecret123',
+                'password_confirmation' => 'newsecret123',
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(404)
+            ->assertJson(['message' => 'User is not a member of this business']);
+    }
+
+    public function test_set_password_without_body_generates_and_returns_password(): void
+    {
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+
+        $response = $this->actingAs($this->owner)
+            ->putJson("/api/business-users/{$this->otherUser->id}/set-password", [], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJson([
+                'message' => 'Password updated successfully',
+                'data' => [
+                    'user' => [
+                        'id' => $this->otherUser->id,
+                        'name' => $this->otherUser->name,
+                        'email' => $this->otherUser->email,
+                    ],
+                ],
+            ])
+            ->assertJsonStructure([
+                'data' => [
+                    'user' => ['id', 'name', 'email'],
+                    'password',
+                ],
+            ]);
+
+        $generatedPassword = $response->json('data.password');
+        $this->assertNotEmpty($generatedPassword);
+        $this->assertSame(16, strlen($generatedPassword));
+
+        $this->otherUser->refresh();
+        $this->assertTrue(Hash::check($generatedPassword, $this->otherUser->password));
     }
 }

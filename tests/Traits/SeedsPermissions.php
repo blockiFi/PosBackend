@@ -40,7 +40,7 @@ trait SeedsPermissions
             'view analytics', 'view financial reports', 'view branch analytics', 'export analytics',
 
             // Users & Settings
-            'manage-users', 'manage-branches', 'manage-settings', 'manage-roles',
+            'manage-users', 'manage-branches', 'manage-settings', 'manage-roles', 'set user password',
 
             // Cash Management
             'open-register', 'close-register', 'manage-cash',

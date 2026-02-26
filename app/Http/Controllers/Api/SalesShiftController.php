@@ -94,6 +94,44 @@ class SalesShiftController extends Controller
             $query->dateRange($request->start_date, $request->end_date);
         }
 
+        // Statistics over all matching shifts (same filters, no pagination)
+        $statsRow = (clone $query)->selectRaw(
+            'COUNT(*) as total_shifts, COALESCE(SUM(total_sales),0) as total_gross_sales, COALESCE(SUM(transactions_count),0) as total_transactions, COALESCE(SUM(cash_sales),0) as total_cash_sales, COALESCE(SUM(card_sales),0) as total_card_sales, COALESCE(SUM(other_sales),0) as total_other_sales'
+        )->first();
+
+        $statusCounts = (clone $query)->selectRaw('status, COUNT(*) as cnt')->groupBy('status')->pluck('cnt', 'status');
+        $shiftsByStatus = [
+            'open' => (int) ($statusCounts->get('open') ?? 0),
+            'closed' => (int) ($statusCounts->get('closed') ?? 0),
+            'paused' => (int) ($statusCounts->get('paused') ?? 0),
+        ];
+
+        $totalGrossSales = (float) $statsRow->total_gross_sales;
+        $totalTransactions = (int) $statsRow->total_transactions;
+        $totalCashSales = (float) $statsRow->total_cash_sales;
+        $totalCardSales = (float) $statsRow->total_card_sales;
+        $totalOtherSales = (float) $statsRow->total_other_sales;
+        $totalForPercent = $totalGrossSales > 0 ? $totalGrossSales : 1;
+        $cashPercentage = round(($totalCashSales / $totalForPercent) * 100, 2);
+        $cardPercentage = round(($totalCardSales / $totalForPercent) * 100, 2);
+        $otherPercentage = round(($totalOtherSales / $totalForPercent) * 100, 2);
+        $averageBasketValue = $totalTransactions > 0
+            ? round($totalGrossSales / $totalTransactions, 2)
+            : 0;
+
+        $statistics = [
+            'total_shifts_count' => (int) $statsRow->total_shifts,
+            'total_gross_sales' => $totalGrossSales,
+            'total_transactions' => $totalTransactions,
+            'shifts_by_status' => $shiftsByStatus,
+            'average_basket_value' => $averageBasketValue,
+            'sales_by_payment_type' => [
+                'cash' => ['amount' => $totalCashSales, 'percentage' => $cashPercentage],
+                'card' => ['amount' => $totalCardSales, 'percentage' => $cardPercentage],
+                'other' => ['amount' => $totalOtherSales, 'percentage' => $otherPercentage],
+            ],
+        ];
+
         $shifts = $query->orderBy('start_time', 'desc')->paginate(15);
 
         // Enhance each shift with statistics
@@ -101,7 +139,10 @@ class SalesShiftController extends Controller
             return $this->enrichShiftWithStats($shift);
         });
 
-        return response()->json($shifts);
+        return response()->json([
+            'shifts' => $shifts,
+            'statistics' => $statistics,
+        ]);
     }
 
     /**

@@ -213,10 +213,21 @@ class SaleController extends Controller
                 }
 
                 $batch = null;
-                $batchId = isset($itemData['batch_id']) ? (int) $itemData['batch_id'] : null;
-
+                $batchId = null;
                 $qtyForBatch = (int) round($qty);
-                if ($batchId) {
+
+                // Prefer quick sale batch when an active quick sale with a batch exists for this product/branch
+                $quickSale = QuickSale::getActiveQuickSaleForProduct($product->id, $branchId);
+                if ($quickSale && $quickSale->batch_id) {
+                    $batch = $quickSale->batch;
+                    if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                        $batchId = $batch->id;
+                    }
+                }
+
+                // Else use client-provided batch_id if present
+                if ($batchId === null && isset($itemData['batch_id']) && $itemData['batch_id'] !== null) {
+                    $batchId = (int) $itemData['batch_id'];
                     $batch = ProductBatch::where('id', $batchId)
                         ->where('product_id', $product->id)
                         ->where('branch_id', $branchId)
@@ -224,17 +235,6 @@ class SaleController extends Controller
                         ->first();
                     if (! $batch || $batch->current_quantity < $qtyForBatch) {
                         throw new \Exception("Invalid or insufficient batch quantity for product: {$product->name}");
-                    }
-                } else {
-                    $quickSale = QuickSale::getActiveQuickSaleForProduct($product->id, $branchId);
-                    if ($quickSale && $quickSale->batch_id) {
-                        $batch = $quickSale->batch;
-                        if ($batch && $batch->current_quantity >= $qtyForBatch) {
-                            $batchId = $batch->id;
-                        } else {
-                            $batch = null;
-                            $batchId = null;
-                        }
                     }
                 }
 
@@ -284,7 +284,12 @@ class SaleController extends Controller
                 $item->calculateTotals();
                 $sale->items()->save($item);
 
-                $branchProduct->decrement('stock_quantity', $qtyForBatch);
+                $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                if (! $deductResult['stock_tracked']) {
+                    $branchProduct->decrement('stock_quantity', $qtyForBatch);
+                    $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
+                    $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                }
 
                 if ($batchId && $batch) {
                     $batch->allocate($qtyForBatch);
@@ -298,13 +303,21 @@ class SaleController extends Controller
                     'user_id' => $user->id,
                     'type' => 'sale',
                     'quantity' => -$qtyForBatch,
-                    'quantity_before' => $branchProduct->stock_quantity + $qtyForBatch,
-                    'quantity_after' => $branchProduct->stock_quantity,
+                    'quantity_before' => $deductResult['quantity_before'],
+                    'quantity_after' => $deductResult['quantity_after'],
                     'unit_cost' => $branchProduct->cost_price,
                     'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
                     'reference_number' => $saleNumber,
                     'notes' => "Sale: {$saleNumber}",
                 ];
+                if ($deductResult['stock_tracked']) {
+                    $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
+                    $invPayload['store_quantity'] = -$deductResult['from_store'];
+                    $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
+                    $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
+                    $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
+                    $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
+                }
                 if ($batchId) {
                     $invPayload['batch_id'] = $batchId;
                 }

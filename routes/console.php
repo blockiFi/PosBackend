@@ -12,3 +12,7 @@ Artisan::command('inspire', function () {
 if (config('sync.mode') === 'edge' && config('sync.auto_sync')) {
     Schedule::command('server:sync')->everyThirtySeconds();
 }
+
+// Quick sale discount lifecycle
+Schedule::command('quicksales:activate')->everyMinute();
+Schedule::command('quicksales:cleanup-discounts --all')->dailyAt('01:00');

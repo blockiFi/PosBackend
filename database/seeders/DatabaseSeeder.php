@@ -66,6 +66,7 @@ class DatabaseSeeder extends Seeder
         // Step 3: Products & Categories
         $this->command->info('📦 Step 3/6: Seeding products and categories...');
         $this->call(ProductSeeder::class);
+        $this->call(ProductTierPriceSeeder::class);
         $this->command->info('✅ Products and categories seeded successfully!');
         $this->command->newLine();
 
@@ -109,7 +110,10 @@ class DatabaseSeeder extends Seeder
                 ['Permissions', \Spatie\Permission\Models\Permission::count()],
                 ['Product Categories', \App\Models\ProductCategory::count()],
                 ['Products', \App\Models\Product::count()],
+                ['Product Units', \App\Models\ProductUnit::count()],
                 ['Branch Products', \App\Models\BranchProduct::count()],
+                ['Branch Product Unit Prices', \App\Models\BranchProductUnitPrice::count()],
+                ['Branch Product Quantity Tiers', \App\Models\BranchProductQuantityTier::count()],
                 ['Product Batches', \App\Models\ProductBatch::count()],
                 ['Inventory Transactions', \App\Models\InventoryTransaction::count()],
                 ['Customers', \App\Models\Customer::count()],

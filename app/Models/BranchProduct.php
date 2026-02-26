@@ -341,6 +341,63 @@ class BranchProduct extends Model
     }
 
     /**
+     * Deduct quantity for a sale from physical locations (shelf first, then store).
+     * Keeps stock_quantity = shelf_quantity + store_quantity. Handles legacy data
+     * where only stock_quantity was set (shelf+store 0).
+     *
+     * @return array{stock_tracked: bool, from_shelf: int, from_store: int, quantity_before: int, quantity_after: int, shelf_quantity_before: int, store_quantity_before: int, shelf_quantity_after: int, store_quantity_after: int}
+     */
+    public function deductForSale(int $quantity): array
+    {
+        $zeroResult = [
+            'stock_tracked' => false,
+            'from_shelf' => 0,
+            'from_store' => 0,
+            'quantity_before' => $this->stock_quantity,
+            'quantity_after' => $this->stock_quantity,
+            'shelf_quantity_before' => $this->shelf_quantity,
+            'store_quantity_before' => $this->store_quantity,
+            'shelf_quantity_after' => $this->shelf_quantity,
+            'store_quantity_after' => $this->store_quantity,
+        ];
+
+        // if ($this->product->stock_tracking === 'none') {
+        //     return $zeroResult;
+        // }
+
+        $shelfBefore = (int) $this->shelf_quantity;
+        $storeBefore = (int) $this->store_quantity;
+        $totalAvailable = $shelfBefore + $storeBefore;
+
+        if ($totalAvailable === 0 && $this->stock_quantity > 0) {
+            $this->store_quantity = $this->stock_quantity;
+            $storeBefore = (int) $this->stock_quantity;
+            $totalAvailable = $storeBefore;
+        }
+
+        $toDeduct = min($quantity, $totalAvailable);
+        $fromShelf = min($toDeduct, $shelfBefore);
+        $fromStore = $toDeduct - $fromShelf;
+
+        $this->shelf_quantity = max(0, $shelfBefore - $fromShelf);
+        $this->store_quantity = max(0, $storeBefore - $fromStore);
+        $this->stock_quantity = $this->shelf_quantity + $this->store_quantity;
+        $this->save();
+
+        return [
+            'stock_tracked' => true,
+            'from_shelf' => $fromShelf,
+            'from_store' => $fromStore,
+            'quantity_before' => $shelfBefore + $storeBefore,
+            'quantity_after' => $this->stock_quantity,
+            'shelf_quantity_before' => $shelfBefore,
+            'store_quantity_before' => $storeBefore,
+            'shelf_quantity_after' => $this->shelf_quantity,
+            'store_quantity_after' => $this->store_quantity,
+        ];
+    }
+
+    /**
      * Check if shelf needs restocking from store
      */
     public function shelfNeedsRestocking(): bool

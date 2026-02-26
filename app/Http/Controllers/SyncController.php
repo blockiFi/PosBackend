@@ -9,15 +9,19 @@ use App\Models\BranchProductUnitPrice;
 use App\Models\ChangeLog;
 use App\Models\Customer;
 use App\Models\DeviceRegistration;
+use App\Models\InventoryTransaction;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\ProductCategory;
 use App\Models\ProductUnit;
+use App\Models\QuickSale;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Models\SyncSession;
+use App\Services\InventoryBatchService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +31,10 @@ use Illuminate\Support\Str;
 class SyncController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected InventoryBatchService $batchService
+    ) {}
 
     /**
      * Register a new device for sync operations
@@ -449,6 +457,61 @@ class SyncController extends Controller
     }
 
     /**
+     * List devices last seen in the last 5 minutes (online devices).
+     */
+    public function onlineDevices(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        if (! $businessId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if (! $user->hasPermissionTo('sync data')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
+        $query = DeviceRegistration::with(['branch:id,name', 'user:id,name'])
+            ->forBusiness($businessId)
+            ->online(5)
+            ->orderByDesc('last_seen_at');
+
+        if ($request->filled('branch_id')) {
+            $branchId = $request->branch_id;
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+            $query->where('branch_id', $branchId);
+        } else {
+            $accessibleBranches = $user->getBranchesInBusiness($businessId);
+            if ($accessibleBranches->isNotEmpty()) {
+                $query->where(function ($q) use ($accessibleBranches) {
+                    $q->whereIn('branch_id', $accessibleBranches)
+                        ->orWhereNull('branch_id');
+                });
+            }
+        }
+
+        $devices = $query->get();
+
+        return response()->json(['data' => $devices]);
+    }
+
+    /**
      * Helper: Get entity changes since timestamp
      */
     private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit)
@@ -565,6 +628,48 @@ class SyncController extends Controller
             }
         }
 
+        $branchId = (int) $data['branch_id'];
+
+        // Validate inventory for all items before creating sale (so we don't persist a sale we then reject)
+        if (isset($data['items'])) {
+            foreach ($data['items'] as $item) {
+                $productId = (int) $item['product_id'];
+                $qtyForBatch = (int) round((float) $item['quantity']);
+                $branchProduct = BranchProduct::where('branch_id', $branchId)
+                    ->where('product_id', $productId)
+                    ->first();
+                if (! $branchProduct) {
+                    $product = Product::find($productId);
+
+                    throw new \Exception(
+                        'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
+                    );
+                }
+                if ($branchProduct->stock_quantity < $qtyForBatch) {
+                    $product = $branchProduct->product;
+
+                    throw new \Exception(
+                        "Insufficient stock for product: {$product->name}"
+                    );
+                }
+                if (isset($item['batch_id']) && $item['batch_id'] !== null) {
+                    $batchId = (int) $item['batch_id'];
+                    $batch = ProductBatch::where('id', $batchId)
+                        ->where('product_id', $productId)
+                        ->where('branch_id', $branchId)
+                        ->where('business_id', $businessId)
+                        ->first();
+                    if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                        $product = $branchProduct->product;
+
+                        throw new \Exception(
+                            "Invalid or insufficient batch quantity for product: {$product->name}"
+                        );
+                    }
+                }
+            }
+        }
+
         // Create sale
         $sale = Sale::create([
             'business_id' => $businessId,
@@ -590,28 +695,143 @@ class SyncController extends Controller
             'origin' => $data['origin'] ?? 'offline',
         ]);
 
-        // Create items
+        // Create items and deduct inventory
+        $saleNumber = $data['sale_number'];
+
         if (isset($data['items'])) {
             foreach ($data['items'] as $item) {
+                $productId = (int) $item['product_id'];
+                $qty = (float) $item['quantity'];
+                $qtyForBatch = (int) round($qty);
+
+                $branchProduct = BranchProduct::where('branch_id', $branchId)
+                    ->where('product_id', $productId)
+                    ->first();
+
+                if (! $branchProduct) {
+                    $product = Product::find($productId);
+
+                    throw new \Exception(
+                        'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
+                    );
+                }
+
+                if ($branchProduct->stock_quantity < $qtyForBatch) {
+                    $product = $branchProduct->product;
+
+                    throw new \Exception(
+                        "Insufficient stock for product: {$product->name}"
+                    );
+                }
+
+                // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
+                $batch = null;
+                $batchId = null;
+                $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
+                if ($quickSale && $quickSale->batch_id) {
+                    $batch = $quickSale->batch;
+                    if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                        $batchId = $batch->id;
+                    }
+                }
+                if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
+                    $batchId = (int) $item['batch_id'];
+                    $batch = ProductBatch::where('id', $batchId)
+                        ->where('product_id', $productId)
+                        ->where('branch_id', $branchId)
+                        ->where('business_id', $businessId)
+                        ->first();
+                    if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                        $product = $branchProduct->product;
+
+                        throw new \Exception(
+                            "Invalid or insufficient batch quantity for product: {$product->name}"
+                        );
+                    }
+                }
+
+                // Unit price: apply quick sale discount when active quick sale exists for resolved batch
+                $unitPrice = (float) ($item['unit_price'] ?? $branchProduct->selling_price ?? 0);
+                if ($batchId !== null) {
+                    $quickSaleForBatch = QuickSale::getActiveQuickSale($productId, $branchId, null, $batchId);
+                    if ($quickSaleForBatch) {
+                        $unitPrice = $quickSaleForBatch->calculateFinalPrice(
+                            $branchProduct->selling_price ?? $unitPrice
+                        );
+                    }
+                }
+
+                $subtotal = round($qty * $unitPrice, 2);
+                $total = $subtotal;
+
                 $payload = [
                     'sale_id' => $sale->id,
                     'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'] ?? 'Unknown Product',
-                    'product_sku' => $item['product_sku'] ?? null,
+                    'product_name' => $item['product_name'] ?? $branchProduct->product?->name ?? 'Unknown Product',
+                    'product_sku' => $item['product_sku'] ?? $branchProduct->product?->sku ?? null,
                     'quantity' => $item['quantity'],
-                    'unit_price' => $item['unit_price'],
+                    'unit_price' => $unitPrice,
                     'discount_amount' => $item['discount'] ?? 0,
                     'tax_amount' => $item['tax'] ?? 0,
-                    'subtotal' => $item['subtotal'],
-                    'total' => $item['total'] ?? $item['subtotal'],
+                    'subtotal' => $subtotal,
+                    'total' => $total,
                 ];
                 if (isset($item['metadata'])) {
                     $payload['metadata'] = $item['metadata'];
                 }
-                if (isset($item['batch_id'])) {
-                    $payload['batch_id'] = $item['batch_id'];
+                if ($batchId !== null) {
+                    $payload['batch_id'] = $batchId;
                 }
                 SaleItem::create($payload);
+
+                $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                if (! $deductResult['stock_tracked']) {
+                    $branchProduct->decrement('stock_quantity', $qtyForBatch);
+                    $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
+                    $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                }
+
+                if ($batchId !== null && $batch) {
+                    $batch->allocate($qtyForBatch);
+                }
+
+                $invPayload = [
+                    'uuid' => (string) Str::uuid(),
+                    'business_id' => $businessId,
+                    'branch_id' => $branchId,
+                    'product_id' => $productId,
+                    'user_id' => $userId,
+                    'type' => 'sale',
+                    'quantity' => -$qtyForBatch,
+                    'quantity_before' => $deductResult['quantity_before'],
+                    'quantity_after' => $deductResult['quantity_after'],
+                    'unit_cost' => $branchProduct->cost_price,
+                    'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
+                    'reference_number' => $saleNumber,
+                    'notes' => "Sale: {$saleNumber}",
+                ];
+                if ($deductResult['stock_tracked']) {
+                    $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
+                    $invPayload['store_quantity'] = -$deductResult['from_store'];
+                    $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
+                    $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
+                    $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
+                    $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
+                }
+                if ($batchId !== null) {
+                    $invPayload['batch_id'] = $batchId;
+                }
+                $invTransaction = InventoryTransaction::create($invPayload);
+
+                if ($batchId === null && $qtyForBatch > 0) {
+                    $this->batchService->allocateStockOut(
+                        $productId,
+                        $branchId,
+                        $qtyForBatch,
+                        $invTransaction,
+                        ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                    );
+                }
             }
         }
 

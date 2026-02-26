@@ -296,6 +296,49 @@ class QuickSaleTest extends TestCase
 
         $quickSale->refresh();
         $this->assertEquals(QuickSale::STATUS_ACTIVE, $quickSale->status);
+
+        $branchProduct = BranchProduct::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->first();
+        $this->assertNotNull($branchProduct);
+        $this->assertEquals('percentage', $branchProduct->discount_type);
+        $this->assertEquals(20, (float) $branchProduct->discount_amount);
+    }
+
+    /** @test */
+    public function ending_active_quick_sale_removes_branch_product_discount()
+    {
+        $branchProduct = BranchProduct::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->first();
+        $branchProduct->update(['discount_type' => 'percentage', 'discount_amount' => 15]);
+        $quickSale = QuickSale::create([
+            'product_id' => $this->product->id,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'requested_by' => $this->requester->id,
+            'reason' => 'Expires soon',
+            'expiry_date' => now()->addDays(3),
+            'status' => QuickSale::STATUS_ACTIVE,
+            'approved_by' => $this->approver->id,
+            'discount_type' => 'percentage',
+            'discount_value' => 15,
+            'start_time' => now()->subHour(),
+            'end_time' => now()->addDays(2),
+        ]);
+
+        $response = $this->actingAs($this->approver)
+            ->postJson("/api/quick-sales/{$quickSale->id}/end", [], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200);
+        $quickSale->refresh();
+        $this->assertEquals(QuickSale::STATUS_ENDED, $quickSale->status);
+
+        $branchProduct->refresh();
+        $this->assertNull($branchProduct->discount_type);
+        $this->assertNull($branchProduct->discount_amount);
     }
 
     /** @test */

@@ -340,6 +340,86 @@ class UserBusinessController extends Controller
     }
 
     /**
+     * Set password for a user in the business (requires "set user password" permission or owner).
+     */
+    public function setPassword(Request $request, int $userId): \Illuminate\Http\JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('set user password')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'password' => ['nullable', 'string', 'min:8', 'confirmed'],
+        ], [
+            'password.min' => 'Password must be at least 8 characters.',
+            'password.confirmed' => 'Password confirmation does not match.',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $targetUser = User::find($userId);
+        if (! $targetUser) {
+            return response()->json(['message' => 'User not found'], 404);
+        }
+
+        $exists = $business->users()->where('users.id', $targetUser->id)->exists();
+        if (! $exists) {
+            return response()->json([
+                'message' => 'User is not a member of this business',
+            ], 404);
+        }
+
+        $passwordProvided = $request->filled('password');
+        $newPassword = $passwordProvided
+            ? $request->input('password')
+            : Str::random(16);
+
+        $targetUser->update([
+            'password' => Hash::make($newPassword),
+        ]);
+
+        $data = [
+            'user' => [
+                'id' => $targetUser->id,
+                'name' => $targetUser->name,
+                'email' => $targetUser->email,
+            ],
+        ];
+        if (! $passwordProvided) {
+            $data['password'] = $newPassword;
+        }
+
+        return response()->json([
+            'message' => 'Password updated successfully',
+            'data' => $data,
+        ]);
+    }
+
+    /**
      * Remove a user from a business
      */
     public function destroy(Request $request, int $userId)

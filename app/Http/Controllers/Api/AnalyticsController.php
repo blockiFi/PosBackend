@@ -38,15 +38,21 @@ class AnalyticsController extends Controller
 
         $request->validate([
             'period' => 'sometimes|in:today,week,month,year,custom',
-            'start_date' => 'required_if:period,custom|date',
-            'end_date' => 'required_if:period,custom|date|after_or_equal:start_date',
+            'start_date' => 'required_if:period,custom|required_with:end_date|date',
+            'end_date' => 'required_if:period,custom|required_with:start_date|date|after_or_equal:start_date',
             'compare_previous' => 'sometimes|boolean',
         ]);
 
         $period = $request->input('period', 'month');
         $comparePrevious = $request->input('compare_previous', true);
+        $startDateInput = $request->input('start_date');
+        $endDateInput = $request->input('end_date');
 
-        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
+        if ($startDateInput && $endDateInput) {
+            $period = 'custom';
+        }
+
+        [$startDate, $endDate] = $this->getDateRange($period, $startDateInput, $endDateInput);
 
         $cacheKey = "org_analytics_{$businessId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
 
@@ -670,6 +676,13 @@ class AnalyticsController extends Controller
 
     private function getDateRange($period, $customStart = null, $customEnd = null)
     {
+        if ($customStart !== null && $customStart !== '' && $customEnd !== null && $customEnd !== '') {
+            return [
+                Carbon::parse($customStart)->startOfDay(),
+                Carbon::parse($customEnd)->endOfDay(),
+            ];
+        }
+
         $endDate = Carbon::now();
 
         switch ($period) {

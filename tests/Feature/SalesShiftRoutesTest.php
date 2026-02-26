@@ -454,19 +454,40 @@ class SalesShiftRoutesTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'data' => [
-                    '*' => [
-                        'id',
-                        'shift_number',
-                        'status',
-                        'start_time',
-                        'user',
-                        'branch',
+                'shifts' => [
+                    'data' => [
+                        '*' => [
+                            'id',
+                            'shift_number',
+                            'status',
+                            'start_time',
+                            'user',
+                            'branch',
+                        ],
+                    ],
+                ],
+                'statistics' => [
+                    'total_shifts_count',
+                    'total_gross_sales',
+                    'total_transactions',
+                    'shifts_by_status' => [
+                        'open',
+                        'closed',
+                        'paused',
+                    ],
+                    'average_basket_value',
+                    'sales_by_payment_type' => [
+                        'cash' => ['amount', 'percentage'],
+                        'card' => ['amount', 'percentage'],
+                        'other' => ['amount', 'percentage'],
                     ],
                 ],
             ]);
 
-        $this->assertEquals(2, count($response->json('data')));
+        $this->assertEquals(2, count($response->json('shifts.data')));
+        $this->assertEquals(2, $response->json('statistics.total_shifts_count'));
+        $this->assertEquals(1, $response->json('statistics.shifts_by_status.open'));
+        $this->assertEquals(1, $response->json('statistics.shifts_by_status.closed'));
     }
 
     public function test_can_view_shift_details()

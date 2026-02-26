@@ -7,6 +7,8 @@ use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\PaymentMethod;
 use App\Models\Product;
+use App\Models\ProductBatch;
+use App\Models\QuickSale;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -135,5 +137,57 @@ class SaleRoutesTest extends TestCase
 
         $response = $this->actingAs($unprivilegedUser, 'sanctum')->getJson('/api/sales?current_business_id='.$this->business->id);
         $response->assertStatus(403);
+    }
+
+    public function test_sale_deducts_from_active_quick_sale_batch_when_present(): void
+    {
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'current_quantity' => 20,
+            'received_quantity' => 20,
+            'status' => 'active',
+            'expiry_date' => now()->addMonths(1),
+        ]);
+        QuickSale::create([
+            'product_id' => $this->product->id,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'batch_id' => $batch->id,
+            'requested_by' => $this->user->id,
+            'reason' => 'Test quick sale for batch deduction',
+            'expiry_date' => now()->addDays(7),
+            'status' => QuickSale::STATUS_ACTIVE,
+            'discount_type' => 'percentage',
+            'discount_value' => 10,
+            'start_time' => now()->subHour(),
+            'end_time' => now()->addDays(1),
+        ]);
+
+        $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 3]],
+            'payments' => [['payment_method_id' => $pm->id, 'amount' => 270]],
+        ]);
+
+        $response->assertStatus(201);
+        $sale = Sale::latest()->first();
+        $this->assertNotNull($sale);
+        $saleItem = $sale->items()->first();
+        $this->assertEquals($batch->id, $saleItem->batch_id);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'reference_number' => $sale->sale_number,
+            'type' => 'sale',
+            'batch_id' => $batch->id,
+            'quantity' => -3,
+        ]);
+        $batch->refresh();
+        $this->assertEquals(17, $batch->current_quantity);
     }
 }

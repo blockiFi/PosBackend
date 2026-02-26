@@ -3,12 +3,16 @@
 namespace Tests\Feature\Sync;
 
 use App\Models\Branch;
+use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\Customer;
 use App\Models\DeviceRegistration;
 use App\Models\PaymentMethod;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\ProductCategory;
+use App\Models\QuickSale;
+use App\Models\Sale;
 use App\Models\SyncSession;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -215,6 +219,13 @@ class SyncControllerTest extends TestCase
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
         ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
         $paymentMethod = PaymentMethod::factory()->create([
             'business_id' => $this->business->id,
         ]);
@@ -285,6 +296,161 @@ class SyncControllerTest extends TestCase
             'sale_number' => $saleNumber,
             'origin' => 'offline',
         ]);
+
+        $this->assertDatabaseHas('inventory_transactions', [
+            'reference_number' => $saleNumber,
+            'type' => 'sale',
+            'quantity' => -2,
+        ]);
+        $branchProduct->refresh();
+        $this->assertEquals(8, $branchProduct->stock_quantity, 'Stock should be decremented by 2');
+    }
+
+    /** @test */
+    public function it_rejects_push_sale_when_product_has_no_branch_product()
+    {
+        $device = $this->registerDevice();
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $clientUuid = Str::uuid()->toString();
+        $saleNumber = 'SALE-REJECT-'.time();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => $clientUuid,
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'sale_type' => 'pos',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 100.00,
+                        'total_amount' => 115.00,
+                        'payment_status' => 'paid',
+                        'status' => 'completed',
+                        'items' => [
+                            [
+                                'product_id' => $product->id,
+                                'quantity' => 2,
+                                'unit_price' => 50.00,
+                                'subtotal' => 100.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 115.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, $response->json('results.sales.rejected'));
+        $this->assertDatabaseMissing('sales', ['client_uuid' => $clientUuid]);
+    }
+
+    /** @test */
+    public function it_deducts_from_active_quick_sale_batch_when_pushing_sale()
+    {
+        $device = $this->registerDevice();
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 20,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'current_quantity' => 15,
+            'received_quantity' => 15,
+            'status' => 'active',
+            'expiry_date' => now()->addMonths(1),
+        ]);
+        QuickSale::create([
+            'product_id' => $product->id,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'batch_id' => $batch->id,
+            'requested_by' => $this->user->id,
+            'reason' => 'Test quick sale for sync batch deduction',
+            'expiry_date' => now()->addDays(7),
+            'status' => QuickSale::STATUS_ACTIVE,
+            'discount_type' => 'percentage',
+            'discount_value' => 10,
+            'start_time' => now()->subHour(),
+            'end_time' => now()->addDays(1),
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+
+        $clientUuid = Str::uuid()->toString();
+        $saleNumber = 'SALE-QS-'.time();
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => $clientUuid,
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'sale_type' => 'pos',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 135.00,
+                        'total_amount' => 135.00,
+                        'payment_status' => 'paid',
+                        'status' => 'completed',
+                        'items' => [
+                            [
+                                'product_id' => $product->id,
+                                'quantity' => 3,
+                                'unit_price' => 45.00,
+                                'subtotal' => 135.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 135.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, $response->json('results.sales.accepted'));
+        $sale = Sale::where('client_uuid', $clientUuid)->first();
+        $this->assertNotNull($sale);
+        $saleItem = $sale->items()->first();
+        $this->assertEquals($batch->id, $saleItem->batch_id);
+        $this->assertDatabaseHas('inventory_transactions', [
+            'reference_number' => $saleNumber,
+            'type' => 'sale',
+            'batch_id' => $batch->id,
+            'quantity' => -3,
+        ]);
+        $batch->refresh();
+        $this->assertEquals(12, $batch->current_quantity);
     }
 
     /** @test */
@@ -434,6 +600,11 @@ class SyncControllerTest extends TestCase
     {
         $device = $this->registerDevice();
         $product = Product::factory()->create(['business_id' => $this->business->id]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+        ]);
         $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
 
         $this->postJson('/api/sync/push', [
@@ -484,6 +655,62 @@ class SyncControllerTest extends TestCase
 
         $session = SyncSession::where('session_id', $sessionId)->first();
         $this->assertEquals(1, $session->records_pushed);
+    }
+
+    /** @test */
+    public function it_returns_online_devices_last_seen_within_five_minutes()
+    {
+        DeviceRegistration::create([
+            'device_id' => 'ONLINE-DEVICE-1',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'device_name' => 'Online Device',
+            'device_type' => 'desktop',
+            'status' => 'active',
+            'last_seen_at' => now(),
+        ]);
+
+        DeviceRegistration::create([
+            'device_id' => 'OFFLINE-DEVICE-1',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'device_name' => 'Offline Device',
+            'device_type' => 'mobile',
+            'status' => 'active',
+            'last_seen_at' => now()->subMinutes(10),
+        ]);
+
+        $response = $this->getJson('/api/sync/online-devices', [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertStatus(200)
+            ->assertJsonStructure(['data' => [['id', 'device_id', 'device_name', 'last_seen_at', 'branch', 'user']]]);
+        $this->assertCount(1, $response->json('data'));
+        $this->assertEquals('ONLINE-DEVICE-1', $response->json('data.0.device_id'));
+    }
+
+    /** @test */
+    public function it_requires_sync_data_permission_for_online_devices()
+    {
+        $this->user->revokePermissionTo('sync data');
+
+        $response = $this->getJson('/api/sync/online-devices', [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertStatus(403);
+    }
+
+    /** @test */
+    public function it_returns_400_when_business_context_missing_for_online_devices()
+    {
+        $response = $this->getJson('/api/sync/online-devices');
+
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Business context is required');
     }
 
     // Helper Methods

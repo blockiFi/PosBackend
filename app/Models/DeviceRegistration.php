@@ -74,6 +74,14 @@ class DeviceRegistration extends Model
     }
 
     /**
+     * Scope to devices last seen within the given minutes.
+     */
+    public function scopeOnline($query, int $withinMinutes = 5)
+    {
+        return $query->where('last_seen_at', '>=', now()->subMinutes($withinMinutes));
+    }
+
+    /**
      * Methods
      */
     public function updateLastSeen(): void

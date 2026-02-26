@@ -329,30 +329,30 @@ class BatchController extends Controller
         $batches = $query->expired()
             ->where('current_quantity', '>', 0)
             ->orderBy('expiry_date', 'desc')
-            ->get()
-            ->map(function ($batch) {
-                return [
-                    'id' => $batch->id,
-                    'uuid' => $batch->uuid,
-                    'batch_number' => $batch->batch_number,
-                    'lot_number' => $batch->lot_number,
-                    'product' => [
-                        'id' => $batch->product->id,
-                        'name' => $batch->product->name,
-                        'sku' => $batch->product->sku,
-                    ],
-                    'branch' => [
-                        'id' => $batch->branch->id,
-                        'name' => $batch->branch->name,
-                    ],
-                    'expiry_date' => $batch->expiry_date?->format('Y-m-d'),
-                    'current_quantity' => $batch->current_quantity,
-                    'unit_cost' => $batch->unit_cost,
-                    'total_value' => $batch->current_quantity * $batch->unit_cost,
-                    'status' => $batch->status,
-                    'quick_sale_requested' => $batch->quick_sale_requested,
-                ];
-            });
+            ->get();
+        // ->map(function ($batch) {
+        //     return [
+        //         'id' => $batch->id,
+        //         'uuid' => $batch->uuid,
+        //         'batch_number' => $batch->batch_number,
+        //         'lot_number' => $batch->lot_number,
+        //         'product' => [
+        //             'id' => $batch->product->id,
+        //             'name' => $batch->product->name,
+        //             'sku' => $batch->product->sku,
+        //         ],
+        //         'branch' => [
+        //             'id' => $batch->branch->id,
+        //             'name' => $batch->branch->name,
+        //         ],
+        //         'expiry_date' => $batch->expiry_date?->format('Y-m-d'),
+        //         'current_quantity' => $batch->current_quantity,
+        //         'unit_cost' => $batch->unit_cost,
+        //         'total_value' => $batch->current_quantity * $batch->unit_cost,
+        //         'status' => $batch->status,
+        //         'quick_sale_requested' => $batch->quick_sale_requested,
+        //     ];
+        // });
 
         $totalValue = $batches->sum('total_value');
 

@@ -1822,6 +1822,152 @@
                     "response": []
                 },
                 {
+                    "name": "List Product Units",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/{{product_id}}/units",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "{{product_id}}",
+                                "units"
+                            ]
+                        },
+                        "description": "List unit definitions for a product (e.g. piece, pack of 6, carton). Used for tiered pricing. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Product Unit",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/{{product_id}}/units",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "{{product_id}}",
+                                "units"
+                            ]
+                        },
+                        "description": "Create a unit definition for a product. Body: name (e.g. \\\"Pack of 6\\\"), quantity_multiplier (>=1), optional min_quantity and display_order.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Pack of 6\",\n  \"quantity_multiplier\": 6,\n  \"min_quantity\": null,\n  \"display_order\": 0\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Product Unit",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/{{product_id}}/units/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "{{product_id}}",
+                                "units",
+                                "1"
+                            ]
+                        },
+                        "description": "Update a unit definition. Same fields as create (all optional).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Pack of 12\",\n  \"quantity_multiplier\": 12\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Product Unit",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/products/{{product_id}}/units/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "products",
+                                "{{product_id}}",
+                                "units",
+                                "1"
+                            ]
+                        },
+                        "description": "Delete a unit definition. Only allowed when not used in active pricing."
+                    },
+                    "response": []
+                },
+                {
                     "name": "Get Products by Branch",
                     "request": {
                         "method": "GET",
@@ -2029,6 +2175,338 @@
                             ]
                         },
                         "description": "Get one branch product. Replace 1 with branch_product id. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Branch Product Tiered Price",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/price",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "price"
+                            ],
+                            "query": [
+                                {
+                                    "key": "quantity",
+                                    "value": "6"
+                                }
+                            ]
+                        },
+                        "description": "Compute effective unit price and total for a quantity using unit packs and quantity tiers. Query: quantity (required). X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Branch Product Unit Prices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/unit-prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "unit-prices"
+                            ]
+                        },
+                        "description": "List unit-specific prices for this branch product (e.g. pack of 6, carton). X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Branch Product Unit Price",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/unit-prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "unit-prices"
+                            ]
+                        },
+                        "description": "Create a unit price for this branch product. Body: product_unit_id, selling_price.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_unit_id\": 1,\n  \"selling_price\": 2500\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Branch Product Unit Price",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/unit-prices/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "unit-prices",
+                                "1"
+                            ]
+                        },
+                        "description": "Update a unit price. Body: selling_price.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"selling_price\": 2600\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Branch Product Unit Price",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/unit-prices/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "unit-prices",
+                                "1"
+                            ]
+                        },
+                        "description": "Delete unit price for this branch product."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Branch Product Quantity Tiers",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "quantity-tiers"
+                            ]
+                        },
+                        "description": "List quantity-based price tiers (e.g. 1\u20135 = 500, 6\u201319 = 450, 20+ = 400). X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Branch Product Quantity Tier",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "quantity-tiers"
+                            ]
+                        },
+                        "description": "Create quantity-based price tier. Body: min_quantity, optional max_quantity, price_per_unit.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"min_quantity\": 6,\n  \"max_quantity\": 19,\n  \"price_per_unit\": 450\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Branch Product Quantity Tier",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "quantity-tiers",
+                                "1"
+                            ]
+                        },
+                        "description": "Update quantity-based price tier.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"min_quantity\": 20,\n  \"max_quantity\": null,\n  \"price_per_unit\": 400\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Branch Product Quantity Tier",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "branch-products",
+                                "1",
+                                "quantity-tiers",
+                                "1"
+                            ]
+                        },
+                        "description": "Delete quantity-based price tier."
                     },
                     "response": []
                 },
@@ -2824,7 +3302,7 @@
         },
         {
             "name": "13. Sales",
-            "description": "Sales (POS). Create sale with branch_id, items (product_id, quantity, unit_price), payments. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.",
+            "description": "Sales (POS). Create sale with branch_id and items. Unit price can be computed automatically from tiered pricing (units and quantity tiers), or overridden when the user has the override sale price permission. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.",
             "item": [
                 {
                     "name": "List Sales",
@@ -2886,7 +3364,7 @@
                                 "sales"
                             ]
                         },
-                        "description": "Create sale. branch_id, items required. items: product_id, quantity, unit_price; optional discount_percentage, tax_rate. payments optional: payment_method_id, amount, reference_number. customer_id, shift_id optional. sale_type: pos|online|delivery|wholesale. Shift must be open.",
+                        "description": "Create sale. branch_id, items required. items: product_id, quantity; optional unit_price (manual override, requires override sale price permission), discount_percentage, tax_rate. payments optional: payment_method_id, amount, reference_number. customer_id, shift_id optional. sale_type: pos|online|delivery|wholesale. Shift must be open.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"customer_id\": null,\n  \"shift_id\": null,\n  \"sale_type\": \"pos\",\n  \"discount_amount\": 0,\n  \"notes\": null,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2,\n      \"unit_price\": 29.99,\n      \"discount_percentage\": 0,\n      \"tax_rate\": 10\n    }\n  ],\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 65.98,\n      \"reference_number\": null\n    }\n  ]\n}"
