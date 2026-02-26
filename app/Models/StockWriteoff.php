@@ -7,6 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
+/**
+ * @property-read \App\Models\ProductBatch|null $batch
+ */
 class StockWriteoff extends Model
 {
     use HasFactory, SoftDeletes;
@@ -16,6 +19,7 @@ class StockWriteoff extends Model
         'branch_id',
         'branch_product_id',
         'product_id',
+        'batch_id',
         'sku',
         'quantity',
         'source',
@@ -70,6 +74,14 @@ class StockWriteoff extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    /**
+     * Get the batch this write-off is for (when source is batch)
+     */
+    public function batch(): BelongsTo
+    {
+        return $this->belongsTo(ProductBatch::class, 'batch_id');
     }
 
     /**

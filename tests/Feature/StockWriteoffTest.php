@@ -6,6 +6,7 @@ use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\StockWriteoff;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -580,5 +581,314 @@ class StockWriteoffTest extends TestCase
         $this->assertEquals($this->user->id, $writeoff->written_off_by);
         $this->assertNotNull($writeoff->written_off_at);
         $this->assertTrue($writeoff->written_off_at->greaterThanOrEqualTo($beforeWriteoff));
+    }
+
+    public function test_write_off_batch_success_depletes_batch_and_reduces_stock(): void
+    {
+        $this->branchProduct->update([
+            'shelf_quantity' => 30,
+            'store_quantity' => 120,
+            'stock_quantity' => 150,
+        ]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-WO-001',
+            'received_quantity' => 50,
+            'current_quantity' => 50,
+            'unit_cost' => 10.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'reason' => 'Expired batch write-off',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('message', 'Batch written off successfully')
+            ->assertJsonPath('data.quantity', 50)
+            ->assertJsonPath('data.source', 'batch')
+            ->assertJsonPath('data.reason', 'Expired batch write-off')
+            ->assertJsonPath('data.batch_id', $batch->id);
+
+        $batch->refresh();
+        $this->assertEquals(0, $batch->current_quantity);
+        $this->assertEquals('depleted', $batch->status);
+
+        $this->branchProduct->refresh();
+        $this->assertEquals(100, $this->branchProduct->stock_quantity);
+        $this->assertEquals(30, $this->branchProduct->shelf_quantity);
+        $this->assertEquals(70, $this->branchProduct->store_quantity);
+        $this->assertEquals($this->branchProduct->shelf_quantity + $this->branchProduct->store_quantity, $this->branchProduct->stock_quantity);
+
+        $this->assertDatabaseHas('stock_writeoffs', [
+            'batch_id' => $batch->id,
+            'product_id' => $this->product->id,
+            'quantity' => 50,
+            'source' => 'batch',
+            'reason' => 'Expired batch write-off',
+        ]);
+
+        $this->assertDatabaseHas('inventory_transactions', [
+            'batch_id' => $batch->id,
+            'product_id' => $this->product->id,
+            'type' => 'damage',
+            'quantity' => -50,
+        ]);
+    }
+
+    public function test_write_off_batch_validates_batch_id_and_reason(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_id', 'reason']);
+    }
+
+    public function test_write_off_batch_rejects_zero_remaining_quantity(): void
+    {
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-EMPTY',
+            'received_quantity' => 20,
+            'current_quantity' => 0,
+            'unit_cost' => 5.00,
+            'status' => 'depleted',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'reason' => 'Some reason',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_id'])
+            ->assertJsonPath('errors.batch_id.0', 'Batch has no remaining quantity to write off.');
+    }
+
+    public function test_write_off_batch_rejects_insufficient_branch_stock(): void
+    {
+        $this->branchProduct->update([
+            'shelf_quantity' => 5,
+            'store_quantity' => 5,
+            'stock_quantity' => 10,
+        ]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-BIG',
+            'received_quantity' => 50,
+            'current_quantity' => 50,
+            'unit_cost' => 10.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'reason' => 'Reason',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_id']);
+        $this->assertStringContainsString('Insufficient branch stock', $response->json('errors.batch_id.0'));
+    }
+
+    public function test_write_off_batch_rejects_batch_from_other_business(): void
+    {
+        $otherBusiness = Business::factory()->create();
+        $otherBranch = Branch::factory()->create(['business_id' => $otherBusiness->id]);
+        $otherProduct = Product::factory()->create(['business_id' => $otherBusiness->id]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $otherBusiness->id,
+            'branch_id' => $otherBranch->id,
+            'product_id' => $otherProduct->id,
+            'batch_number' => 'BATCH-OTHER',
+            'received_quantity' => 20,
+            'current_quantity' => 20,
+            'unit_cost' => 5.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'reason' => 'Reason',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_id']);
+    }
+
+    public function test_write_off_batch_requires_write_off_stock_permission(): void
+    {
+        $userNoPermission = User::factory()->create();
+        $userNoPermission->businesses()->attach($this->business->id, ['is_active' => true]);
+
+        $this->branchProduct->update(['shelf_quantity' => 50, 'store_quantity' => 50, 'stock_quantity' => 100]);
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-PERM',
+            'received_quantity' => 20,
+            'current_quantity' => 20,
+            'unit_cost' => 5.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($userNoPermission, 'sanctum')
+            ->postJson('/api/stock-writeoffs/writeoff-batch', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'reason' => 'Reason',
+            ]);
+
+        $response->assertStatus(403);
+    }
+
+    public function test_can_write_off_with_batch_id_quantity_and_source(): void
+    {
+        $this->branchProduct->update([
+            'shelf_quantity' => 30,
+            'store_quantity' => 70,
+            'stock_quantity' => 100,
+        ]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-PARTIAL',
+            'received_quantity' => 20,
+            'current_quantity' => 20,
+            'unit_cost' => 10.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'quantity' => 5,
+                'source' => 'shelf',
+                'reason' => 'Partial batch write-off from shelf',
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJsonPath('message', 'Stock written off successfully')
+            ->assertJsonPath('data.batch_id', $batch->id)
+            ->assertJsonPath('data.quantity', 5)
+            ->assertJsonPath('data.source', 'shelf')
+            ->assertJsonPath('data.reason', 'Partial batch write-off from shelf');
+
+        $batch->refresh();
+        $this->assertEquals(15, $batch->current_quantity);
+
+        $this->branchProduct->refresh();
+        $this->assertEquals(25, $this->branchProduct->shelf_quantity);
+        $this->assertEquals(70, $this->branchProduct->store_quantity);
+        $this->assertEquals(95, $this->branchProduct->stock_quantity);
+        $this->assertEquals($this->branchProduct->shelf_quantity + $this->branchProduct->store_quantity, $this->branchProduct->stock_quantity);
+
+        $this->assertDatabaseHas('stock_writeoffs', [
+            'batch_id' => $batch->id,
+            'product_id' => $this->product->id,
+            'quantity' => 5,
+            'source' => 'shelf',
+            'reason' => 'Partial batch write-off from shelf',
+        ]);
+    }
+
+    public function test_write_off_with_batch_id_rejects_quantity_exceeding_batch(): void
+    {
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-SMALL',
+            'received_quantity' => 5,
+            'current_quantity' => 5,
+            'unit_cost' => 5.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'quantity' => 10,
+                'source' => 'shelf',
+                'reason' => 'Too much',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['quantity']);
+        $this->assertStringContainsString('exceed batch remaining quantity', $response->json('errors.quantity.0'));
+    }
+
+    public function test_write_off_with_batch_id_rejects_quantity_exceeding_source(): void
+    {
+        $this->branchProduct->update([
+            'shelf_quantity' => 3,
+            'store_quantity' => 50,
+            'stock_quantity' => 53,
+        ]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'batch_number' => 'BATCH-STORE',
+            'received_quantity' => 20,
+            'current_quantity' => 20,
+            'unit_cost' => 5.00,
+            'status' => 'active',
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => $batch->id,
+                'quantity' => 10,
+                'source' => 'shelf',
+                'reason' => 'Shelf has only 3',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['quantity']);
+        $this->assertStringContainsString('Insufficient stock on shelf', $response->json('errors.quantity.0'));
+    }
+
+    public function test_write_off_with_batch_id_rejects_invalid_batch(): void
+    {
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/stock-writeoffs', [
+                'current_business_id' => $this->business->id,
+                'batch_id' => 99999,
+                'quantity' => 1,
+                'source' => 'shelf',
+                'reason' => 'Reason',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_id']);
     }
 }

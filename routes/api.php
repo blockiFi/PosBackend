@@ -81,6 +81,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('business-users', [UserBusinessController::class, 'index']);
         Route::post('business-users', [UserBusinessController::class, 'store']);
         Route::get('business-users/{userId}', [UserBusinessController::class, 'show']);
+        Route::put('business-users/{userId}/set-password', [UserBusinessController::class, 'setPassword']);
         Route::put('business-users/{userId}', [UserBusinessController::class, 'update']);
         Route::delete('business-users/{userId}', [UserBusinessController::class, 'destroy']);
 
@@ -210,6 +211,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Stock Write-off routes
         Route::get('stock-writeoffs', [StockWriteoffController::class, 'index']);
         Route::post('stock-writeoffs', [StockWriteoffController::class, 'store']);
+        Route::post('stock-writeoffs/writeoff-batch', [StockWriteoffController::class, 'writeOffBatch']);
         Route::get('stock-writeoffs/{id}', [StockWriteoffController::class, 'show']);
 
         // Refund Request routes (workflow system)
@@ -229,6 +231,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Offline Sync routes (Client-side sync - require business context and device ID header)
         Route::prefix('sync')->group(function () {
+            Route::get('online-devices', [SyncController::class, 'onlineDevices']);
             Route::post('register-device', [SyncController::class, 'registerDevice']);
             Route::post('bootstrap', [SyncController::class, 'bootstrap']);
             Route::post('pull', [SyncController::class, 'pull']);
