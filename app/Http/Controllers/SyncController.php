@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Traits\HasBranchAccess;
+use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\BranchProductQuantityTier;
 use App\Models\BranchProductUnitPrice;
@@ -217,6 +218,7 @@ class SyncController extends Controller
         $validator = Validator::make($request->all(), [
             'last_sync_at' => 'required|date',
             'business_id' => 'nullable|exists:businesses,id',
+            'branch_id' => 'nullable|exists:branches,id',
             'entities' => 'nullable|array',
             'limit' => 'nullable|integer|min:1|max:1000',
         ]);
@@ -243,16 +245,29 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
+        if ($request->filled('branch_id')) {
+            $branch = Branch::where('id', $request->branch_id)
+                ->where('business_id', $businessId)
+                ->first();
+            if (! $branch) {
+                return response()->json(['success' => false, 'message' => 'Branch not found or does not belong to business'], 404);
+            }
+            if (! $this->userHasBranchAccess($user, $businessId, (int) $request->branch_id)) {
+                return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
+            }
+        }
+
         $lastSyncAt = Carbon::parse($request->last_sync_at);
         $entities = $request->entities ?? ['products', 'customers', 'branch_products'];
         $limit = $request->limit ?? 500;
         $deviceId = $request->header('X-Device-Id');
+        $branchId = $request->filled('branch_id') ? (int) $request->branch_id : null;
 
         $sessionId = Str::uuid()->toString();
         $changes = [];
 
         foreach ($entities as $entity) {
-            $changes[$entity] = $this->getEntityChanges($entity, $businessId, $lastSyncAt, $deviceId, $limit);
+            $changes[$entity] = $this->getEntityChanges($entity, $businessId, $lastSyncAt, $deviceId, $limit, $branchId);
         }
 
         return response()->json([
@@ -514,7 +529,7 @@ class SyncController extends Controller
     /**
      * Helper: Get entity changes since timestamp
      */
-    private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit)
+    private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit, $branchId = null)
     {
         $changes = [
             'created' => [],
@@ -548,6 +563,30 @@ class SyncController extends Controller
                 $updated = Customer::where('business_id', $businessId)
                     ->where('updated_at', '>', $since)
                     ->where('created_at', '<=', $since)
+                    ->limit($limit)
+                    ->get();
+
+                $changes['created'] = $created;
+                $changes['updated'] = $updated;
+                break;
+
+            case 'branch_products':
+                $branchIds = $branchId !== null
+                    ? Branch::where('id', $branchId)->where('business_id', $businessId)->pluck('id')
+                    : Branch::where('business_id', $businessId)->pluck('id');
+
+                $created = BranchProduct::query()
+                    ->whereIn('branch_id', $branchIds)
+                    ->where('created_at', '>', $since)
+                    ->with('product')
+                    ->limit($limit)
+                    ->get();
+
+                $updated = BranchProduct::query()
+                    ->whereIn('branch_id', $branchIds)
+                    ->where('updated_at', '>', $since)
+                    ->where('created_at', '<=', $since)
+                    ->with('product')
                     ->limit($limit)
                     ->get();
 
