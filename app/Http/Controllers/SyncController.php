@@ -148,14 +148,14 @@ class SyncController extends Controller
         $sessionId = Str::uuid()->toString();
         $data = [];
 
-        // Load requested entities
-        if (in_array('products', $entities)) {
-            $data['products'] = Product::where('business_id', $businessId)
-                // ->select('id', 'uuid', 'business_id', 'category_id', 'name', 'sku', 'barcode',
-                //          'description', 'base_selling_price', 'base_cost_price', 'stock_tracking',
-                //          'version', 'synced_at')
-                ->get();
-        }
+        // // Load requested entities
+        // if (in_array('products', $entities)) {
+        //     $data['products'] = Product::where('business_id', $businessId)
+        //         // ->select('id', 'uuid', 'business_id', 'category_id', 'name', 'sku', 'barcode',
+        //         //          'description', 'base_selling_price', 'base_cost_price', 'stock_tracking',
+        //         //          'version', 'synced_at')
+        //         ->get();
+        // }
 
         if (in_array('categories', $entities)) {
             $data['categories'] = ProductCategory::where('business_id', $businessId)
@@ -176,9 +176,15 @@ class SyncController extends Controller
                 ->get();
         }
 
-        if (in_array('branch_products', $entities)) {
-            $data['branch_products'] = BranchProduct::where('branch_id', $branchId)
-                ->get();
+        if (in_array('products', $entities)) {
+            $data['products'] = BranchProduct::where('branch_id', $branchId)
+                ->with(['product', 'product.category'])
+                ->get()
+                ->map(
+                    function ($branchProduct) {
+                        return $this->transformBranchProduct($branchProduct);
+                    }
+                );
         }
 
         if (in_array('product_units', $entities)) {
@@ -218,7 +224,7 @@ class SyncController extends Controller
         $validator = Validator::make($request->all(), [
             'last_sync_at' => 'required|date',
             'business_id' => 'nullable|exists:businesses,id',
-            'branch_id' => 'nullable|exists:branches,id',
+            'branch_id' => 'required|exists:branches,id',
             'entities' => 'nullable|array',
             'limit' => 'nullable|integer|min:1|max:1000',
         ]);
@@ -245,24 +251,21 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
-        if ($request->filled('branch_id')) {
-            $branch = Branch::where('id', $request->branch_id)
-                ->where('business_id', $businessId)
-                ->first();
-            if (! $branch) {
-                return response()->json(['success' => false, 'message' => 'Branch not found or does not belong to business'], 404);
-            }
-            if (! $this->userHasBranchAccess($user, $businessId, (int) $request->branch_id)) {
-                return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
-            }
+        $branch = Branch::where('id', $request->branch_id)
+            ->where('business_id', $businessId)
+            ->first();
+        if (! $branch) {
+            return response()->json(['success' => false, 'message' => 'Branch not found or does not belong to business'], 404);
+        }
+        if (! $this->userHasBranchAccess($user, $businessId, (int) $request->branch_id)) {
+            return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
         }
 
         $lastSyncAt = Carbon::parse($request->last_sync_at);
         $entities = $request->entities ?? ['products', 'customers', 'branch_products'];
         $limit = $request->limit ?? 500;
         $deviceId = $request->header('X-Device-Id');
-        $branchId = $request->filled('branch_id') ? (int) $request->branch_id : null;
-
+        $branchId = (int) $request->branch_id;
         $sessionId = Str::uuid()->toString();
         $changes = [];
 
@@ -529,7 +532,7 @@ class SyncController extends Controller
     /**
      * Helper: Get entity changes since timestamp
      */
-    private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit, $branchId = null)
+    private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit, $branchId)
     {
         $changes = [
             'created' => [],
@@ -538,22 +541,6 @@ class SyncController extends Controller
         ];
 
         switch ($entity) {
-            case 'products':
-                $created = Product::where('business_id', $businessId)
-                    ->where('created_at', '>', $since)
-                    ->limit($limit)
-                    ->get();
-
-                $updated = Product::where('business_id', $businessId)
-                    ->where('updated_at', '>', $since)
-                    ->where('created_at', '<=', $since)
-                    ->limit($limit)
-                    ->get();
-
-                $changes['created'] = $created;
-                $changes['updated'] = $updated;
-                break;
-
             case 'customers':
                 $created = Customer::where('business_id', $businessId)
                     ->where('created_at', '>', $since)
@@ -570,25 +557,47 @@ class SyncController extends Controller
                 $changes['updated'] = $updated;
                 break;
 
-            case 'branch_products':
-                $branchIds = $branchId !== null
-                    ? Branch::where('id', $branchId)->where('business_id', $businessId)->pluck('id')
-                    : Branch::where('business_id', $businessId)->pluck('id');
+            // case 'products':
+            //     $created = Product::where('business_id', $businessId)
+            //         ->where('created_at', '>', $since)
+            //         ->limit($limit)
+            //         ->get();
 
-                $created = BranchProduct::query()
-                    ->whereIn('branch_id', $branchIds)
+            //     $updated = Product::where('business_id', $businessId)
+            //         ->where('updated_at', '>', $since)
+            //         ->where('created_at', '<=', $since)
+            //         ->limit($limit)
+            //         ->get();
+
+            //     $changes['created'] = $created;
+            //     $changes['updated'] = $updated;
+            //     break;
+
+            case 'products':
+                $baseQuery = BranchProduct::query()
+                    ->with(['product', 'product.category'])
+                    ->whereHas('branch', function ($query) use ($businessId) {
+                        $query->where('business_id', $businessId);
+                    });
+
+                if ($branchId !== null) {
+                    $baseQuery->where('branch_id', $branchId);
+                }
+
+                $created = (clone $baseQuery)
                     ->where('created_at', '>', $since)
-                    ->with('product')
+                    ->with(['product', 'product.category'])
                     ->limit($limit)
-                    ->get();
+                    ->get()
+                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct));
 
-                $updated = BranchProduct::query()
-                    ->whereIn('branch_id', $branchIds)
+                $updated = (clone $baseQuery)
                     ->where('updated_at', '>', $since)
                     ->where('created_at', '<=', $since)
-                    ->with('product')
+                    ->with(['product', 'product.category'])
                     ->limit($limit)
-                    ->get();
+                    ->get()
+                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct));
 
                 $changes['created'] = $created;
                 $changes['updated'] = $updated;
@@ -940,6 +949,73 @@ class SyncController extends Controller
             'server_id' => $customer->id,
             'customer_code' => $customer->customer_code,
             'status' => 'synced',
+        ];
+    }
+
+    private function transformBranchProduct(BranchProduct $branchProduct): array
+    {
+        $activeQuickSale = QuickSale::getActiveQuickSale(
+            $branchProduct->product_id,
+            $branchProduct->branch_id
+        );
+
+        $quickSaleData = null;
+        if ($activeQuickSale) {
+            $quickSaleData = [
+                'id' => $activeQuickSale->id,
+                'discount_type' => $activeQuickSale->discount_type,
+                'discount_value' => $activeQuickSale->discount_value,
+                'batch_id' => $activeQuickSale->batch_id,
+                'start_time' => $activeQuickSale->start_time,
+                'end_time' => $activeQuickSale->end_time,
+                'status' => $activeQuickSale->status,
+            ];
+        }
+
+        return [
+            'id' => $branchProduct->id,
+            'branch_id' => $branchProduct->branch_id,
+            'product_id' => $branchProduct->product_id,
+            'name' => $branchProduct->product->name,
+            'sku' => $branchProduct->product->sku,
+            'barcode' => $branchProduct->product->barcode,
+            'image' => $branchProduct->product->image,
+            'category' => $branchProduct->product->category ? [
+                'id' => $branchProduct->product->category->id,
+                'name' => $branchProduct->product->category->name,
+            ] : null,
+
+            'cost_price' => $branchProduct->cost_price,
+            'selling_price' => $branchProduct->selling_price,
+            'compare_price' => $branchProduct->compare_price,
+            'discount_amount' => $branchProduct->discount_amount,
+            'discount_type' => $branchProduct->discount_type,
+            'tax_rate' => $branchProduct->tax_rate,
+            'final_price' => $branchProduct->getFinalPrice(),
+            'price_with_tax' => $branchProduct->getPriceWithTax(),
+            'profit_margin' => $branchProduct->getProfitMargin(),
+            'quick_sale' => $quickSaleData,
+
+            'stock_quantity' => $branchProduct->stock_quantity,
+            'shelf_quantity' => $branchProduct->shelf_quantity,
+            'store_quantity' => $branchProduct->store_quantity,
+            'low_stock_threshold' => $branchProduct->low_stock_threshold,
+            'allow_backorder' => $branchProduct->allow_backorder,
+            'reorder_point' => $branchProduct->reorder_point,
+            'reorder_quantity' => $branchProduct->reorder_quantity,
+            'is_in_stock' => $branchProduct->isInStock(),
+            'is_low_stock' => $branchProduct->isLowStock(),
+            'is_out_of_stock' => $branchProduct->isOutOfStock(),
+            'needs_reorder' => $branchProduct->needsReorder(),
+            'shelf_needs_restocking' => $branchProduct->shelfNeedsRestocking(),
+            'bin_location' => $branchProduct->bin_location,
+            'shelf_location' => $branchProduct->shelf_location,
+            'is_available' => $branchProduct->is_available,
+            'is_featured' => $branchProduct->is_featured,
+            'display_order' => $branchProduct->display_order,
+            'branch_meta_data' => $branchProduct->branch_meta_data,
+            'created_at' => $branchProduct->created_at,
+            'updated_at' => $branchProduct->updated_at,
         ];
     }
 }

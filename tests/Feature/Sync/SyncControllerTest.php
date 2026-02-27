@@ -186,6 +186,7 @@ class SyncControllerTest extends TestCase
             'last_sync_at' => now()->subHour()->toIso8601String(),
             'entities' => ['products'],
             'limit' => 100,
+            'branch_id' => $this->branch->id,
         ], [
             'X-Business-Id' => $this->business->id,
             'X-Device-Id' => $device->device_id,
