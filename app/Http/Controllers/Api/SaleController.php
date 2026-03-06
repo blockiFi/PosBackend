@@ -126,6 +126,7 @@ class SaleController extends Controller
             'customer_id' => 'nullable|exists:customers,id',
             'shift_id' => 'nullable|exists:sales_shifts,id',
             'sale_type' => 'nullable|in:pos,online,delivery,wholesale',
+            'reference_id' => 'nullable|string|max:255',
             'discount_amount' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
@@ -133,6 +134,7 @@ class SaleController extends Controller
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.unit_price' => 'nullable|numeric|min:0', // optional: computed from tiers unless override permission
             'items.*.batch_id' => 'nullable|exists:product_batches,id',
+            'items.*.description' => 'nullable|string',
             'items.*.discount_percentage' => 'nullable|numeric|min:0|max:100',
             'items.*.tax_rate' => 'nullable|numeric|min:0|max:100',
             'payments' => 'nullable|array',
@@ -185,6 +187,7 @@ class SaleController extends Controller
             // Create sale
             $sale = Sale::create([
                 'sale_number' => $saleNumber,
+                'reference_id' => $validated['reference_id'] ?? null,
                 'business_id' => $businessId,
                 'branch_id' => $validated['branch_id'],
                 'customer_id' => $validated['customer_id'] ?? null,
@@ -274,6 +277,7 @@ class SaleController extends Controller
                     'batch_id' => $batchId,
                     'product_name' => $product->name,
                     'product_sku' => $product->sku,
+                    'description' => $itemData['description'] ?? null,
                     'quantity' => $qty,
                     'unit_price' => $unitPrice,
                     'discount_percentage' => $itemData['discount_percentage'] ?? 0,

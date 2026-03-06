@@ -13,6 +13,7 @@ class SaleItem extends Model
         'batch_id',
         'product_name',
         'product_sku',
+        'description',
         'quantity',
         'unit_price',
         'discount_amount',

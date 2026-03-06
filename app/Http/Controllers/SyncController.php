@@ -557,21 +557,21 @@ class SyncController extends Controller
                 $changes['updated'] = $updated;
                 break;
 
-            // case 'products':
-            //     $created = Product::where('business_id', $businessId)
-            //         ->where('created_at', '>', $since)
-            //         ->limit($limit)
-            //         ->get();
+                // case 'products':
+                //     $created = Product::where('business_id', $businessId)
+                //         ->where('created_at', '>', $since)
+                //         ->limit($limit)
+                //         ->get();
 
-            //     $updated = Product::where('business_id', $businessId)
-            //         ->where('updated_at', '>', $since)
-            //         ->where('created_at', '<=', $since)
-            //         ->limit($limit)
-            //         ->get();
+                //     $updated = Product::where('business_id', $businessId)
+                //         ->where('updated_at', '>', $since)
+                //         ->where('created_at', '<=', $since)
+                //         ->limit($limit)
+                //         ->get();
 
-            //     $changes['created'] = $created;
-            //     $changes['updated'] = $updated;
-            //     break;
+                //     $changes['created'] = $created;
+                //     $changes['updated'] = $updated;
+                //     break;
 
             case 'products':
                 $baseQuery = BranchProduct::query()
@@ -725,6 +725,7 @@ class SyncController extends Controller
             'shift_id' => $shiftId,
             'customer_id' => $data['customer_id'] ?? null,
             'sale_number' => $data['sale_number'],
+            'reference_id' => $data['reference_id'] ?? null,
             'sale_type' => $data['sale_type'] ?? 'pos',
             'sale_date' => $data['sale_date'],
             'subtotal' => $data['subtotal'],
@@ -817,6 +818,7 @@ class SyncController extends Controller
                     'product_id' => $item['product_id'],
                     'product_name' => $item['product_name'] ?? $branchProduct->product?->name ?? 'Unknown Product',
                     'product_sku' => $item['product_sku'] ?? $branchProduct->product?->sku ?? null,
+                    'description' => $item['description'] ?? null,
                     'quantity' => $item['quantity'],
                     'unit_price' => $unitPrice,
                     'discount_amount' => $item['discount'] ?? 0,
