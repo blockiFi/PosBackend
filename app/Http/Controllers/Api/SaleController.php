@@ -91,7 +91,11 @@ class SaleController extends Controller
         }
 
         if ($request->filled('search')) {
-            $query->where('sale_number', 'like', '%'.$request->search.'%');
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('sale_number', 'like', '%'.$search.'%')
+                    ->orWhere('reference_id', 'like', '%'.$search.'%');
+            });
         }
 
         $sales = $query->orderBy('sale_date', 'desc')->paginate(15);
