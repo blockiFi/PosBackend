@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\Storage;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 
@@ -64,6 +63,7 @@ class User extends Authenticatable
 
     /**
      * Get the full URL for the user's profile image.
+     * Uses the app URL (e.g. posbackend-main-a1gh7m.laravel.cloud) so images are served by this app.
      */
     public function getProfileImageUrlAttribute(): ?string
     {
@@ -71,9 +71,9 @@ class User extends Authenticatable
             return null;
         }
 
-        $disk = config('filesystems.profile_image_disk', 'public');
+        $base = rtrim(config('app.url', 'http://localhost'), '/');
 
-        return Storage::disk($disk)->url($this->profile_image);
+        return $base.'/profile-images/'.basename($this->profile_image);
     }
 
     /**
