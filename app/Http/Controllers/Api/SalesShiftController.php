@@ -69,12 +69,21 @@ class SalesShiftController extends Controller
             $query->where('status', $request->status);
         }
 
-        // Filter by discrepancies
+        if ($request->filled('device_id')) {
+            $query->where('device_id', $request->device_id);
+        }
+
+        // Filter by discrepancies (variance on closed shifts or opening balance discrepancy)
         if ($request->boolean('has_discrepancy')) {
-            $query->where('status', 'closed')
-                ->where(function ($q) {
-                    $q->whereRaw('ABS(variance) >= 0.01');
+            $query->where(function ($q) {
+                $q->where(function ($sub) {
+                    $sub->where('status', 'closed')
+                        ->whereRaw('ABS(variance) >= 0.01');
+                })->orWhere(function ($sub) {
+                    $sub->whereNotNull('opening_balance_discrepancy')
+                        ->whereRaw('ABS(opening_balance_discrepancy) >= 0.01');
                 });
+            });
         }
 
         // Date filtering
@@ -279,8 +288,14 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        // device_id: required; body takes precedence over X-Device-Id header
+        $request->merge([
+            'device_id' => $request->input('device_id') ?? $request->header('X-Device-Id'),
+        ]);
+
         $validated = $request->validate([
             'branch_id' => 'required|exists:branches,id',
+            'device_id' => 'required|string|max:50',
             'opening_balance' => 'required|numeric|min:0',
             'opening_notes' => 'nullable|string',
         ]);
@@ -319,17 +334,38 @@ class SalesShiftController extends Controller
                 'business_id' => $businessId,
                 'branch_id' => $validated['branch_id'],
                 'user_id' => $user->id,
+                'device_id' => $validated['device_id'],
                 'start_time' => now(),
                 'opening_balance' => $validated['opening_balance'],
                 'opening_notes' => $validated['opening_notes'] ?? null,
                 'status' => 'open',
             ]);
 
+            // Opening balance discrepancy: compare to last closed shift on same device
+            $previousShift = SalesShift::forBusiness($businessId)
+                ->where('device_id', $shift->device_id)
+                ->where('status', 'closed')
+                ->where('id', '!=', $shift->id)
+                ->orderByDesc('end_time')
+                ->orderByDesc('id')
+                ->first();
+
+            if ($previousShift !== null && $previousShift->actual_cash !== null) {
+                $openingBalanceDiscrepancy = (float) $shift->opening_balance - (float) $previousShift->actual_cash;
+                if (abs($openingBalanceDiscrepancy) >= 0.01) {
+                    $shift->update([
+                        'opening_balance_discrepancy' => $openingBalanceDiscrepancy,
+                        'previous_shift_id' => $previousShift->id,
+                    ]);
+                    $shift->refresh();
+                }
+            }
+
             DB::commit();
 
             return response()->json([
                 'message' => 'Shift opened successfully',
-                'shift' => $shift->load(['user', 'branch']),
+                'shift' => $shift->load(['user', 'branch', 'previousShift']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -364,7 +400,7 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $shift = SalesShift::with(['user', 'branch', 'sales' => function ($query) {
+        $shift = SalesShift::with(['user', 'branch', 'previousShift', 'sales' => function ($query) {
             $query->with(['payments.paymentMethod', 'customer', 'items.product'])
                 ->withTrashed(); // Include voided/cancelled sales
         }])
@@ -932,6 +968,10 @@ class SalesShiftController extends Controller
             ],
             'opening_notes' => $shift->opening_notes,
             'closing_notes' => $shift->closing_notes,
+            'device_id' => $shift->device_id,
+            'opening_balance_discrepancy' => $shift->opening_balance_discrepancy !== null ? (float) $shift->opening_balance_discrepancy : null,
+            'previous_shift_id' => $shift->previous_shift_id,
+            'has_opening_balance_discrepancy' => $shift->hasOpeningBalanceDiscrepancy(),
         ];
     }
 
@@ -986,8 +1026,12 @@ class SalesShiftController extends Controller
         $durationInMinutes = $startTime->diffInMinutes($endTime);
         $durationFormatted = sprintf('%dh %dm', floor($durationInMinutes / 60), $durationInMinutes % 60);
 
-        // Add statistics to shift
+        // Add statistics to shift (device_id and opening balance discrepancy are model attributes, included in JSON)
         $shift->statistics = [
+            'device_id' => $shift->device_id,
+            'opening_balance_discrepancy' => $shift->opening_balance_discrepancy !== null ? (float) $shift->opening_balance_discrepancy : null,
+            'previous_shift_id' => $shift->previous_shift_id,
+            'has_opening_balance_discrepancy' => $shift->hasOpeningBalanceDiscrepancy(),
             'gross_sales' => (float) $totalSales,
             'total_transactions' => $transactionsCount,
             'average_basket_value' => $averageBasketValue,

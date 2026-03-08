@@ -16,6 +16,7 @@ class SalesShift extends Model
         'business_id',
         'branch_id',
         'user_id',
+        'device_id',
         'start_time',
         'end_time',
         'opening_balance',
@@ -36,6 +37,8 @@ class SalesShift extends Model
         'discrepancy_resolved_at',
         'discrepancy_resolved_by',
         'resolution_notes',
+        'opening_balance_discrepancy',
+        'previous_shift_id',
     ];
 
     protected $casts = [
@@ -50,6 +53,7 @@ class SalesShift extends Model
         'total_sales' => 'decimal:2',
         'transactions_count' => 'integer',
         'variance' => 'decimal:2',
+        'opening_balance_discrepancy' => 'decimal:2',
         'metadata' => 'array',
         'discrepancy_resolved' => 'boolean',
         'discrepancy_resolved_at' => 'datetime',
@@ -75,6 +79,11 @@ class SalesShift extends Model
     public function resolvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'discrepancy_resolved_by');
+    }
+
+    public function previousShift(): BelongsTo
+    {
+        return $this->belongsTo(SalesShift::class, 'previous_shift_id');
     }
 
     public function sales(): HasMany
@@ -161,6 +170,12 @@ class SalesShift extends Model
     public function hasVariance(): bool
     {
         return abs($this->variance) > 0.01;
+    }
+
+    public function hasOpeningBalanceDiscrepancy(): bool
+    {
+        return $this->opening_balance_discrepancy !== null
+            && abs((float) $this->opening_balance_discrepancy) >= 0.01;
     }
 
     public function updateSalesMetrics(): void

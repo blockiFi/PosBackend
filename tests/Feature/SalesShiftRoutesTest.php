@@ -31,6 +31,9 @@ class SalesShiftRoutesTest extends TestCase
         // Create permissions
         Permission::firstOrCreate(['name' => 'view shifts', 'guard_name' => 'api']);
         Permission::firstOrCreate(['name' => 'manage shifts', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'create shift', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view user shift', 'guard_name' => 'api']);
+        Permission::firstOrCreate(['name' => 'view all shifts', 'guard_name' => 'api']);
 
         // Create user
         $this->user = User::factory()->create();
@@ -58,7 +61,7 @@ class SalesShiftRoutesTest extends TestCase
 
         // Create role with permissions
         $role = Role::create(['name' => 'manager', 'guard_name' => 'api']);
-        $role->givePermissionTo(['view shifts', 'manage shifts']);
+        $role->givePermissionTo(['view shifts', 'manage shifts', 'create shift', 'view user shift', 'view all shifts']);
         $this->user->assignRole($role);
     }
 
@@ -66,6 +69,7 @@ class SalesShiftRoutesTest extends TestCase
     {
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
+            'device_id' => 'device-open-1',
             'opening_balance' => 100.00,
             'opening_notes' => 'Starting shift',
         ], [
@@ -81,6 +85,7 @@ class SalesShiftRoutesTest extends TestCase
                     'business_id',
                     'branch_id',
                     'user_id',
+                    'device_id',
                     'start_time',
                     'opening_balance',
                     'status',
@@ -91,6 +96,7 @@ class SalesShiftRoutesTest extends TestCase
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'user_id' => $this->user->id,
+            'device_id' => 'device-open-1',
             'opening_balance' => 100.00,
             'status' => 'open',
         ]);
@@ -104,6 +110,7 @@ class SalesShiftRoutesTest extends TestCase
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'user_id' => $this->user->id,
+            'device_id' => 'device-multi-1',
             'start_time' => now(),
             'opening_balance' => 100.00,
             'status' => 'open',
@@ -112,6 +119,7 @@ class SalesShiftRoutesTest extends TestCase
         // Try to open second shift
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
+            'device_id' => 'device-multi-1',
             'opening_balance' => 200.00,
         ], [
             'X-Business-Id' => $this->business->id,
@@ -549,6 +557,7 @@ class SalesShiftRoutesTest extends TestCase
 
         $response = $this->actingAs($nonOwner)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
+            'device_id' => 'device-perm-1',
             'opening_balance' => 100.00,
         ], [
             'X-Business-Id' => $this->business->id,

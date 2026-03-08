@@ -71,7 +71,9 @@ class User extends Authenticatable
             return null;
         }
 
-        return Storage::disk('public')->url($this->profile_image);
+        $disk = config('filesystems.profile_image_disk', 's3');
+
+        return Storage::disk($disk)->url($this->profile_image);
     }
 
     /**

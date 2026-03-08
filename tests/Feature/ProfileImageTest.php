@@ -15,6 +15,7 @@ class ProfileImageTest extends TestCase
 
     public function test_registration_accepts_optional_profile_image(): void
     {
+        config(['filesystems.profile_image_disk' => 'public']);
         Storage::fake('public');
 
         $image = UploadedFile::fake()->image('avatar.jpg', 100, 100);
@@ -59,6 +60,7 @@ class ProfileImageTest extends TestCase
 
     public function test_add_user_to_business_with_profile_image_when_creating_new_user(): void
     {
+        config(['filesystems.profile_image_disk' => 'public']);
         Storage::fake('public');
 
         $owner = User::factory()->create();
@@ -89,6 +91,7 @@ class ProfileImageTest extends TestCase
 
     public function test_authenticated_user_can_update_profile_with_name_and_image(): void
     {
+        config(['filesystems.profile_image_disk' => 'public']);
         Storage::fake('public');
 
         $user = User::factory()->create([

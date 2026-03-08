@@ -7,19 +7,23 @@ use Illuminate\Support\Facades\Storage;
 
 class ProfileImageService
 {
-    private const DISK = 'public';
-
     private const DIRECTORY = 'profile_images';
+
+    private static function disk(): string
+    {
+        return config('filesystems.profile_image_disk', 's3');
+    }
 
     /**
      * Store an uploaded profile image and return the path to save on the user.
+     * Uses the cloud bucket (e.g. s3) configured via PROFILE_IMAGE_DISK.
      */
     public function store(UploadedFile $file): string
     {
         $path = $file->store(
             self::DIRECTORY,
             [
-                'disk' => self::DISK,
+                'disk' => self::disk(),
                 'visibility' => 'public',
             ]
         );
@@ -32,8 +36,8 @@ class ProfileImageService
      */
     public function delete(?string $path): void
     {
-        if ($path && Storage::disk(self::DISK)->exists($path)) {
-            Storage::disk(self::DISK)->delete($path);
+        if ($path && Storage::disk(self::disk())->exists($path)) {
+            Storage::disk(self::disk())->delete($path);
         }
     }
 

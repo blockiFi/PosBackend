@@ -15,6 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
+    'profile_image_disk' => env('PROFILE_IMAGE_DISK', 's3'),
+
     /*
     |--------------------------------------------------------------------------
     | Filesystem Disks
