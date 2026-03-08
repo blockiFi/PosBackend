@@ -540,7 +540,7 @@ class StockWriteoffController extends Controller
                 'store_quantity_after' => $storeQuantityAfter,
                 'reference_number' => 'WO-'.str_pad($writeoff->id, 8, '0', STR_PAD_LEFT),
                 'notes' => $request->reason,
-            ]);
+            ]); 
 
             return $writeoff;
         });
