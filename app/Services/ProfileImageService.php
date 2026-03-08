@@ -11,12 +11,13 @@ class ProfileImageService
 
     private static function disk(): string
     {
-        return config('filesystems.profile_image_disk', 's3');
+        return config('filesystems.profile_image_disk', 'public');
     }
 
     /**
      * Store an uploaded profile image and return the path to save on the user.
-     * Uses the cloud bucket (e.g. s3) configured via PROFILE_IMAGE_DISK.
+     * Uses the disk from config (default: public). Set PROFILE_IMAGE_DISK=s3 and
+     * AWS_* env vars to store in a cloud bucket.
      */
     public function store(UploadedFile $file): string
     {

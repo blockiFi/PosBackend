@@ -15,7 +15,8 @@ return [
 
     'default' => env('FILESYSTEM_DISK', 'local'),
 
-    'profile_image_disk' => env('PROFILE_IMAGE_DISK', 's3'),
+    // Profile images: default "public" (local). On Laravel Cloud set PROFILE_IMAGE_DISK to your Object Storage disk name and ensure AWS_DEFAULT_REGION (or equivalent) is set.
+    'profile_image_disk' => env('PROFILE_IMAGE_DISK', 'public'),
 
     /*
     |--------------------------------------------------------------------------
