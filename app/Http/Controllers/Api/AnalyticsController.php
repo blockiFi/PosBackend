@@ -302,6 +302,28 @@ class AnalyticsController extends Controller
                 return $item;
             });
 
+            $stockQuery = BranchProduct::query()
+                ->join('products', 'branch_products.product_id', '=', 'products.id')
+                ->where('products.business_id', $businessId)
+                ->whereNull('branch_products.deleted_at')
+                ->whereNull('products.deleted_at')
+                ->where('branch_products.stock_quantity', '>', 0);
+
+            if ($branchId) {
+                $stockQuery->where('branch_products.branch_id', $branchId);
+            }
+
+            $stockAggregates = $stockQuery->selectRaw(
+                'SUM(branch_products.stock_quantity) as total_units,
+                 SUM(branch_products.stock_quantity * branch_products.selling_price) as total_revenue,
+                 SUM(branch_products.stock_quantity * branch_products.cost_price) as total_cost'
+            )->first();
+
+            $stockUnits = (int) ($stockAggregates->total_units ?? 0);
+            $stockRevenue = (float) ($stockAggregates->total_revenue ?? 0);
+            $stockCost = (float) ($stockAggregates->total_cost ?? 0);
+            $stockProfit = $stockRevenue - $stockCost;
+
             return response()->json([
                 'period' => [
                     'start_date' => $startDate->format('Y-m-d'),
@@ -315,6 +337,12 @@ class AnalyticsController extends Controller
                     'average_margin' => $totalRevenue > 0
                         ? number_format(($totalProfit / $totalRevenue) * 100, 2, '.', '')
                         : '0.00',
+                ],
+                'stock_valuation' => [
+                    'total_stock_units' => $stockUnits,
+                    'total_stock_revenue' => number_format($stockRevenue, 2, '.', ''),
+                    'total_stock_cost' => number_format($stockCost, 2, '.', ''),
+                    'total_stock_profit' => number_format($stockProfit, 2, '.', ''),
                 ],
                 'top_products' => $products->take($limit)->values(),
                 'bottom_products' => $products->reverse()->take(10)->values(),

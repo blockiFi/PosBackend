@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductCategory;
@@ -275,6 +276,12 @@ class AnalyticsTest extends TestCase
                     'total_profit',
                     'average_margin',
                 ],
+                'stock_valuation' => [
+                    'total_stock_units',
+                    'total_stock_revenue',
+                    'total_stock_cost',
+                    'total_stock_profit',
+                ],
                 'top_products' => [
                     '*' => [
                         'product_id',
@@ -336,6 +343,57 @@ class AnalyticsTest extends TestCase
         // Product 2 should be first (higher quantity)
         $this->assertEquals($this->product2->id, $data['top_products'][0]['product_id']);
         $this->assertEquals(10, $data['top_products'][0]['quantity_sold']);
+    }
+
+    /** @test */
+    public function it_returns_stock_valuation_in_product_analytics()
+    {
+        BranchProduct::create([
+            'branch_id' => $this->branch1->id,
+            'product_id' => $this->product1->id,
+            'cost_price' => 60,
+            'selling_price' => 100,
+            'stock_quantity' => 20,
+            'shelf_quantity' => 20,
+            'store_quantity' => 0,
+            'is_available' => true,
+        ]);
+        BranchProduct::create([
+            'branch_id' => $this->branch1->id,
+            'product_id' => $this->product2->id,
+            'cost_price' => 30,
+            'selling_price' => 50,
+            'stock_quantity' => 10,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'is_available' => true,
+        ]);
+
+        $sale = $this->createSale($this->branch1, 100);
+        SaleItem::create([
+            'sale_id' => $sale->id,
+            'product_id' => $this->product1->id,
+            'product_name' => $this->product1->name,
+            'quantity' => 1,
+            'unit_price' => 100,
+            'subtotal' => 100,
+            'total' => 100,
+        ]);
+
+        $response = $this->actingAs($this->user)->getJson('/api/analytics/products?period=month', [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertStatus(200);
+        $data = $response->json();
+
+        $this->assertArrayHasKey('stock_valuation', $data);
+        $valuation = $data['stock_valuation'];
+
+        $this->assertEquals(30, $valuation['total_stock_units']);
+        $this->assertEquals('2500.00', $valuation['total_stock_revenue']);
+        $this->assertEquals('1500.00', $valuation['total_stock_cost']);
+        $this->assertEquals('1000.00', $valuation['total_stock_profit']);
     }
 
     /** @test */

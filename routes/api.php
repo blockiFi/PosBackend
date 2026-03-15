@@ -16,6 +16,7 @@ use App\Http\Controllers\Api\RefundRequestController;
 use App\Http\Controllers\Api\RolePermissionController;
 use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SalesShiftController;
+use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
 use App\Http\Controllers\Api\StockTransferRequestController;
 use App\Http\Controllers\Api\UserBusinessController;
@@ -92,6 +93,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::put('categories/{id}', [ProductCategoryController::class, 'update']);
         Route::delete('categories/{id}', [ProductCategoryController::class, 'destroy']);
         Route::get('categories/{id}/breadcrumb', [ProductCategoryController::class, 'breadcrumb']);
+
+        // Seed from file (CSV/Excel with column mapping)
+        Route::post('seed', [SeedController::class, 'store']);
 
         // Product routes (require business context)
         Route::get('products', [ProductController::class, 'index']);

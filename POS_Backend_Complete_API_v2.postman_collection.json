@@ -3834,6 +3834,317 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "21. Data Seeding",
+			"item": [
+				{
+					"name": "Seed Products (basic)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "CSV or Excel file (.csv, .xlsx, .xls) to import"
+								},
+								{
+									"key": "entity",
+									"value": "products",
+									"type": "text",
+									"description": "Entity type: products or product_categories"
+								},
+								{
+									"key": "mapping[ItemID]",
+									"value": "barcode",
+									"type": "text",
+									"description": "Maps the file column 'ItemID' to products.barcode"
+								},
+								{
+									"key": "mapping[ItemDescription]",
+									"value": "name",
+									"type": "text",
+									"description": "Maps the file column 'ItemDescription' to products.name"
+								},
+								{
+									"key": "mapping[SupplyPrice]",
+									"value": "base_cost_price",
+									"type": "text",
+									"description": "Maps the file column 'SupplyPrice' to products.base_cost_price"
+								},
+								{
+									"key": "mapping[Class]",
+									"value": "category",
+									"type": "text",
+									"description": "Maps the file column 'Class' to category (resolved by name, auto-created if missing)"
+								},
+								{
+									"key": "unique_key",
+									"value": "barcode",
+									"type": "text",
+									"description": "Which mapped DB column is the unique identifier for upsert"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"type": "text",
+									"description": "Required. Branch ID to associate products with"
+								},
+								{
+									"key": "delete",
+									"value": "false",
+									"type": "text",
+									"description": "Optional. When true, rows are looked up by unique_key and hard-deleted instead of upserted",
+									"disabled": true
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/seed",
+							"host": ["{{base_url}}"],
+							"path": ["seed"]
+						},
+						"description": "Seed products from a CSV or Excel file. Upload a file and provide a mapping from file column headers to database columns.\n\n**Allowed product columns:** name, sku, barcode, description, image, base_cost_price, base_selling_price, is_taxable, default_tax_rate, unit_of_measure, weight, weight_unit, stock_tracking, low_stock_threshold, is_active, is_available_online, meta_data, sort_order, category (virtual: resolved by name), retail_value (virtual: selling_price = retail_value / stock_quantity).\n\n**branch_id (required):** The branch to create BranchProduct entries for.\n\n**delete flag:** When set to true, every row in the file is looked up by unique_key and hard-deleted (Product + BranchProducts) instead of upserted.\n\n**Upsert:** If a product with the same unique_key value already exists in the business, it will be updated. Otherwise a new product is created.\n\n**Response:** { message, created, updated, deleted, failed, errors }"
+					},
+					"response": []
+				},
+				{
+					"name": "Seed Products (with stock + retail value)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "CSV or Excel file to import"
+								},
+								{
+									"key": "entity",
+									"value": "products",
+									"type": "text"
+								},
+								{
+									"key": "mapping[ItemID]",
+									"value": "barcode",
+									"type": "text"
+								},
+								{
+									"key": "mapping[ItemDescription]",
+									"value": "name",
+									"type": "text"
+								},
+								{
+									"key": "mapping[SupplyPrice]",
+									"value": "base_cost_price",
+									"type": "text"
+								},
+								{
+									"key": "mapping[RetailValue]",
+									"value": "retail_value",
+									"type": "text",
+									"description": "Virtual column: selling_price = RetailValue / Stock. Applied to both base_selling_price and BranchProduct selling_price"
+								},
+								{
+									"key": "mapping[Class]",
+									"value": "category",
+									"type": "text"
+								},
+								{
+									"key": "mapping[CostValue]",
+									"value": "cost_price",
+									"type": "text",
+									"description": "BranchProduct cost_price"
+								},
+								{
+									"key": "mapping[Stock]",
+									"value": "stock_quantity",
+									"type": "text",
+									"description": "BranchProduct stock_quantity (also auto-sets shelf_quantity if shelf_quantity is not mapped)"
+								},
+								{
+									"key": "unique_key",
+									"value": "barcode",
+									"type": "text"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"type": "text",
+									"description": "Required. Branch ID to create BranchProduct entries for"
+								},
+								{
+									"key": "delete",
+									"value": "false",
+									"type": "text",
+									"description": "Optional. When true, rows are deleted instead of upserted",
+									"disabled": true
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/seed",
+							"host": ["{{base_url}}"],
+							"path": ["seed"]
+						},
+						"description": "Seed products from a file AND automatically create BranchProduct entries for the specified branch.\n\n**branch_id (required):** The branch to create/update BranchProduct entries for. Branch-specific columns (cost_price, selling_price, compare_price, stock_quantity, shelf_quantity, store_quantity, is_available) from the same row are used.\n\n**retail_value (virtual):** When mapped, the system computes selling_price = retail_value / stock_quantity. This is applied to both base_selling_price (Product) and selling_price (BranchProduct). If stock_quantity is 0 or missing, retail_value is ignored.\n\n**stock_quantity:** When provided, shelf_quantity is automatically set to the same value unless shelf_quantity is explicitly mapped.\n\n**Example file columns:**\nItemID | ItemDescription | SupplyPrice | RetailValue | Class | CostValue | Stock\n\n**Response:** { message, created, updated, deleted, failed, errors }"
+					},
+					"response": []
+				},
+				{
+					"name": "Seed Product Categories",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "CSV or Excel file with category data"
+								},
+								{
+									"key": "entity",
+									"value": "product_categories",
+									"type": "text",
+									"description": "Entity type"
+								},
+								{
+									"key": "mapping[Class]",
+									"value": "name",
+									"type": "text",
+									"description": "Maps file column 'Class' to product_categories.name"
+								},
+								{
+									"key": "unique_key",
+									"value": "name",
+									"type": "text",
+									"description": "Upsert by category name"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"type": "text",
+									"description": "Required. Branch ID (required by API, not used for categories)"
+								},
+								{
+									"key": "delete",
+									"value": "false",
+									"type": "text",
+									"description": "Optional. When true, categories are hard-deleted instead of upserted",
+									"disabled": true
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/seed",
+							"host": ["{{base_url}}"],
+							"path": ["seed"]
+						},
+						"description": "Seed product categories from a CSV or Excel file.\n\n**Allowed category columns:** name, slug, description, image, sort_order, is_active.\n\n**delete flag:** When set to true, every row in the file is looked up by unique_key and hard-deleted.\n\n**Upsert:** If a category with the same unique_key value already exists in the business, it will be updated.\n\n**Response:** { message, created, updated, deleted, failed, errors }"
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Products (via file)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Business-Id",
+								"value": "{{business_id}}"
+							}
+						],
+						"body": {
+							"mode": "formdata",
+							"formdata": [
+								{
+									"key": "file",
+									"type": "file",
+									"src": "",
+									"description": "CSV or Excel file with rows to delete"
+								},
+								{
+									"key": "entity",
+									"value": "products",
+									"type": "text"
+								},
+								{
+									"key": "mapping[ItemID]",
+									"value": "barcode",
+									"type": "text",
+									"description": "Map the file column containing the identifier"
+								},
+								{
+									"key": "unique_key",
+									"value": "barcode",
+									"type": "text",
+									"description": "DB column used to look up and delete products"
+								},
+								{
+									"key": "branch_id",
+									"value": "{{branch_id}}",
+									"type": "text",
+									"description": "Required. Branch ID"
+								},
+								{
+									"key": "delete",
+									"value": "true",
+									"type": "text",
+									"description": "MUST be true to enable deletion mode"
+								}
+							]
+						},
+						"url": {
+							"raw": "{{base_url}}/seed",
+							"host": ["{{base_url}}"],
+							"path": ["seed"]
+						},
+						"description": "Delete products by uploading a file with identifiers. Each row is looked up by unique_key in the business and hard-deleted along with all its BranchProduct records.\n\n**delete=true** is required to enable deletion mode. Without it, rows would be upserted instead.\n\n**Example:** Upload a CSV with a single column (e.g. ItemID containing barcodes) and set mapping[ItemID]=barcode, unique_key=barcode, delete=true.\n\n**Response:** { message, created: 0, updated: 0, deleted: N, failed, errors }"
+					},
+					"response": []
+				}
+			]
 		}
 	]
 }
