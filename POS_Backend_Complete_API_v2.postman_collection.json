@@ -3892,6 +3892,20 @@
 									"description": "Maps the file column 'Class' to category (resolved by name, auto-created if missing)"
 								},
 								{
+									"key": "mapping[Stock]",
+									"value": "stock_quantity",
+									"type": "text",
+									"description": "Maps file column 'Stock' → branch_products.stock_quantity. Also auto-sets shelf_quantity to the same value unless shelf_quantity is explicitly mapped. Required as the divisor when using retail_value.",
+									"disabled": true
+								},
+								{
+									"key": "mapping[RetailValue]",
+									"value": "retail_value",
+									"type": "text",
+									"description": "Virtual column — not stored directly. Formula: selling_price = retail_value / stock_quantity. Sets both products.base_selling_price and branch_products.selling_price. Requires stock_quantity to also be mapped and > 0.",
+									"disabled": true
+								},
+								{
 									"key": "unique_key",
 									"value": "barcode",
 									"type": "text",
@@ -3917,7 +3931,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["seed"]
 						},
-						"description": "Seed products from a CSV or Excel file. Upload a file and provide a mapping from file column headers to database columns.\n\n**Allowed product columns:** name, sku, barcode, description, image, base_cost_price, base_selling_price, is_taxable, default_tax_rate, unit_of_measure, weight, weight_unit, stock_tracking, low_stock_threshold, is_active, is_available_online, meta_data, sort_order, category (virtual: resolved by name), retail_value (virtual: selling_price = retail_value / stock_quantity).\n\n**branch_id (required):** The branch to create BranchProduct entries for.\n\n**delete flag:** When set to true, every row in the file is looked up by unique_key and hard-deleted (Product + BranchProducts) instead of upserted.\n\n**Upsert:** If a product with the same unique_key value already exists in the business, it will be updated. Otherwise a new product is created.\n\n**Response:** { message, created, updated, deleted, failed, errors }"
+						"description": "Seed products from a CSV or Excel file. Upload a file and provide a mapping from file column headers to database columns.\n\n**Allowed product columns:** name, sku, barcode, description, image, base_cost_price, base_selling_price, is_taxable, default_tax_rate, unit_of_measure, weight, weight_unit, stock_tracking, low_stock_threshold, is_active, is_available_online, meta_data, sort_order, category (virtual: resolved by name), retail_value (virtual: selling_price = retail_value / stock_quantity).\n\n**branch_id (required):** The branch to create BranchProduct entries for.\n\n**delete flag:** When set to true, every row in the file is looked up by unique_key and hard-deleted (Product + BranchProducts) instead of upserted.\n\n**Upsert:** If a product with the same unique_key value already exists in the business, it will be updated. Otherwise a new product is created.\n\n**Optional: retail_value + stock_quantity** — Enable the disabled mapping fields to use the retail value calculation. When both are mapped, selling_price is computed as retail_value / stock_quantity.\n\n**Response:** { message, created, updated, deleted, failed, errors }"
 					},
 					"response": []
 				},
@@ -3942,67 +3956,73 @@
 									"key": "file",
 									"type": "file",
 									"src": "",
-									"description": "CSV or Excel file to import"
+									"description": "CSV or Excel file (.csv, .xlsx, .xls) to import. Max 10 MB. The first row must contain column headers that match the mapping keys below."
 								},
 								{
 									"key": "entity",
 									"value": "products",
-									"type": "text"
+									"type": "text",
+									"description": "Entity type to seed. Use 'products' for this request."
 								},
 								{
 									"key": "mapping[ItemID]",
 									"value": "barcode",
-									"type": "text"
+									"type": "text",
+									"description": "Maps file column 'ItemID' → products.barcode. Used as the unique_key for upsert lookups."
 								},
 								{
 									"key": "mapping[ItemDescription]",
 									"value": "name",
-									"type": "text"
+									"type": "text",
+									"description": "Maps file column 'ItemDescription' → products.name. Required for new product creation."
 								},
 								{
 									"key": "mapping[SupplyPrice]",
 									"value": "base_cost_price",
-									"type": "text"
+									"type": "text",
+									"description": "Maps file column 'SupplyPrice' → products.base_cost_price. The base cost price stored on the Product model."
 								},
 								{
 									"key": "mapping[RetailValue]",
 									"value": "retail_value",
 									"type": "text",
-									"description": "Virtual column: selling_price = RetailValue / Stock. Applied to both base_selling_price and BranchProduct selling_price"
+									"description": "Virtual column — not stored directly. Formula: selling_price = retail_value / stock_quantity. Sets BOTH products.base_selling_price AND branch_products.selling_price to the computed value. Prerequisites: stock_quantity must also be mapped and must be > 0, otherwise retail_value is ignored. Do NOT also map base_selling_price — if both are present, retail_value takes priority and overwrites it."
 								},
 								{
 									"key": "mapping[Class]",
 									"value": "category",
-									"type": "text"
+									"type": "text",
+									"description": "Virtual column — maps file column 'Class' → category name. Auto-resolves to category_id; creates the category if it does not exist in the business."
 								},
 								{
 									"key": "mapping[CostValue]",
 									"value": "cost_price",
 									"type": "text",
-									"description": "BranchProduct cost_price"
+									"description": "Maps file column 'CostValue' → branch_products.cost_price. Branch-level cost price (defaults to products.base_cost_price if omitted)."
 								},
 								{
 									"key": "mapping[Stock]",
 									"value": "stock_quantity",
 									"type": "text",
-									"description": "BranchProduct stock_quantity (also auto-sets shelf_quantity if shelf_quantity is not mapped)"
+									"description": "Maps file column 'Stock' → branch_products.stock_quantity. Also auto-sets branch_products.shelf_quantity to the same value unless shelf_quantity is explicitly mapped. Required for retail_value calculation (used as the divisor)."
 								},
 								{
 									"key": "unique_key",
 									"value": "barcode",
-									"type": "text"
+									"type": "text",
+									"description": "Which mapped DB column is the unique identifier for upsert. Must be one of the mapping target values. Existing products with the same value in this business are updated; otherwise a new product is created."
 								},
 								{
 									"key": "branch_id",
 									"value": "{{branch_id}}",
 									"type": "text",
-									"description": "Required. Branch ID to create BranchProduct entries for"
+									"description": "Required. Branch ID to create/update BranchProduct entries for. Must belong to the business and the authenticated user must have access."
 								},
 								{
 									"key": "delete",
 									"value": "false",
 									"type": "text",
-									"description": "Optional. When true, rows are deleted instead of upserted",
+									"description": "Optional. When true, each row is looked up by unique_key and hard-deleted (Product + all its BranchProducts) instead of upserted.",
 									"disabled": true
 								}
 							]
@@ -4012,7 +4032,7 @@
 							"host": ["{{base_url}}"],
 							"path": ["seed"]
 						},
-						"description": "Seed products from a file AND automatically create BranchProduct entries for the specified branch.\n\n**branch_id (required):** The branch to create/update BranchProduct entries for. Branch-specific columns (cost_price, selling_price, compare_price, stock_quantity, shelf_quantity, store_quantity, is_available) from the same row are used.\n\n**retail_value (virtual):** When mapped, the system computes selling_price = retail_value / stock_quantity. This is applied to both base_selling_price (Product) and selling_price (BranchProduct). If stock_quantity is 0 or missing, retail_value is ignored.\n\n**stock_quantity:** When provided, shelf_quantity is automatically set to the same value unless shelf_quantity is explicitly mapped.\n\n**Example file columns:**\nItemID | ItemDescription | SupplyPrice | RetailValue | Class | CostValue | Stock\n\n**Response:** { message, created, updated, deleted, failed, errors }"
+						"description": "Seed products from a file with automatic selling price calculation from retail value.\n\n---\n\n**How retail_value works:**\nThe `retail_value` mapping is a virtual column. It is NOT stored in the database. Instead, the system computes:\n\n`selling_price = retail_value / stock_quantity`\n\nThis calculated value is applied to:\n- `products.base_selling_price` (the Product model)\n- `branch_products.selling_price` (the BranchProduct pivot)\n\n**Prerequisites for retail_value:**\n1. `stock_quantity` must also be mapped in the same request.\n2. The row's stock_quantity value must be numeric and greater than 0.\n3. If stock_quantity is 0, missing, or non-numeric, retail_value is silently ignored and base_selling_price falls back to base_cost_price (for new products).\n\n**Interaction with base_selling_price:**\nIf retail_value is mapped, it takes priority and overwrites base_selling_price. Do not map both unless you intend retail_value to win.\n\n---\n\n**stock_quantity auto-fill:** When stock_quantity is provided but shelf_quantity is NOT mapped, shelf_quantity is automatically set to the same value as stock_quantity.\n\n**category (virtual):** When mapped, the system looks up the category by name in the business. If not found, a new category is auto-created.\n\n**Upsert:** Products are matched by unique_key within the business. Existing products are updated; new products are created.\n\n---\n\n**Example CSV file:**\n```\nItemID,ItemDescription,SupplyPrice,RetailValue,Class,CostValue,Stock\n12345,Widget A,10.00,150.00,Electronics,10.00,10\n67890,Widget B,5.00,60.00,Accessories,5.00,6\n```\n\nWith the mapping above, Widget A would get:\n- base_selling_price = 150.00 / 10 = 15.00\n- selling_price (branch) = 15.00\n- shelf_quantity = 10 (auto-filled from stock_quantity)\n\n---\n\n**Response:** `{ message, created, updated, deleted, failed, errors }`"
 					},
 					"response": []
 				},

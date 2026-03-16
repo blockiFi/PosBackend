@@ -11,6 +11,7 @@ use App\Models\QuickSale;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class QuickSaleController extends Controller
 {
@@ -104,7 +105,9 @@ class QuickSaleController extends Controller
         }
 
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('request quick sale')) {
+        $canRequest = $user->hasPermissionTo('request quick sale');
+        $canApprove = $business->owner_id === $user->id || $user->hasPermissionTo('approve quick sale');
+        if (! $canRequest && ! $canApprove) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
@@ -114,6 +117,14 @@ class QuickSaleController extends Controller
             'batch_id' => 'nullable|exists:product_batches,id',
             'reason' => 'required|string|min:10|max:1000',
             'expiry_date' => 'required|date|after:today',
+            'discount_type' => 'nullable|in:percentage,fixed',
+            'discount_value' => 'nullable|numeric|min:0',
+            'start_time' => 'nullable|date|after_or_equal:now',
+            'end_time' => [
+                'nullable',
+                'date',
+                Rule::when($request->filled('start_time'), 'after:start_time'),
+            ],
         ]);
 
         // Verify product belongs to business
@@ -186,6 +197,16 @@ class QuickSaleController extends Controller
             ], 400);
         }
 
+        $hasApprovalFields = isset(
+            $validated['discount_type'],
+            $validated['discount_value'],
+            $validated['start_time'],
+            $validated['end_time']
+        ) && $validated['discount_type'] !== null && $validated['discount_type'] !== ''
+            && $validated['discount_value'] !== null && $validated['discount_value'] !== ''
+            && $validated['start_time'] !== null && $validated['start_time'] !== ''
+            && $validated['end_time'] !== null && $validated['end_time'] !== '';
+
         DB::beginTransaction();
         try {
             $quickSale = QuickSale::create([
@@ -199,11 +220,84 @@ class QuickSaleController extends Controller
                 'status' => QuickSale::STATUS_PENDING,
             ]);
 
+            if ($canApprove && $hasApprovalFields) {
+                // Same validation as approve()
+                if ($validated['discount_type'] === 'percentage' && (float) $validated['discount_value'] > 100) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' => 'Percentage discount cannot exceed 100%',
+                        'errors' => ['discount_value' => ['Percentage must be between 0 and 100']],
+                    ], 422);
+                }
+
+                if ($quickSale->batch_id) {
+                    $batchForApproval = $quickSale->batch;
+                    if (! $batchForApproval || $batchForApproval->current_quantity <= 0) {
+                        DB::rollBack();
+
+                        return response()->json([
+                            'message' => 'Batch has no remaining quantity; cannot approve quick sale',
+                        ], 400);
+                    }
+                }
+
+                $hasOverlap = QuickSale::hasOverlappingQuickSale(
+                    $quickSale->product_id,
+                    $quickSale->branch_id,
+                    $validated['start_time'],
+                    $validated['end_time'],
+                    $quickSale->id,
+                    $quickSale->batch_id
+                );
+
+                if ($hasOverlap) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' => 'Another quick sale is already scheduled for this product during the selected time period',
+                    ], 400);
+                }
+
+                if ($validated['discount_type'] === 'fixed') {
+                    if ($branchProduct && (float) $validated['discount_value'] >= (float) $branchProduct->selling_price) {
+                        DB::rollBack();
+
+                        return response()->json([
+                            'message' => 'Fixed discount amount cannot be greater than or equal to the product price',
+                            'errors' => ['discount_value' => ['Must be less than product price']],
+                        ], 422);
+                    }
+                }
+
+                $quickSale->markAsApproved(
+                    $user->id,
+                    $validated['discount_type'],
+                    $validated['discount_value'],
+                    $validated['start_time'],
+                    $validated['end_time']
+                );
+
+                if (Carbon::parse($validated['start_time'])->lte(now())) {
+                    $quickSale->markAsActive();
+                }
+            }
+
             DB::commit();
 
+            $message = ($canApprove && $hasApprovalFields)
+                ? 'Quick sale created and approved'
+                : 'Quick sale request submitted successfully';
+
             return response()->json([
-                'message' => 'Quick sale request submitted successfully',
-                'quick_sale' => $quickSale->load(['product', 'branch', 'batch', 'requestedBy']),
+                'message' => $message,
+                'quick_sale' => $quickSale->fresh([
+                    'product',
+                    'branch',
+                    'batch',
+                    'requestedBy',
+                    'approvedBy',
+                ]),
             ], 201);
 
         } catch (\Exception $e) {

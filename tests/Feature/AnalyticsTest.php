@@ -281,6 +281,16 @@ class AnalyticsTest extends TestCase
                     'total_stock_revenue',
                     'total_stock_cost',
                     'total_stock_profit',
+                    'by_branch' => [
+                        '*' => [
+                            'branch_id',
+                            'branch_name',
+                            'total_stock_units',
+                            'total_stock_revenue',
+                            'total_stock_cost',
+                            'total_stock_profit',
+                        ],
+                    ],
                 ],
                 'top_products' => [
                     '*' => [
@@ -394,6 +404,17 @@ class AnalyticsTest extends TestCase
         $this->assertEquals('2500.00', $valuation['total_stock_revenue']);
         $this->assertEquals('1500.00', $valuation['total_stock_cost']);
         $this->assertEquals('1000.00', $valuation['total_stock_profit']);
+
+        $this->assertArrayHasKey('by_branch', $valuation);
+        $this->assertIsArray($valuation['by_branch']);
+        $this->assertCount(1, $valuation['by_branch']);
+        $branchValuation = $valuation['by_branch'][0];
+        $this->assertEquals($this->branch1->id, $branchValuation['branch_id']);
+        $this->assertEquals($this->branch1->name, $branchValuation['branch_name']);
+        $this->assertEquals(30, $branchValuation['total_stock_units']);
+        $this->assertEquals('2500.00', $branchValuation['total_stock_revenue']);
+        $this->assertEquals('1500.00', $branchValuation['total_stock_cost']);
+        $this->assertEquals('1000.00', $branchValuation['total_stock_profit']);
     }
 
     /** @test */

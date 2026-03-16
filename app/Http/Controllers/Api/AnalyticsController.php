@@ -324,6 +324,42 @@ class AnalyticsController extends Controller
             $stockCost = (float) ($stockAggregates->total_cost ?? 0);
             $stockProfit = $stockRevenue - $stockCost;
 
+            $stockByBranchQuery = BranchProduct::query()
+                ->join('products', 'branch_products.product_id', '=', 'products.id')
+                ->join('branches', 'branch_products.branch_id', '=', 'branches.id')
+                ->where('products.business_id', $businessId)
+                ->where('branches.business_id', $businessId)
+                ->whereNull('branch_products.deleted_at')
+                ->whereNull('products.deleted_at')
+                ->where('branch_products.stock_quantity', '>', 0);
+
+            if ($branchId) {
+                $stockByBranchQuery->where('branch_products.branch_id', $branchId);
+            }
+
+            $stockByBranchRows = $stockByBranchQuery->selectRaw(
+                'branch_products.branch_id,
+                 branches.name as branch_name,
+                 SUM(branch_products.stock_quantity) as total_units,
+                 SUM(branch_products.stock_quantity * branch_products.selling_price) as total_revenue,
+                 SUM(branch_products.stock_quantity * branch_products.cost_price) as total_cost'
+            )->groupBy('branch_products.branch_id', 'branches.name')->get();
+
+            $byBranch = $stockByBranchRows->map(function ($row) {
+                $revenue = (float) $row->total_revenue;
+                $cost = (float) $row->total_cost;
+                $profit = $revenue - $cost;
+
+                return [
+                    'branch_id' => (int) $row->branch_id,
+                    'branch_name' => $row->branch_name,
+                    'total_stock_units' => (int) $row->total_units,
+                    'total_stock_revenue' => number_format($revenue, 2, '.', ''),
+                    'total_stock_cost' => number_format($cost, 2, '.', ''),
+                    'total_stock_profit' => number_format($profit, 2, '.', ''),
+                ];
+            })->values()->all();
+
             return response()->json([
                 'period' => [
                     'start_date' => $startDate->format('Y-m-d'),
@@ -343,6 +379,7 @@ class AnalyticsController extends Controller
                     'total_stock_revenue' => number_format($stockRevenue, 2, '.', ''),
                     'total_stock_cost' => number_format($stockCost, 2, '.', ''),
                     'total_stock_profit' => number_format($stockProfit, 2, '.', ''),
+                    'by_branch' => $byBranch,
                 ],
                 'top_products' => $products->take($limit)->values(),
                 'bottom_products' => $products->reverse()->take(10)->values(),

@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\SeedImport;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -37,6 +38,7 @@ class SeedFromFileService
      * @param  array<string, string>  $mapping  File header -> DB column
      * @param  int  $branchId  Branch ID to attach products to (products only)
      * @param  bool  $delete  When true, rows are looked up and hard-deleted instead of upserted
+     * @param  SeedImport|null  $import  Optional import record for progress tracking
      * @return array{created: int, updated: int, deleted: int, failed: int, errors: array<int, string>}
      */
     public function run(
@@ -46,7 +48,8 @@ class SeedFromFileService
         string $uniqueKey,
         int $businessId,
         int $branchId,
-        bool $delete = false
+        bool $delete = false,
+        ?SeedImport $import = null
     ): array {
         $result = [
             'created' => 0,
@@ -60,6 +63,12 @@ class SeedFromFileService
         if (empty($rows)) {
             return $result;
         }
+
+        if ($import) {
+            $import->update(['total_rows' => count($rows)]);
+        }
+
+        $processedCount = 0;
 
         foreach ($rows as $rowIndex => $row) {
             $oneBased = $rowIndex + 1;
@@ -84,9 +93,33 @@ class SeedFromFileService
                 $result['failed']++;
                 $result['errors'][$oneBased] = $e->getMessage();
             }
+
+            $processedCount++;
+            if ($import && $processedCount % 50 === 0) {
+                $this->syncProgress($import, $result);
+            }
+        }
+
+        if ($import) {
+            $this->syncProgress($import, $result);
         }
 
         return $result;
+    }
+
+    /**
+     * Flush current counters to the SeedImport record for progress tracking.
+     *
+     * @param  array{created: int, updated: int, deleted: int, failed: int, errors: array<int, string>}  $result
+     */
+    protected function syncProgress(SeedImport $import, array $result): void
+    {
+        $import->update([
+            'created' => $result['created'],
+            'updated' => $result['updated'],
+            'deleted' => $result['deleted'],
+            'failed' => $result['failed'],
+        ]);
     }
 
     /**
@@ -323,7 +356,13 @@ class SeedFromFileService
                     throw new \RuntimeException('Product name is required.');
                 }
                 if (! array_key_exists('base_selling_price', $productPayload) || $productPayload['base_selling_price'] === null || $productPayload['base_selling_price'] === '') {
-                    $productPayload['base_selling_price'] = $productPayload['base_cost_price'] ?? 0;
+                    $stockQty = $payload['stock_quantity'] ?? null;
+                    $retailVal = $payload['retail_value'] ?? null;
+                    if ($retailVal !== null && is_numeric($retailVal) && $stockQty !== null && is_numeric($stockQty) && (float) $stockQty > 0) {
+                        $productPayload['base_selling_price'] = round((float) $retailVal / (float) $stockQty, 2);
+                    } else {
+                        $productPayload['base_selling_price'] = $productPayload['base_cost_price'] ?? 0;
+                    }
                 }
                 $product = Product::create($productPayload);
                 $result['created']++;

@@ -204,6 +204,225 @@ class QuickSaleTest extends TestCase
     }
 
     /** @test */
+    public function requester_can_create_with_discount_fields_but_remains_pending()
+    {
+        $startTime = now()->addHour();
+        $endTime = now()->addDays(2);
+
+        $response = $this->actingAs($this->requester)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days - need quick sale',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'percentage',
+                'discount_value' => 30,
+                'start_time' => $startTime->toIso8601String(),
+                'end_time' => $endTime->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'message' => 'Quick sale request submitted successfully',
+                'quick_sale' => [
+                    'status' => QuickSale::STATUS_PENDING,
+                ],
+            ]);
+
+        $this->assertDatabaseHas('quick_sales', [
+            'product_id' => $this->product->id,
+            'branch_id' => $this->branch->id,
+            'requested_by' => $this->requester->id,
+            'status' => QuickSale::STATUS_PENDING,
+        ]);
+    }
+
+    /** @test */
+    public function approver_can_create_and_approve_quick_sale_in_one_request()
+    {
+        $startTime = now()->addHour();
+        $endTime = now()->addDays(2);
+
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days - need quick sale',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'percentage',
+                'discount_value' => 30,
+                'start_time' => $startTime->toIso8601String(),
+                'end_time' => $endTime->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'message' => 'Quick sale created and approved',
+                'quick_sale' => [
+                    'status' => QuickSale::STATUS_APPROVED,
+                    'discount_type' => 'percentage',
+                    'discount_value' => 30,
+                ],
+            ]);
+
+        $quickSale = QuickSale::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->latest()
+            ->first();
+        $this->assertNotNull($quickSale);
+        $this->assertEquals(QuickSale::STATUS_APPROVED, $quickSale->status);
+        $this->assertEquals($this->approver->id, $quickSale->approved_by);
+        $this->assertNotNull($quickSale->approved_at);
+    }
+
+    /** @test */
+    public function approver_can_create_and_approve_quick_sale_activates_immediately_when_start_time_is_now()
+    {
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days - need quick sale',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'percentage',
+                'discount_value' => 20,
+                'start_time' => now()->toIso8601String(),
+                'end_time' => now()->addDays(2)->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'message' => 'Quick sale created and approved',
+                'quick_sale' => [
+                    'status' => QuickSale::STATUS_ACTIVE,
+                ],
+            ]);
+
+        $branchProduct = BranchProduct::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->first();
+        $this->assertNotNull($branchProduct);
+        $this->assertEquals('percentage', $branchProduct->discount_type);
+        $this->assertEquals(20, (float) $branchProduct->discount_amount);
+    }
+
+    /** @test */
+    public function approver_creating_without_discount_fields_creates_pending_only()
+    {
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days - need quick sale',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(201)
+            ->assertJson([
+                'message' => 'Quick sale request submitted successfully',
+                'quick_sale' => [
+                    'status' => QuickSale::STATUS_PENDING,
+                ],
+            ]);
+    }
+
+    /** @test */
+    public function create_and_approve_rejects_percentage_over_100()
+    {
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'percentage',
+                'discount_value' => 101,
+                'start_time' => now()->addHour()->toIso8601String(),
+                'end_time' => now()->addDays(2)->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'message' => 'Percentage discount cannot exceed 100%',
+            ]);
+    }
+
+    /** @test */
+    public function create_and_approve_rejects_fixed_discount_exceeding_price()
+    {
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Product expires in 5 days',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'fixed',
+                'discount_value' => 25,
+                'start_time' => now()->addHour()->toIso8601String(),
+                'end_time' => now()->addDays(2)->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJson([
+                'message' => 'Fixed discount amount cannot be greater than or equal to the product price',
+            ]);
+    }
+
+    /** @test */
+    public function create_and_approve_rejects_overlapping_quick_sales()
+    {
+        $startTime = now()->addHour();
+        $endTime = now()->addDays(2);
+
+        QuickSale::create([
+            'product_id' => $this->product->id,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'requested_by' => $this->requester->id,
+            'reason' => 'First',
+            'expiry_date' => now()->addDays(5),
+            'status' => QuickSale::STATUS_APPROVED,
+            'approved_by' => $this->approver->id,
+            'approved_at' => now(),
+            'discount_type' => 'percentage',
+            'discount_value' => 10,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
+        ]);
+
+        $response = $this->actingAs($this->approver)
+            ->postJson('/api/quick-sales', [
+                'product_id' => $this->product->id,
+                'branch_id' => $this->branch->id,
+                'reason' => 'Second quick sale',
+                'expiry_date' => now()->addDays(5)->format('Y-m-d'),
+                'discount_type' => 'percentage',
+                'discount_value' => 15,
+                'start_time' => $startTime->copy()->toIso8601String(),
+                'end_time' => $endTime->copy()->toIso8601String(),
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(400)
+            ->assertJson([
+                'message' => 'Another quick sale is already scheduled for this product during the selected time period',
+            ]);
+    }
+
+    /** @test */
     public function approver_can_approve_quick_sale_with_percentage_discount()
     {
         $quickSale = QuickSale::create([

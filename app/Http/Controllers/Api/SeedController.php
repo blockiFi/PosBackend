@@ -5,9 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\SeedDataRequest;
 use App\Http\Traits\HasBranchAccess;
+use App\Jobs\ProcessSeedImport;
 use App\Models\Branch;
-use App\Services\SeedFromFileService;
+use App\Models\SeedImport;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SeedController extends Controller
 {
@@ -58,23 +62,64 @@ class SeedController extends Controller
 
         $delete = filter_var($request->input('delete', false), FILTER_VALIDATE_BOOLEAN);
 
-        $result = app(SeedFromFileService::class)->run(
-            $request->file('file'),
-            $request->input('entity'),
-            $mapping,
-            $request->input('unique_key'),
-            (int) $businessId,
-            $branchId,
-            $delete
-        );
+        $uploadedFile = $request->file('file');
+        $storedPath = Storage::disk('local')->putFile('seed-imports', $uploadedFile);
+
+        $import = SeedImport::create([
+            'uuid' => (string) Str::uuid(),
+            'business_id' => (int) $businessId,
+            'branch_id' => $branchId,
+            'user_id' => $user->id,
+            'entity' => $request->input('entity'),
+            'status' => 'pending',
+            'file_path' => $storedPath,
+            'mapping' => $mapping,
+            'unique_key' => $request->input('unique_key'),
+            'delete' => $delete,
+        ]);
+
+        ProcessSeedImport::dispatch($import);
 
         return response()->json([
-            'message' => 'Seed completed.',
-            'created' => $result['created'],
-            'updated' => $result['updated'],
-            'deleted' => $result['deleted'],
-            'failed' => $result['failed'],
-            'errors' => $result['errors'],
-        ], 200);
+            'message' => 'Seed import queued.',
+            'id' => $import->id,
+            'uuid' => $import->uuid,
+            'status' => $import->status,
+        ], 202);
+    }
+
+    public function status(Request $request, string $id): JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $import = SeedImport::where('id', $id)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (! $import) {
+            return response()->json(['message' => 'Seed import not found.'], 404);
+        }
+
+        return response()->json([
+            'id' => $import->id,
+            'uuid' => $import->uuid,
+            'status' => $import->status,
+            'entity' => $import->entity,
+            'total_rows' => $import->total_rows,
+            'created' => $import->created,
+            'updated' => $import->updated,
+            'deleted' => $import->deleted,
+            'failed' => $import->failed,
+            'errors' => $import->errors,
+            'started_at' => $import->started_at?->toIso8601String(),
+            'completed_at' => $import->completed_at?->toIso8601String(),
+        ]);
     }
 }

@@ -96,6 +96,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Seed from file (CSV/Excel with column mapping)
         Route::post('seed', [SeedController::class, 'store']);
+        Route::get('seed/{id}/status', [SeedController::class, 'status']);
 
         // Product routes (require business context)
         Route::get('products', [ProductController::class, 'index']);
