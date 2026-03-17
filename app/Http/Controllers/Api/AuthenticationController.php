@@ -7,13 +7,21 @@ use App\Models\BranchAuthorization;
 use App\Models\User;
 use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
-use DB;
 use Spatie\Permission\Models\Role;
 
 class AuthenticationController extends Controller
 {
+    /**
+     * Resolve Spatie team foreign key column (used as business id).
+     */
+    protected function teamForeignKey(): string
+    {
+        return (string) (config('permission.column_names.team_foreign_key') ?? 'business_id');
+    }
+
     public function getBusinessDetailsWithBranchAuthorization(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -96,6 +104,7 @@ class AuthenticationController extends Controller
     public function login(Request $request)
     {
         $data = $request->all();
+        $teamKey = $this->teamForeignKey();
 
         $validator = Validator::make($data, [
             'email' => ['required', 'string', 'email'],
@@ -119,21 +128,19 @@ class AuthenticationController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        $business = $user->businesses()->wherePivot('is_active', true)->first();
-        $branches = $business
-            ? $business->branches()->get(['id', 'name', 'business_id'])
-            : collect();
-            // Fetch all roles assigned to the user within this business, with permissions
+        $activeBusinesses = $user->businesses()->wherePivot('is_active', true)->get();
+
+        $businesses = $activeBusinesses->map(function ($business) use ($user) {
+            $branches = $business->branches()->get(['id', 'name', 'business_id']);
+
             $roleIds = DB::table('model_has_roles')
                 ->where('model_type', User::class)
                 ->where('model_id', $user->id)
-                ->where('business_id', $business->id)
+                ->where($this->teamForeignKey(), $business->id)
                 ->pluck('role_id');
 
-            
-
             $roles = Role::whereIn('id', $roleIds)
-                ->where('business_id', $business->id)
+                ->where($this->teamForeignKey(), $business->id)
                 ->with('permissions')
                 ->get()
                 ->map(function ($role) {
@@ -142,7 +149,43 @@ class AuthenticationController extends Controller
                         'name' => $role->name,
                         'permissions' => $role->permissions->pluck('name')->values(),
                     ];
-                });
+                })
+                ->values();
+
+            return [
+                'business' => $business,
+                'branches' => $branches->values(),
+                'roles' => $roles,
+            ];
+        })->values();
+
+        $defaultBusiness = $activeBusinesses->first();
+        $defaultBranches = $defaultBusiness
+            ? $defaultBusiness->branches()->get(['id', 'name', 'business_id'])->values()
+            : collect();
+
+        $defaultRoles = collect();
+        if ($defaultBusiness) {
+            $defaultRoleIds = DB::table('model_has_roles')
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->where($teamKey, $defaultBusiness->id)
+                ->pluck('role_id');
+
+            $defaultRoles = Role::whereIn('id', $defaultRoleIds)
+                ->where($teamKey, $defaultBusiness->id)
+                ->with('permissions')
+                ->get()
+                ->map(function ($role) {
+                    return [
+                        'id' => $role->id,
+                        'name' => $role->name,
+                        'permissions' => $role->permissions->pluck('name')->values(),
+                    ];
+                })
+                ->values();
+        }
+
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
@@ -154,9 +197,11 @@ class AuthenticationController extends Controller
                 'profile_image' => $user->profile_image,
                 'profile_image_url' => $user->profile_image_url,
             ],
-            'business' => $business,
-            'branches' => $branches,
-            'roles' => $roles,
+            'businesses' => $businesses,
+            // Backwards compatibility (default business)
+            'business' => $defaultBusiness,
+            'branches' => $defaultBranches,
+            'roles' => $defaultRoles,
         ]);
     }
 
@@ -166,6 +211,7 @@ class AuthenticationController extends Controller
      */
     public function pinLogin(Request $request)
     {
+        $teamKey = $this->teamForeignKey();
         $validator = Validator::make($request->all(), [
             'pin_code' => ['required', 'string', 'size:6', 'regex:/^[0-9]{6}$/'],
         ]);
@@ -187,8 +233,8 @@ class AuthenticationController extends Controller
 
         // Check if user has permission to use PIN login in ANY business
         $hasPermission = false;
-        $businesses = $user->businesses;
-        foreach ($businesses as $business) {
+        $activeBusinesses = $user->businesses()->wherePivot('is_active', true)->get();
+        foreach ($activeBusinesses as $business) {
             setPermissionsTeamId($business->id);
             if ($user->hasPermissionTo('use-pin-login')) {
                 $hasPermission = true;
@@ -204,6 +250,35 @@ class AuthenticationController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
+        $businesses = $activeBusinesses->map(function ($business) use ($user) {
+            $branches = $business->branches()->get(['id', 'name', 'business_id']);
+
+            $roleIds = DB::table('model_has_roles')
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->where($this->teamForeignKey(), $business->id)
+                ->pluck('role_id');
+
+            $roles = Role::whereIn('id', $roleIds)
+                ->where($this->teamForeignKey(), $business->id)
+                ->with('permissions')
+                ->get()
+                ->map(function ($role) {
+                    return [
+                        'id' => $role->id,
+                        'name' => $role->name,
+                        'permissions' => $role->permissions->pluck('name')->values(),
+                    ];
+                })
+                ->values();
+
+            return [
+                'business' => $business,
+                'branches' => $branches->values(),
+                'roles' => $roles,
+            ];
+        })->values();
+
         return response()->json([
             'message' => 'Login successful',
             'token' => $token,
@@ -215,6 +290,7 @@ class AuthenticationController extends Controller
                 'profile_image' => $user->profile_image,
                 'profile_image_url' => $user->profile_image_url,
             ],
+            'businesses' => $businesses,
         ]);
     }
 

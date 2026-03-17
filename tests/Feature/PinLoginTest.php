@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
 use App\Models\Business;
 use App\Models\User;
 use App\Models\User_Business;
@@ -17,27 +18,51 @@ class PinLoginTest extends TestCase
 
     public function test_user_can_login_with_valid_pin()
     {
-        // Create the permission
         Permission::firstOrCreate(['name' => 'use-pin-login', 'guard_name' => 'api']);
 
-        // Create business and user
-        $business = Business::factory()->create();
+        $teamKey = (string) (config('permission.column_names.team_foreign_key') ?? 'business_id');
+
+        $businessA = Business::factory()->create();
+        $businessB = Business::factory()->create();
         $user = User::factory()->create([
             'pin_code' => '123456',
         ]);
 
-        // Associate user with business
+        // Associate user with businesses
         User_Business::create([
             'user_id' => $user->id,
-            'business_id' => $business->id,
-
+            'business_id' => $businessA->id,
+            'is_active' => true,
+        ]);
+        User_Business::create([
+            'user_id' => $user->id,
+            'business_id' => $businessB->id,
+            'is_active' => true,
         ]);
 
-        // Create role and assign permission
-        setPermissionsTeamId($business->id);
-        $role = Role::create(['name' => 'cashier', 'guard_name' => 'api']);
-        $role->givePermissionTo('use-pin-login');
-        $user->assignRole($role);
+        Branch::create([
+            'business_id' => $businessA->id,
+            'name' => 'Branch A',
+            'code' => 'BA',
+            'address' => 'Addr A',
+        ]);
+        Branch::create([
+            'business_id' => $businessB->id,
+            'name' => 'Branch B',
+            'code' => 'BB',
+            'address' => 'Addr B',
+        ]);
+
+        // Business A role has use-pin-login permission
+        setPermissionsTeamId($businessA->id);
+        $roleA = Role::create([$teamKey => $businessA->id, 'name' => 'cashier', 'guard_name' => 'api']);
+        $roleA->givePermissionTo('use-pin-login');
+        $user->assignRole($roleA);
+
+        // Business B role (no special permissions needed for this test)
+        setPermissionsTeamId($businessB->id);
+        $roleB = Role::create([$teamKey => $businessB->id, 'name' => 'manager', 'guard_name' => 'api']);
+        $user->assignRole($roleB);
 
         $response = $this->postJson('/api/pin-login', [
             'pin_code' => '123456',
@@ -49,6 +74,7 @@ class PinLoginTest extends TestCase
                 'token',
                 'token_type',
                 'user' => ['id', 'name', 'email'],
+                'businesses',
             ])
             ->assertJson([
                 'message' => 'Login successful',
@@ -56,6 +82,7 @@ class PinLoginTest extends TestCase
             ]);
 
         $this->assertNotEmpty($response->json('token'));
+        $this->assertCount(2, $response->json('businesses'));
     }
 
     public function test_pin_login_fails_with_invalid_pin()
