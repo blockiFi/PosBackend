@@ -10,6 +10,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class ProductController extends Controller
 {
@@ -133,7 +134,12 @@ class ProductController extends Controller
         $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
             'sku' => ['required', 'string', 'max:255', 'unique:products,sku'],
-            'barcode' => ['nullable', 'string', 'max:255', 'unique:products,barcode'],
+            'barcode' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'barcode')->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
             'image' => ['nullable', 'string'],
@@ -278,7 +284,14 @@ class ProductController extends Controller
         $validator = Validator::make($data, [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'sku' => ['sometimes', 'required', 'string', 'max:255', 'unique:products,sku,'.$id],
-            'barcode' => ['nullable', 'string', 'max:255', 'unique:products,barcode,'.$id],
+            'barcode' => [
+                'nullable',
+                'string',
+                'max:255',
+                Rule::unique('products', 'barcode')
+                    ->ignore($id)
+                    ->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'category_id' => ['nullable', 'integer', 'exists:product_categories,id,business_id,'.$businessId],
             'description' => ['nullable', 'string'],
             'image' => ['nullable', 'string'],
