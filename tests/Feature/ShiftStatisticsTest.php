@@ -85,34 +85,37 @@ class ShiftStatisticsTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonStructure([
-                'data' => [
-                    '*' => [
-                        'id',
-                        'shift_number',
-                        'total_sales',
-                        'transactions_count',
-                        'cash_sales',
-                        'card_sales',
-                        'variance',
-                        'status',
-                        'statistics' => [
-                            'gross_sales',
-                            'total_transactions',
-                            'average_basket_value',
-                            'payment_breakdown' => [
-                                'pos_percentage',
-                                'cash_percentage',
-                                'pos_amount',
-                                'cash_amount',
-                            ],
-                            'reconciliation_status',
+                'shifts' => [
+                    'data' => [
+                        '*' => [
+                            'id',
+                            'shift_number',
+                            'total_sales',
+                            'transactions_count',
+                            'cash_sales',
+                            'card_sales',
                             'variance',
+                            'status',
+                            'statistics' => [
+                                'gross_sales',
+                                'total_transactions',
+                                'average_basket_value',
+                                'payment_breakdown' => [
+                                    'pos_percentage',
+                                    'cash_percentage',
+                                    'pos_amount',
+                                    'cash_amount',
+                                ],
+                                'reconciliation_status',
+                                'variance',
+                            ],
                         ],
                     ],
                 ],
+                'statistics',
             ]);
 
-        $shiftData = $response->json('data.0');
+        $shiftData = $response->json('shifts.data.0');
 
         // Verify statistics calculations
         $this->assertEquals(1000.00, $shiftData['statistics']['gross_sales']);
@@ -152,7 +155,7 @@ class ShiftStatisticsTest extends TestCase
 
         $response->assertStatus(200);
 
-        $shifts = $response->json('data');
+        $shifts = $response->json('shifts.data');
         // The shift from setUp and todayShift should both be today
         $this->assertGreaterThanOrEqual(1, count($shifts));
         $shiftNumbers = collect($shifts)->pluck('shift_number')->toArray();
@@ -188,7 +191,7 @@ class ShiftStatisticsTest extends TestCase
 
         $response->assertStatus(200);
 
-        $shiftNumbers = collect($response->json('data'))->pluck('shift_number')->toArray();
+        $shiftNumbers = collect($response->json('shifts.data'))->pluck('shift_number')->toArray();
         $this->assertContains($this->shift->shift_number, $shiftNumbers);
         $this->assertContains($recentShift->shift_number, $shiftNumbers);
         $this->assertNotContains('SHIFT-20260128-0001', $shiftNumbers);
@@ -222,7 +225,7 @@ class ShiftStatisticsTest extends TestCase
 
         $response->assertStatus(200);
 
-        $shiftNumbers = collect($response->json('data'))->pluck('shift_number')->toArray();
+        $shiftNumbers = collect($response->json('shifts.data'))->pluck('shift_number')->toArray();
         $this->assertContains($shift1->shift_number, $shiftNumbers);
         $this->assertContains($shift2->shift_number, $shiftNumbers);
     }

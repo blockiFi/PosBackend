@@ -2,18 +2,18 @@
 
 /**
  * Generates a complete Postman Collection v2.1 JSON for the POS Backend API.
- * Run: php scripts/generate_postman_collection.php > POS_Backend_API_Complete.postman_collection.json
+ * Run: php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json
  */
 $base = [
     'info' => [
-        '_postman_id' => 'pos-backend-api-complete-v1',
-        'name' => 'POS Backend API - Complete Reference',
-        'description' => "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000). Paths include api/ automatically.\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
+        '_postman_id' => 'pos-backend-complete-v2',
+        'name' => 'POS Backend Complete API v2',
+        'description' => "Generated from routes/api.php. Regenerate: php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json\n\n**Setup:**\n1. `base_url` defaults to http://127.0.0.1:8000/api (no extra /api in paths).\n2. Register or Login sets `auth_token`.\n3. Use X-Business-Id: {{business_id}} on business-scoped routes.\n4. Bearer auth on protected routes.",
         'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
     ],
     'auth' => ['type' => 'bearer', 'bearer' => [['key' => 'token', 'value' => '{{auth_token}}', 'type' => 'string']]],
     'variable' => [
-        ['key' => 'base_url', 'value' => 'http://127.0.0.1:8000', 'type' => 'string'],
+        ['key' => 'base_url', 'value' => 'http://127.0.0.1:8000/api', 'type' => 'string'],
         ['key' => 'auth_token', 'value' => '', 'type' => 'string'],
         ['key' => 'business_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'branch_id', 'value' => '1', 'type' => 'string'],
@@ -25,12 +25,13 @@ $base = [
         ['key' => 'sale_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'payment_method_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'device_id', 'value' => 'device-postman-001', 'type' => 'string'],
+        ['key' => 'seed_import_id', 'value' => '1', 'type' => 'string'],
     ],
 ];
 
 function req(string $name, string $method, string $path, string $description, ?string $body = null, array $extraHeaders = [], bool $noAuth = false, array $query = [], array $responses = []): array
 {
-    $fullPath = 'api/'.ltrim($path, '/');
+    $fullPath = ltrim($path, '/');
     $pathParts = array_values(array_filter(explode('/', $fullPath)));
     $url = ['raw' => '{{base_url}}/'.$fullPath, 'host' => ['{{base_url}}'], 'path' => $pathParts];
     if ($query !== []) {
@@ -57,6 +58,33 @@ function req(string $name, string $method, string $path, string $description, ?s
     }
 
     return ['name' => $name, 'request' => $request, 'response' => $responses];
+}
+
+/**
+ * Multipart form-data request (e.g. file upload). Do not send Content-Type: application/json.
+ *
+ * @param  array<int, array<string, mixed>>  $formdata  Postman formdata rows: key, type (text|file), value, optional description, optional disabled
+ */
+function reqFormData(string $name, string $method, string $path, string $description, array $formdata, array $extraHeaders = []): array
+{
+    $fullPath = ltrim($path, '/');
+    $pathParts = array_values(array_filter(explode('/', $fullPath)));
+    $url = ['raw' => '{{base_url}}/'.$fullPath, 'host' => ['{{base_url}}'], 'path' => $pathParts];
+    $headers = [
+        ['key' => 'Accept', 'value' => 'application/json'],
+    ];
+    foreach ($extraHeaders as $h) {
+        $headers[] = is_array($h) && isset($h['key'], $h['value']) ? $h : ['key' => (string) $h[0], 'value' => (string) $h[1]];
+    }
+    $request = [
+        'method' => $method,
+        'header' => $headers,
+        'url' => $url,
+        'description' => $description,
+        'body' => ['mode' => 'formdata', 'formdata' => $formdata],
+    ];
+
+    return ['name' => $name, 'request' => $request, 'response' => []];
 }
 
 function sampleResponse(string $name, int $code, string $body, string $status = 'OK'): array
@@ -280,6 +308,48 @@ $items[] = [
     ],
 ];
 
+// ---- 7b. Data seeding (async import) ----
+$items[] = [
+    'name' => '7b. Data Seeding',
+    'description' => 'Queue CSV/Excel import (products or product_categories). Returns 202 with id/uuid; poll GET seed/{id}/status for progress. Permission: create products. X-Business-Id required.',
+    'item' => [
+        array_merge(
+            reqFormData(
+                'Queue Seed Import',
+                'POST',
+                'seed',
+                "**Multipart form-data.** Queues `ProcessSeedImport` job.\n\n**Fields:**\n- file: required | CSV or Excel (csv, xlsx, xls)\n- entity: required | products | product_categories\n- mapping: required | object or JSON string — file header → DB column (see config/seed.php allowed columns)\n- unique_key: required | string — must be one of the mapping target columns\n- branch_id: required | integer\n- delete: optional | boolean — when true, rows are hard-deleted by unique_key instead of upserted\n\n**Response (202):** message, id, uuid, status (pending). Use **Get Seed Import Status** with `id`.\n\n**Products:** optional virtual columns `category` (by name), `retail_value` (requires `stock_quantity`; selling_price = retail_value / stock_quantity).",
+                [
+                    ['key' => 'file', 'type' => 'file', 'src' => '', 'description' => 'CSV or Excel file'],
+                    ['key' => 'entity', 'type' => 'text', 'value' => 'products'],
+                    ['key' => 'mapping[ItemID]', 'type' => 'text', 'value' => 'barcode', 'description' => 'Example: map file column to DB column'],
+                    ['key' => 'mapping[ItemDescription]', 'type' => 'text', 'value' => 'name'],
+                    ['key' => 'mapping[SupplyPrice]', 'type' => 'text', 'value' => 'base_cost_price'],
+                    ['key' => 'unique_key', 'type' => 'text', 'value' => 'barcode'],
+                    ['key' => 'branch_id', 'type' => 'text', 'value' => '{{branch_id}}'],
+                    ['key' => 'delete', 'type' => 'text', 'value' => 'false', 'description' => 'Optional', 'disabled' => true],
+                ],
+                [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]
+            ),
+            [
+                'event' => [[
+                    'listen' => 'test',
+                    'script' => [
+                        'exec' => [
+                            'if (pm.response.code === 202) {',
+                            '    const j = pm.response.json();',
+                            '    if (j.id) pm.collectionVariables.set(\'seed_import_id\', String(j.id));',
+                            '}',
+                        ],
+                        'type' => 'text/javascript',
+                    ],
+                ]],
+            ]
+        ),
+        req('Get Seed Import Status', 'GET', 'seed/{{seed_import_id}}/status', "Poll import job status.\n\n**Response:** id, uuid, status (pending|processing|completed|failed), entity, total_rows, created, updated, deleted, failed, errors, started_at, completed_at.\n\nX-Business-Id or business_id query recommended.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
 // ---- 8. Products ----
 $items[] = [
     'name' => '8. Products',
@@ -377,6 +447,13 @@ $items[] = [
         req('Assign Multiple Products', 'POST', 'branch-products/assign-multiple', 'Add multiple products to a branch at once. branch_id, product_ids array. Uses product defaults for pricing/stock.', '{
   "branch_id": 1,
   "product_ids": [1, 2, 3]
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Bulk Move Shelf/Store', 'POST', 'branch-products/bulk-move', "Bulk move stock between shelf and store within one branch. Requires same permissions as direct move-to-shelf/store (approve shelf store move or manage/adjust inventory).\n\n**Fields:**\n- branch_id: required\n- direction: required | to_shelf | to_store\n- mode: required | all | fixed_quantity | per_item\n- For mode=fixed_quantity: branch_product_ids (array), quantity (integer)\n- For mode=per_item: items: [{ branch_product_id, quantity }]\n\nX-Business-Id required.", '{
+  "branch_id": 1,
+  "direction": "to_shelf",
+  "mode": "fixed_quantity",
+  "branch_product_ids": [1, 2],
+  "quantity": 5
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Branch Product', 'GET', 'branch-products/1', 'Get one branch product. Replace 1 with branch_product id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Branch Product Tiered Price', 'GET', 'branch-products/1/price', 'Compute effective unit price and total for a quantity using unit packs and quantity tiers. Query: quantity (required). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['quantity', '6']]),
@@ -680,7 +757,7 @@ $items[] = [
     'description' => 'Near-expiry or promotional quick-sale requests. Create with branch_product_id (or batch), discount_percentage, start_date, end_date. Approve/reject/end. When approved and active, discount applies to branch product. X-Business-Id required.',
     'item' => [
         req('List Quick Sales', 'GET', 'quick-sales', "List quick sale (near-expiry discount) requests.\n\n**Query:**\n- status: optional (pending|approved|rejected|ended)\n- branch_id: optional (integer)\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Create Quick Sale', 'POST', 'quick-sales', "Request quick sale for a near-expiry product.\n\n**Fields:**\n- product_id: required | integer | exists:products\n- branch_id: required | integer | exists:branches\n- batch_id: nullable | integer | exists:product_batches\n- reason: required | string | max:500\n- expiry_date: required | date\n\nX-Business-Id required.", '{
+        req('Create Quick Sale', 'POST', 'quick-sales', "Request quick sale for a near-expiry product.\n\n**Fields:**\n- product_id: required | integer | exists:products\n- branch_id: required | integer | exists:branches\n- batch_id: nullable | integer | exists:product_batches\n- reason: required | string | min:10 | max:1000\n- expiry_date: required | date | after:today\n- discount_type: optional | percentage | fixed\n- discount_value: optional | numeric | min:0\n- start_time: optional | date | after_or_equal:now\n- end_time: optional | date | after:start_time (when start_time present)\n\n**Auto-approve:** If the user has **approve quick sale** (or is business owner) and sends **all four** optional discount/period fields, the quick sale is created and approved in one step (same rules as Approve endpoint). If `start_time` is now or past, status becomes **active** and discount applies to the branch product.\n\nX-Business-Id required.", '{
   "product_id": 1,
   "branch_id": 1,
   "batch_id": null,

@@ -23,7 +23,7 @@ trait SeedsPermissions
 
             // Inventory
             'manage-inventory', 'view-inventory', 'adjust-inventory',
-            'manage inventory', 'view inventory',
+            'manage inventory', 'view inventory', 'adjust inventory',
 
             // Batches
             'view batches', 'manage batches',

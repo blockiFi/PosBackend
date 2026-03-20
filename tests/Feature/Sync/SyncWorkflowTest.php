@@ -99,16 +99,15 @@ class SyncWorkflowTest extends TestCase
 
         // Step 3: Simulate offline operation - create sale
         $clientSaleUuid = Str::uuid()->toString();
-        $product = Product::first();
-        $paymentMethod = PaymentMethod::first();
-
-        BranchProduct::create([
-            'branch_id' => $this->branch->id,
-            'product_id' => $product->id,
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->assertNotNull($branchProduct);
+        $branchProduct->update([
             'stock_quantity' => 10,
             'cost_price' => 50.00,
             'selling_price' => 100.00,
         ]);
+        $product = $branchProduct->product;
+        $paymentMethod = PaymentMethod::first();
 
         $pushResponse = $this->postJson('/api/sync/push', [
             'session_id' => Str::uuid()->toString(),
@@ -170,15 +169,15 @@ class SyncWorkflowTest extends TestCase
             'type' => 'sale',
             'quantity' => -2,
         ]);
-        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->where('product_id', $product->id)->first();
-        $this->assertNotNull($branchProduct);
-        $this->assertEquals(8, $branchProduct->stock_quantity, 'Stock should be decremented by 2');
+        $branchProduct->refresh();
+        $this->assertEquals(8, (int) $branchProduct->stock_quantity, 'Stock should be decremented by 2');
 
         // Step 4: Pull changes from server
         $lastSync = now()->subMinute()->toIso8601String();
 
         $pullResponse = $this->postJson('/api/sync/pull', [
             'last_sync_at' => $lastSync,
+            'branch_id' => $this->branch->id,
             'entities' => ['products', 'customers'],
             'limit' => 100,
         ], [
@@ -307,6 +306,7 @@ class SyncWorkflowTest extends TestCase
         // Device 1 pulls changes - should NOT get its own customer back
         $pullResponse = $this->postJson('/api/sync/pull', [
             'last_sync_at' => now()->subHour()->toIso8601String(),
+            'branch_id' => $this->branch->id,
             'entities' => ['customers'],
         ], [
             'X-Business-Id' => $this->business->id,
@@ -499,5 +499,18 @@ class SyncWorkflowTest extends TestCase
         Customer::factory()->count(5)->create([
             'business_id' => $this->business->id,
         ]);
+
+        foreach (Product::where('business_id', $this->business->id)->get() as $product) {
+            BranchProduct::create([
+                'branch_id' => $this->branch->id,
+                'product_id' => $product->id,
+                'shelf_quantity' => 5,
+                'store_quantity' => 95,
+                'stock_quantity' => 100,
+                'cost_price' => 50.00,
+                'selling_price' => 100.00,
+                'is_available' => true,
+            ]);
+        }
     }
 }

@@ -110,25 +110,32 @@ class RealisticRoleSeeder extends Seeder
             'Manager' => [
                 'description' => 'Operations management with approval authority',
                 'permissions' => [
-                    // Products & Inventory Management
-                    'view products',
-                    'create products',
-                    'edit products',
-                    'manage branch products',
-                    'update product price',
-                    'override sale price',
-                    'manage inventory',
-                    'view inventory',
-
                     // Categories
                     'view categories',
                     'create categories',
                     'edit categories',
 
-                    // Sales & Customers
+                    // Products
+                    'view products',
+                    'create products',
+                    'edit products',
+                    'manage branch products',
+                    'update product price',
+                    'update base selling price',
+
+                    // Inventory & Batches
+                    'view inventory',
+                    'manage inventory',
+                    'adjust inventory',
+                    'view batches',
+                    'manage batches',
+
+                    // Sales
                     'view sales',
                     'create sales',
                     'manage sales',
+
+                    // Customers
                     'view customers',
                     'create customers',
                     'edit customers',
@@ -137,42 +144,76 @@ class RealisticRoleSeeder extends Seeder
                     'view payment methods',
                     'manage payment methods',
 
-                    // Shift Management
+                    // Shifts
                     'view user shift',
                     'view all shifts',
                     'create shift',
                     'close shift',
                     'manage shifts',
 
-                    // Batches
-                    'view batches',
-                    'manage batches',
-
-                    // Approval Workflows
-                    'request refund',
-                    'approve refund',
+                    // Quick sale + refund
                     'request quick sale',
                     'approve quick sale',
-                    'request stock transfer',
-                    'approve stock transfer',
-                    'accept stock transfer',
-                    'write off stock',
+                    'request refund',
+                    'approve refund',
 
-                    // Analytics & Reports (Branch level)
+                    // Branches
+                    'view-branches',
+                    'manage-branches',
+
+                    // Sync
+                    'manage server sync',
+                    'sync data',
+
+                    // Reports & analytics
+                    'view-reports',
+                    'export-reports',
                     'view analytics',
                     'view financial reports',
                     'view branch analytics',
                     'export analytics',
 
-                    // Authentication
-                    'use-pin-login',
+                    // User + role management & settings
+                    'manage-users',
+                    'manage-settings',
+                    'manage-roles',
+                    'manage-pin-codes',
+                    'set user password',
 
-                    // Branch Management
-                    'view-branches',
+                    // Register / cash
+                    'open-register',
+                    'close-register',
+                    'manage-cash',
+
+                    // Stock transfers / write-offs / moves
+                    'request stock transfer',
+                    'approve stock transfer',
+                    'accept stock transfer',
+                    'write off stock',
+                    'request shelf store move',
+                    'approve shelf store move',
+
+                    // Pricing override
+                    'override sale price',
+                    'set branch product selling price',
+
+                    // Also include legacy/dashed permissions referenced elsewhere
+                    'create-sales',
+                    'view-sales',
+                    'edit-sales',
+                    'refund-sales',
+                    'create-products',
+                    'view-products',
+                    'edit-products',
+                    'manage-inventory',
+                    'view-inventory',
+                    'adjust-inventory',
+                    'create-customers',
+                    'view-customers',
+                    'edit-customers',
+                    'view-reports',
+                    'export-reports',
                     'manage-branches',
-
-                    // Sync Operations
-                    'sync data',
                 ],
             ],
 

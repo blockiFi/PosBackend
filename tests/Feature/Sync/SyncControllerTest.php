@@ -171,15 +171,15 @@ class SyncControllerTest extends TestCase
         $device = $this->registerDevice();
         $this->createTestData();
 
-        // Product must exist before last_sync_at to appear in "updated" (created_at <= since, updated_at > since)
-        $product = Product::first();
-        \Illuminate\Support\Facades\DB::table('products')->where('id', $product->id)->update([
+        // Branch product must exist before last_sync_at to appear in "updated" (created_at <= since, updated_at > since)
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->assertNotNull($branchProduct);
+        \Illuminate\Support\Facades\DB::table('branch_products')->where('id', $branchProduct->id)->update([
             'created_at' => now()->subHours(2),
         ]);
-        $product->refresh();
-        $product->update([
-            'base_selling_price' => 199.99,
-            'version' => 2,
+        $branchProduct->refresh();
+        $branchProduct->update([
+            'selling_price' => 199.99,
         ]);
 
         $response = $this->postJson('/api/sync/pull', [
@@ -208,9 +208,10 @@ class SyncControllerTest extends TestCase
 
         $updated = $response->json('changes.products.updated');
         $created = $response->json('changes.products.created');
-        $productInUpdated = collect($updated)->contains('id', $product->id);
-        $productInCreated = collect($created)->contains('id', $product->id);
-        $this->assertTrue($productInUpdated || $productInCreated, 'Product should appear in pull changes (created or updated)');
+        $productId = $branchProduct->product_id;
+        $productInUpdated = collect($updated)->contains('product_id', $productId);
+        $productInCreated = collect($created)->contains('product_id', $productId);
+        $this->assertTrue($productInUpdated || $productInCreated, 'Branch product should appear in pull changes (created or updated)');
     }
 
     /** @test */
@@ -748,5 +749,18 @@ class SyncControllerTest extends TestCase
         Customer::factory()->count(3)->create([
             'business_id' => $this->business->id,
         ]);
+
+        foreach (Product::where('business_id', $this->business->id)->get() as $product) {
+            BranchProduct::create([
+                'branch_id' => $this->branch->id,
+                'product_id' => $product->id,
+                'shelf_quantity' => 5,
+                'store_quantity' => 95,
+                'stock_quantity' => 100,
+                'cost_price' => 25.00,
+                'selling_price' => 50.00,
+                'is_available' => true,
+            ]);
+        }
     }
 }

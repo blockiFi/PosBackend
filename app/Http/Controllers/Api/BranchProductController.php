@@ -3,14 +3,19 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\BulkBranchProductMoveRequest;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
+use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductUnit;
 use App\Models\QuickSale;
+use App\Models\User;
 use App\Services\TieredPricingService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class BranchProductController extends Controller
@@ -1191,12 +1196,7 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Set permission context and check permission (direct move: owner, manage/adjust inventory, or approve shelf store move)
-        setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id
-            && ! $user->hasPermissionTo('manage inventory', 'api', $businessId)
-            && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)
-            && ! $user->hasPermissionTo('approve shelf store move', 'api', $businessId)) {
+        if ($this->userCannotDirectShelfStoreMove($user, $business, (int) $businessId)) {
             return response()->json(['message' => 'Unauthorized. Use shelf-store-move-requests to request a move for approval.'], 403);
         }
 
@@ -1278,12 +1278,7 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Set permission context and check permission (direct move: owner, manage/adjust inventory, or approve shelf store move)
-        setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id
-            && ! $user->hasPermissionTo('manage inventory', 'api', $businessId)
-            && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)
-            && ! $user->hasPermissionTo('approve shelf store move', 'api', $businessId)) {
+        if ($this->userCannotDirectShelfStoreMove($user, $business, (int) $businessId)) {
             return response()->json(['message' => 'Unauthorized. Use shelf-store-move-requests to request a move for approval.'], 403);
         }
 
@@ -1338,6 +1333,147 @@ class BranchProductController extends Controller
                 'new_store_quantity' => $branchProduct->store_quantity,
                 'branch_product' => $this->transformBranchProduct($branchProduct),
             ],
+        ]);
+    }
+
+    /**
+     * Bulk move stock between shelf and store for one branch.
+     */
+    public function bulkMove(BulkBranchProductMoveRequest $request): JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $businessId = (int) $businessId;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($this->userCannotDirectShelfStoreMove($user, $business, $businessId)) {
+            return response()->json(['message' => 'Unauthorized. Use shelf-store-move-requests to request a move for approval.'], 403);
+        }
+
+        $branchId = (int) $request->validated('branch_id');
+        $branch = Branch::query()
+            ->where('id', $branchId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (! $branch) {
+            return response()->json(['message' => 'Branch not found or does not belong to this business.'], 404);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        $direction = $request->validated('direction');
+        $mode = $request->validated('mode');
+
+        $results = DB::transaction(function () use ($request, $businessId, $branchId, $direction, $mode): array {
+            $out = [];
+
+            if ($mode === 'all') {
+                $branchProducts = BranchProduct::query()
+                    ->where('branch_id', $branchId)
+                    ->whereNull('deleted_at')
+                    ->whereHas('product', function ($q) use ($businessId): void {
+                        $q->where('business_id', $businessId)->whereNull('deleted_at');
+                    })
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->with('product')
+                    ->get();
+
+                foreach ($branchProducts as $branchProduct) {
+                    $out[] = $this->applyBulkMoveRow($branchProduct, $direction, null);
+                }
+
+                return $out;
+            }
+
+            if ($mode === 'fixed_quantity') {
+                $quantity = (int) $request->validated('quantity');
+                foreach ($request->validated('branch_product_ids') as $bpId) {
+                    $branchProduct = BranchProduct::query()
+                        ->where('id', $bpId)
+                        ->where('branch_id', $branchId)
+                        ->whereNull('deleted_at')
+                        ->lockForUpdate()
+                        ->with('product')
+                        ->first();
+
+                    if (! $branchProduct || $branchProduct->product->business_id !== $businessId) {
+                        $out[] = [
+                            'branch_product_id' => (int) $bpId,
+                            'quantity_requested' => $quantity,
+                            'quantity_moved' => 0,
+                            'skipped' => true,
+                            'reason' => 'not_found_or_wrong_business',
+                        ];
+
+                        continue;
+                    }
+
+                    $out[] = $this->applyBulkMoveRow($branchProduct, $direction, $quantity);
+                }
+
+                return $out;
+            }
+
+            foreach ($request->validated('items') as $item) {
+                $bpId = (int) $item['branch_product_id'];
+                $quantity = (int) $item['quantity'];
+                $branchProduct = BranchProduct::query()
+                    ->where('id', $bpId)
+                    ->where('branch_id', $branchId)
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->with('product')
+                    ->first();
+
+                if (! $branchProduct || $branchProduct->product->business_id !== $businessId) {
+                    $out[] = [
+                        'branch_product_id' => $bpId,
+                        'quantity_requested' => $quantity,
+                        'quantity_moved' => 0,
+                        'skipped' => true,
+                        'reason' => 'not_found_or_wrong_business',
+                    ];
+
+                    continue;
+                }
+
+                $out[] = $this->applyBulkMoveRow($branchProduct, $direction, $quantity);
+            }
+
+            return $out;
+        });
+
+        $processed = count($results);
+        $moved = count(array_filter($results, fn (array $r): bool => ($r['quantity_moved'] ?? 0) > 0));
+        $skipped = count(array_filter($results, fn (array $r): bool => ($r['skipped'] ?? false) === true));
+
+        return response()->json([
+            'message' => 'Bulk move completed.',
+            'summary' => [
+                'processed' => $processed,
+                'moved' => $moved,
+                'skipped' => $skipped,
+            ],
+            'results' => $results,
         ]);
     }
 
@@ -1554,6 +1690,72 @@ class BranchProductController extends Controller
     /**
      * Transform branch product for response
      */
+    private function userCannotDirectShelfStoreMove(User $user, Business $business, int $businessId): bool
+    {
+        setPermissionsTeamId($businessId);
+
+        return $business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('adjust inventory', 'api', $businessId)
+            && ! $user->hasPermissionTo('approve shelf store move', 'api', $businessId);
+    }
+
+    /**
+     * @return array{branch_product_id: int, quantity_requested?: int, quantity_moved: int, skipped: bool, reason?: string}
+     */
+    private function applyBulkMoveRow(BranchProduct $branchProduct, string $direction, ?int $requestedQuantity): array
+    {
+        $branchProduct->loadMissing('product');
+
+        if ($branchProduct->product->stock_tracking === 'none') {
+            return [
+                'branch_product_id' => $branchProduct->id,
+                'quantity_requested' => $requestedQuantity ?? 0,
+                'quantity_moved' => 0,
+                'skipped' => true,
+                'reason' => 'stock_tracking_none',
+            ];
+        }
+
+        $available = $direction === 'to_shelf'
+            ? (int) $branchProduct->store_quantity
+            : (int) $branchProduct->shelf_quantity;
+
+        $requested = $requestedQuantity === null ? $available : $requestedQuantity;
+        $toMove = min($requested, $available);
+
+        if ($toMove <= 0) {
+            return [
+                'branch_product_id' => $branchProduct->id,
+                'quantity_requested' => $requested,
+                'quantity_moved' => 0,
+                'skipped' => true,
+                'reason' => 'no_stock_in_source',
+            ];
+        }
+
+        $ok = $direction === 'to_shelf'
+            ? $branchProduct->moveToShelf($toMove)
+            : $branchProduct->moveToStore($toMove);
+
+        if (! $ok) {
+            return [
+                'branch_product_id' => $branchProduct->id,
+                'quantity_requested' => $requested,
+                'quantity_moved' => 0,
+                'skipped' => true,
+                'reason' => 'move_failed',
+            ];
+        }
+
+        return [
+            'branch_product_id' => $branchProduct->id,
+            'quantity_requested' => $requested,
+            'quantity_moved' => $toMove,
+            'skipped' => false,
+        ];
+    }
+
     private function transformBranchProduct(BranchProduct $branchProduct): array
     {
         $activeQuickSale = QuickSale::getActiveQuickSale(

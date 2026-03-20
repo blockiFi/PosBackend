@@ -7,7 +7,6 @@ use App\Models\Branch;
 use App\Models\Business;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
@@ -88,7 +87,7 @@ class BusinessController extends Controller
             'owner_id' => $user->id,
             'name' => $data['name'],
             'legal_name' => $data['legal_name'] ?? null,
-            'slug' => $data['slug'] ?? Str::slug($data['name']) . '-' . Str::random(6),
+            'slug' => $data['slug'] ?? Str::slug($data['name']).'-'.Str::random(6),
             'email' => $data['email'] ?? null,
             'phone' => $data['phone'] ?? null,
             'address' => $data['address'] ?? null,
@@ -190,7 +189,7 @@ class BusinessController extends Controller
         $validator = Validator::make($data, [
             'name' => ['sometimes', 'string', 'max:255'],
             'legal_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'slug' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:businesses,slug,' . $business->id],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255', 'unique:businesses,slug,'.$business->id],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'address' => ['sometimes', 'nullable', 'string'],
@@ -251,15 +250,76 @@ class BusinessController extends Controller
         $roleTemplates = [
             'Owner' => Permission::where('guard_name', 'api')->pluck('name')->toArray(),
             'Manager' => [
-                'manage-users', 'manage-branches', 'manage-settings', 'manage-roles',
-                'view products', 'create products', 'edit products', 'delete products',
-                'manage branch products', 'update product price', 'manage inventory', 'view inventory',
-                'view categories', 'create categories', 'edit categories', 'delete categories',
-                'view sales', 'create sales', 'manage sales', 'view customers', 'create customers',
-                'edit customers', 'view analytics', 'view reports', 'view financial reports',
-                'manage shifts', 'view all shifts', 'view user shift', 'close shift',
-                'approve refund', 'request refund', 'approve quick sale', 'request quick sale',
-                'manage transfers', 'use-pin-login',
+                'view categories',
+                'create categories',
+                'edit categories',
+                'view products',
+                'create products',
+                'edit products',
+                'manage branch products',
+                'update product price',
+                'update base selling price',
+                'view inventory',
+                'manage inventory',
+                'view batches',
+                'manage batches',
+                'view sales',
+                'create sales',
+                'manage sales',
+                'view customers',
+                'create customers',
+                'edit customers',
+                'view payment methods',
+                'manage payment methods',
+                'view user shift',
+                'view all shifts',
+                'create shift',
+                'close shift',
+                'manage shifts',
+                'request quick sale',
+                'approve quick sale',
+                'request refund',
+                'approve refund',
+                'adjust inventory',
+                'view-branches',
+                'manage-branches',
+                'manage server sync',
+                'sync data',
+                'create-sales',
+                'view-sales',
+                'edit-sales',
+                'refund-sales',
+                'create-products',
+                'view-products',
+                'edit-products',
+                'set branch product selling price',
+                'manage-inventory',
+                'view-inventory',
+                'adjust-inventory',
+                'create-customers',
+                'view-customers',
+                'edit-customers',
+                'view-reports',
+                'export-reports',
+                'manage-users',
+                'manage-settings',
+                'manage-roles',
+                'open-register',
+                'close-register',
+                'manage-cash',
+                'manage-pin-codes',
+                'request stock transfer',
+                'approve stock transfer',
+                'accept stock transfer',
+                'write off stock',
+                'view analytics',
+                'view financial reports',
+                'view branch analytics',
+                'export analytics',
+                'request shelf store move',
+                'approve shelf store move',
+                'override sale price',
+                'set user password',
             ],
             'Supervisor' => [
                 'view products', 'create products', 'edit products',
@@ -281,6 +341,13 @@ class BusinessController extends Controller
         $roles = [];
 
         foreach ($roleTemplates as $roleName => $permissionNames) {
+            foreach ($permissionNames as $permissionName) {
+                Permission::firstOrCreate([
+                    'name' => $permissionName,
+                    'guard_name' => 'api',
+                ]);
+            }
+
             $role = Role::query()->create([
                 'name' => $roleName,
                 'guard_name' => 'api',

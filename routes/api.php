@@ -121,6 +121,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('branch-products/by-category', [BranchProductController::class, 'getByCategory']);
         Route::post('branch-products', [BranchProductController::class, 'store']);
         Route::post('branch-products/assign-multiple', [BranchProductController::class, 'assignMultiple']);
+        Route::post('branch-products/bulk-move', [BranchProductController::class, 'bulkMove']);
         Route::get('branch-products/{id}', [BranchProductController::class, 'show']);
         Route::get('branch-products/{id}/price', [BranchProductController::class, 'getPrice']);
         Route::get('branch-products/{id}/unit-prices', [BranchProductController::class, 'indexUnitPrices']);
