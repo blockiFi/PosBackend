@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\BulkBranchProductMoveRequest;
+use App\Http\Requests\BulkBranchProductSellingPriceRequest;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
@@ -1471,6 +1472,109 @@ class BranchProductController extends Controller
             'summary' => [
                 'processed' => $processed,
                 'moved' => $moved,
+                'skipped' => $skipped,
+            ],
+            'results' => $results,
+        ]);
+    }
+
+    /**
+     * Bulk update selling prices for branch products in one branch.
+     * Requires the same permission as updateSellingPrice (owner or set branch product selling price).
+     */
+    public function bulkSellingPrice(BulkBranchProductSellingPriceRequest $request): JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+
+        if (! $businessId) {
+            return response()->json([
+                'message' => 'Business context is required',
+            ], 400);
+        }
+
+        $businessId = (int) $businessId;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('set branch product selling price', 'api', $businessId)) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $branchId = (int) $request->validated('branch_id');
+        $branch = Branch::query()
+            ->where('id', $branchId)
+            ->where('business_id', $businessId)
+            ->first();
+
+        if (! $branch) {
+            return response()->json(['message' => 'Branch not found or does not belong to this business.'], 404);
+        }
+
+        if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        $items = $request->validated('items');
+
+        $results = DB::transaction(function () use ($items, $businessId, $branchId): array {
+            $out = [];
+            foreach ($items as $item) {
+                $bpId = (int) $item['branch_product_id'];
+                $newPrice = (float) $item['selling_price'];
+
+                $branchProduct = BranchProduct::query()
+                    ->where('id', $bpId)
+                    ->where('branch_id', $branchId)
+                    ->whereNull('deleted_at')
+                    ->lockForUpdate()
+                    ->with(['branch', 'product'])
+                    ->first();
+
+                if (! $branchProduct || ! $branchProduct->product || $branchProduct->product->business_id !== $businessId) {
+                    $out[] = [
+                        'branch_product_id' => $bpId,
+                        'previous_selling_price' => null,
+                        'selling_price' => $newPrice,
+                        'skipped' => true,
+                        'reason' => 'not_found_or_wrong_business',
+                    ];
+
+                    continue;
+                }
+
+                $previous = (float) $branchProduct->selling_price;
+                $branchProduct->selling_price = $newPrice;
+                $branchProduct->save();
+
+                $out[] = [
+                    'branch_product_id' => $bpId,
+                    'previous_selling_price' => $previous,
+                    'selling_price' => $newPrice,
+                    'skipped' => false,
+                ];
+            }
+
+            return $out;
+        });
+
+        $processed = count($results);
+        $updated = count(array_filter($results, fn (array $r): bool => ($r['skipped'] ?? false) === false));
+        $skipped = count(array_filter($results, fn (array $r): bool => ($r['skipped'] ?? false) === true));
+
+        return response()->json([
+            'message' => 'Bulk selling price update completed.',
+            'summary' => [
+                'processed' => $processed,
+                'updated' => $updated,
                 'skipped' => $skipped,
             ],
             'results' => $results,

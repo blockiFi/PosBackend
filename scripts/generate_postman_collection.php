@@ -455,6 +455,13 @@ $items[] = [
   "branch_product_ids": [1, 2],
   "quantity": 5
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Bulk Selling Price (per item)', 'POST', 'branch-products/bulk-selling-price', "Update selling_price for multiple branch products in one branch. Same permission as PATCH branch-products/{id}/selling-price: business owner or **set branch product selling price**.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- items: required | array | min:1\n- items.*.branch_product_id: required | integer (must belong to branch_id)\n- items.*.selling_price: required | numeric | min:0\n\n**Response:** message, summary (processed, updated, skipped), results[] with previous_selling_price and selling_price per row.\n\nX-Business-Id required.", '{
+  "branch_id": 1,
+  "items": [
+    {"branch_product_id": 1, "selling_price": 29.99},
+    {"branch_product_id": 2, "selling_price": 15.5}
+  ]
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Branch Product', 'GET', 'branch-products/1', 'Get one branch product. Replace 1 with branch_product id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Branch Product Tiered Price', 'GET', 'branch-products/1/price', 'Compute effective unit price and total for a quantity using unit packs and quantity tiers. Query: quantity (required). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['quantity', '6']]),
         req('List Branch Product Unit Prices', 'GET', 'branch-products/1/unit-prices', 'List unit-specific prices for this branch product (e.g. pack of 6, carton). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),

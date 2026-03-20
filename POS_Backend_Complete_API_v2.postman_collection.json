@@ -2353,6 +2353,42 @@
                     "response": []
                 },
                 {
+                    "name": "Bulk Selling Price (per item)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/branch-products/bulk-selling-price",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "branch-products",
+                                "bulk-selling-price"
+                            ]
+                        },
+                        "description": "Update selling_price for multiple branch products in one branch. Same permission as PATCH branch-products/{id}/selling-price: business owner or **set branch product selling price**.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- items: required | array | min:1\n- items.*.branch_product_id: required | integer (must belong to branch_id)\n- items.*.selling_price: required | numeric | min:0\n\n**Response:** message, summary (processed, updated, skipped), results[] with previous_selling_price and selling_price per row.\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": 1,\n  \"items\": [\n    {\"branch_product_id\": 1, \"selling_price\": 29.99},\n    {\"branch_product_id\": 2, \"selling_price\": 15.5}\n  ]\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
                     "name": "Get Branch Product",
                     "request": {
                         "method": "GET",
