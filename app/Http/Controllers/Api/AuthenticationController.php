@@ -222,7 +222,6 @@ class AuthenticationController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
-
         $user = User::where('pin_code', $request->pin_code)->first();
 
         if (! $user) {

@@ -12,6 +12,7 @@ use App\Models\QuickSale;
 use App\Models\Sale;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -189,5 +190,37 @@ class SaleRoutesTest extends TestCase
         ]);
         $batch->refresh();
         $this->assertEquals(17, $batch->current_quantity);
+    }
+
+    public function test_sale_creation_continues_when_batch_quantity_is_insufficient(): void
+    {
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'current_quantity' => 2,
+            'received_quantity' => 2,
+            'status' => 'active',
+            'expiry_date' => now()->addMonth(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10, 'unit_price' => 100]],
+        ]);
+
+        $response->assertStatus(201);
+        $sale = Sale::latest()->first();
+        $this->assertNotNull($sale);
+        $this->assertEquals(90, BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'));
+
+        $this->assertEquals(2, DB::table('inventory_transactions')
+            ->where('reference_number', $sale->sale_number)
+            ->where('type', 'batch_allocation')
+            ->sum(DB::raw('ABS(quantity)')));
     }
 }

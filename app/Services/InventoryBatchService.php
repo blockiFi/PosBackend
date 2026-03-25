@@ -22,7 +22,8 @@ class InventoryBatchService
         int $branchId,
         int $quantity,
         InventoryTransaction $parentTransaction,
-        array $context = []
+        array $context = [],
+        bool $failOnInsufficientBatches = true
     ): void {
         if ($quantity <= 0) {
             return;
@@ -73,7 +74,7 @@ class InventoryBatchService
             ]);
         }
 
-        if (! $result['fully_allocated']) {
+        if (! $result['fully_allocated'] && $failOnInsufficientBatches) {
             $hasBatches = ProductBatch::where('product_id', $productId)->where('branch_id', $branchId)->exists();
             if ($hasBatches) {
                 throw new \RuntimeException(

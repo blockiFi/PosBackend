@@ -166,6 +166,34 @@ class ShelfStoreMoveRequestTest extends TestCase
         $this->assertSame(55, $this->branchProduct->store_quantity);
     }
 
+    public function test_approver_can_approve_request_with_nullable_quantity(): void
+    {
+        $req = ShelfStoreMoveRequest::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'branch_product_id' => $this->branchProduct->id,
+            'direction' => ShelfStoreMoveRequest::DIRECTION_TO_SHELF,
+            'quantity' => 10,
+            'status' => ShelfStoreMoveRequest::STATUS_PENDING,
+            'requested_by' => $this->requester->id,
+            'requested_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->approver, 'sanctum')
+            ->postJson("/api/shelf-store-move-requests/{$req->id}/approve", [
+                'quantity' => null,
+            ], [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.status', 'approved');
+
+        $this->branchProduct->refresh();
+        $this->assertSame(40, $this->branchProduct->shelf_quantity);
+        $this->assertSame(60, $this->branchProduct->store_quantity);
+    }
+
     public function test_approver_can_reject_request(): void
     {
         $req = ShelfStoreMoveRequest::create([

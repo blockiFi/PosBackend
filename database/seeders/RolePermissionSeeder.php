@@ -13,48 +13,56 @@ class RolePermissionSeeder extends Seeder
         // Reset cached roles and permissions
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
-        // Create permissions (not team-specific, will be scoped via roles)
+        // Create permissions (not team-specific, will be scoped via roles).
+        // Keep both current space-based permissions and legacy dashed aliases.
         $permissions = [
-            // Sales
-            'create-sales', 'view-sales', 'edit-sales', 'delete-sales', 'refund-sales',
+            // Categories
+            'view categories', 'create categories', 'edit categories', 'delete categories',
 
             // Products
-            'create-products', 'view-products', 'edit-products', 'delete-products', 'manage branch products', 'set branch product selling price',
+            'view products', 'create products', 'edit products', 'delete products',
+            'manage branch products', 'set branch product selling price',
+            'update product price', 'update base selling price', 'override sale price',
 
-            // Inventory
-            'manage-inventory', 'view-inventory', 'adjust-inventory',
+            // Inventory & batches
+            'view inventory', 'manage inventory', 'adjust inventory',
+            'view batches', 'manage batches',
 
-            // Customers
-            'create-customers', 'view-customers', 'edit-customers', 'delete-customers',
+            // Sales, customers, payment methods
+            'view sales', 'create sales', 'manage sales',
+            'view customers', 'create customers', 'edit customers', 'delete customers',
+            'view payment methods', 'manage payment methods',
 
-            // Reports
-            'view-reports', 'export-reports',
-
-            // Users & Settings
-            'manage-users', 'manage-branches', 'manage-settings', 'manage-roles', 'set user password',
-
-            // Cash Management
-            'open-register', 'close-register', 'manage-cash',
+            // Shifts
+            'view user shift', 'view all shifts', 'create shift', 'close shift', 'manage shifts',
 
             // Authentication
             'use-pin-login', 'manage-pin-codes',
 
-            // Stock Transfer Workflow
+            // Workflows
+            'request refund', 'approve refund',
+            'request quick sale', 'approve quick sale',
             'request stock transfer', 'approve stock transfer', 'accept stock transfer',
-
-            // Shelf/Store Move (request → approve/reject)
             'request shelf store move', 'approve shelf store move',
-
-            // Stock Write-offs
             'write off stock',
 
-            // Branch Management
-            'view-branches',
-            'manage-branches',
+            // Analytics
+            'view analytics', 'view financial reports', 'view branch analytics', 'export analytics',
 
-            // Sync Operations
-            'manage server sync',
-            'sync data',
+            // Branch + sync
+            'view-branches', 'manage-branches',
+            'manage server sync', 'sync data',
+
+            // Users, settings, reports, cash
+            'manage-users', 'manage-settings', 'manage-roles', 'set user password',
+            'view-reports', 'export-reports',
+            'open-register', 'close-register', 'manage-cash',
+
+            // Legacy dashed aliases
+            'create-sales', 'view-sales', 'edit-sales', 'delete-sales', 'refund-sales',
+            'create-products', 'view-products', 'edit-products', 'delete-products',
+            'manage-inventory', 'view-inventory', 'adjust-inventory',
+            'create-customers', 'view-customers', 'edit-customers', 'delete-customers',
         ];
 
         foreach ($permissions as $permission) {

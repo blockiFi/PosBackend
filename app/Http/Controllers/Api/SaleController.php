@@ -248,16 +248,14 @@ class SaleController extends Controller
                 $unitPrice = isset($itemData['unit_price']) ? (float) $itemData['unit_price'] : null;
                 $metadata = [];
 
-                if ($unitPrice !== null && $user->hasPermissionTo('override sale price')) {
-                    $metadata['is_manual_override'] = true;
-                    $metadata['tier_type'] = 'manual';
-                } else {
-                    if ($unitPrice !== null && ! $user->hasPermissionTo('override sale price')) {
-                        $unitPrice = null;
-                    }
-                    if ($unitPrice === null) {
-                        $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
-                        $unitPrice = $tierResult['unit_price'];
+                // Compute expected price based on tiered pricing (product unit/quantity tiers)
+                $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
+                $expectedUnitPrice = $tierResult['unit_price'];
+
+                if ($unitPrice !== null) {
+                    // If client-provided price equals expected price, it's not an override
+                    if (abs($unitPrice - $expectedUnitPrice) < 0.00001) {
+                        $unitPrice = $expectedUnitPrice;
                         $metadata['tier_type'] = $tierResult['tier_type'];
                         if ($tierResult['product_unit_id'] !== null) {
                             $metadata['product_unit_id'] = $tierResult['product_unit_id'];
@@ -265,6 +263,32 @@ class SaleController extends Controller
                         if ($tierResult['quantity_tier_id'] !== null) {
                             $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
                         }
+                    } else {
+                        // Price differs: treat as override and require permission
+                        if ($user->hasPermissionTo('override sale price')) {
+                            $metadata['is_manual_override'] = true;
+                            $metadata['tier_type'] = 'manual';
+                        } else {
+                            // No permission to override - fall back to expected price
+                            $unitPrice = $expectedUnitPrice;
+                            $metadata['tier_type'] = $tierResult['tier_type'];
+                            if ($tierResult['product_unit_id'] !== null) {
+                                $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                            }
+                            if ($tierResult['quantity_tier_id'] !== null) {
+                                $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                            }
+                        }
+                    }
+                } else {
+                    // No client price - use expected tier price
+                    $unitPrice = $expectedUnitPrice;
+                    $metadata['tier_type'] = $tierResult['tier_type'];
+                    if ($tierResult['product_unit_id'] !== null) {
+                        $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                    }
+                    if ($tierResult['quantity_tier_id'] !== null) {
+                        $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
                     }
                 }
 
@@ -337,7 +361,8 @@ class SaleController extends Controller
                         $branchId,
                         $qtyForBatch,
                         $invTransaction,
-                        ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                        ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"],
+                        false
                     );
                 }
             }
@@ -434,10 +459,6 @@ class SaleController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage sales')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
         $validated = $request->validate([
             'payment_method_id' => 'required|exists:payment_methods,id',
             'amount' => 'required|numeric|min:0.01',
@@ -450,6 +471,19 @@ class SaleController extends Controller
         // Check branch access
         if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        $isOwner = $business->owner_id === $user->id;
+        $canManageSales = $user->hasPermissionTo('manage sales');
+        $canCreateSales = $user->hasPermissionTo('create sales');
+        $isOwnSale = (int) $sale->user_id === (int) $user->id;
+
+        // Managers/owners can add payments to any sale in accessible branches.
+        // Cashiers (create sales permission) can only add payments to their own pending sales.
+        if (! $isOwner && ! $canManageSales) {
+            if (! $canCreateSales || ! $isOwnSale || $sale->status !== 'pending') {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
         }
 
         DB::beginTransaction();
@@ -505,15 +539,24 @@ class SaleController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage sales')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
-        }
-
         $sale = Sale::forBusiness($businessId)->findOrFail($id);
 
         // Check branch access
         if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        $isOwner = $business->owner_id === $user->id;
+        $canManageSales = $user->hasPermissionTo('manage sales');
+        $canCreateSales = $user->hasPermissionTo('create sales');
+        $isOwnSale = (int) $sale->user_id === (int) $user->id;
+
+        // Managers/owners can cancel any sale in accessible branches.
+        // Cashiers (create sales permission) can only cancel their own pending sales.
+        if (! $isOwner && ! $canManageSales) {
+            if (! $canCreateSales || ! $isOwnSale || $sale->status !== 'pending') {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
         }
 
         if ($sale->status === 'cancelled') {

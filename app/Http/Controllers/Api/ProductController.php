@@ -1019,6 +1019,7 @@ class ProductController extends Controller
 
             if ($branchProduct) {
                 $data['branch_data'] = [
+                    'branch_product_id' => $branchProduct->id,
                     'branch_id' => $branchProduct->branch_id,
                     'cost_price' => $branchProduct->cost_price,
                     'selling_price' => $branchProduct->selling_price,

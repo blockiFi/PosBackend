@@ -260,17 +260,31 @@ class ShelfStoreMoveRequestController extends Controller
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
+        $validator = Validator::make($request->all(), [
+            'quantity' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $approvedQuantity = (int) ($request->input('quantity') ?? $moveRequest->quantity);
+        
+
         $branchProduct = $moveRequest->branchProduct;
 
         if ($moveRequest->direction === ShelfStoreMoveRequest::DIRECTION_TO_SHELF) {
-            if ($moveRequest->quantity > $branchProduct->store_quantity) {
+            if ($approvedQuantity > $branchProduct->store_quantity) {
                 return response()->json([
                     'message' => 'Insufficient quantity in store (stock may have changed). Request cannot be approved.',
                     'available_in_store' => $branchProduct->store_quantity,
                 ], 422);
             }
         } else {
-            if ($moveRequest->quantity > $branchProduct->shelf_quantity) {
+            if ($approvedQuantity > $branchProduct->shelf_quantity) {
                 return response()->json([
                     'message' => 'Insufficient quantity on shelf (stock may have changed). Request cannot be approved.',
                     'available_on_shelf' => $branchProduct->shelf_quantity,
@@ -279,17 +293,20 @@ class ShelfStoreMoveRequestController extends Controller
         }
 
         try {
-            DB::transaction(function () use ($moveRequest, $user): void {
+            DB::transaction(function () use ($moveRequest, $user, $approvedQuantity): void {
                 if ($moveRequest->direction === ShelfStoreMoveRequest::DIRECTION_TO_SHELF) {
-                    $moveRequest->branchProduct->moveToShelf($moveRequest->quantity);
+                    $moveRequest->branchProduct->moveToShelf($approvedQuantity);
                 } else {
-                    $moveRequest->branchProduct->moveToStore($moveRequest->quantity);
+                    $moveRequest->branchProduct->moveToStore($approvedQuantity);
                 }
 
                 $moveRequest->update([
                     'status' => ShelfStoreMoveRequest::STATUS_APPROVED,
                     'reviewed_by' => $user->id,
                     'reviewed_at' => now(),
+                    'review_notes' => $approvedQuantity === (int) $moveRequest->quantity
+                        ? $moveRequest->review_notes
+                        : "Approved quantity: {$approvedQuantity} (requested {$moveRequest->quantity})",
                 ]);
             });
         } catch (\Throwable $e) {

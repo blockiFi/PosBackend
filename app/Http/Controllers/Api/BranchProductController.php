@@ -564,6 +564,7 @@ class BranchProductController extends Controller
         $data = $request->all();
         $validator = Validator::make($data, [
             'cost_price' => ['nullable', 'numeric', 'min:0'],
+            'selling_price' => ['nullable', 'numeric', 'min:0'],
             'compare_price' => ['nullable', 'numeric', 'min:0'],
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_type' => ['nullable', 'in:fixed,percentage'],
@@ -593,6 +594,7 @@ class BranchProductController extends Controller
         // Update only provided fields (selling_price is set via updateSellingPrice endpoint)
         $updateData = [];
         $fillableFields = [
+            'selling_price',
             'cost_price', 'compare_price',
             'discount_amount', 'discount_type', 'tax_rate',
             'stock_quantity', 'shelf_quantity', 'store_quantity',
