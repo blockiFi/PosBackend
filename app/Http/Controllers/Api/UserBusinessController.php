@@ -125,9 +125,10 @@ class UserBusinessController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Check if user is owner (only owners can add users)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can add users'], 403);
+        // Permission: allow owners OR users with 'manage-users' permission for this business
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         $data = $request->all();
