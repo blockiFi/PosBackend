@@ -139,6 +139,9 @@ class InventoryRoutesTest extends TestCase
             'type' => 'purchase',
             'quantity' => 50,
             'unit_cost' => 10.50,
+            'batch_number' => 'BATCH-TEST-INV-001',
+            'manufacturing_date' => '2024-01-01',
+            'expiry_date' => '2025-01-01',
             'reference_number' => 'PO-001',
             'notes' => 'Initial stock',
         ];
@@ -168,6 +171,28 @@ class InventoryRoutesTest extends TestCase
             'product_id' => $this->product->id,
             'stock_quantity' => 50,
         ]);
+    }
+
+    public function test_cannot_create_purchase_without_batch_tracking_fields(): void
+    {
+        $this->role->givePermissionTo('manage inventory');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $data = [
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'type' => 'purchase',
+            'quantity' => 50,
+            'unit_cost' => 10.50,
+            'reference_number' => 'PO-002',
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['batch_number', 'manufacturing_date', 'expiry_date']);
     }
 
     public function test_cannot_create_inventory_transaction_without_permission(): void

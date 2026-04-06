@@ -7,6 +7,7 @@ use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\SalesShift;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class SalesShiftController extends Controller
@@ -327,19 +328,37 @@ class SalesShiftController extends Controller
 
         DB::beginTransaction();
         try {
-            $shiftNumber = $this->generateShiftNumber($businessId);
+            $shift = null;
+            $startTime = now();
 
-            $shift = SalesShift::create([
-                'shift_number' => $shiftNumber,
-                'business_id' => $businessId,
-                'branch_id' => $validated['branch_id'],
-                'user_id' => $user->id,
-                'device_id' => $validated['device_id'],
-                'start_time' => now(),
-                'opening_balance' => $validated['opening_balance'],
-                'opening_notes' => $validated['opening_notes'] ?? null,
-                'status' => 'open',
-            ]);
+            // Guard against race conditions: generate shift_number under lock and retry on collisions.
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                $shiftNumber = $this->generateShiftNumber($businessId);
+
+                try {
+                    $shift = SalesShift::create([
+                        'shift_number' => $shiftNumber,
+                        'business_id' => $businessId,
+                        'branch_id' => $validated['branch_id'],
+                        'user_id' => $user->id,
+                        'device_id' => $validated['device_id'],
+                        'start_time' => $startTime,
+                        'opening_balance' => $validated['opening_balance'],
+                        'opening_notes' => $validated['opening_notes'] ?? null,
+                        'status' => 'open',
+                    ]);
+                    break;
+                } catch (QueryException $e) {
+                    if (! $this->isDuplicateShiftNumberException($e)) {
+                        throw $e;
+                    }
+                    // collision: loop and try next sequence
+                }
+            }
+
+            if ($shift === null) {
+                throw new \RuntimeException('Unable to generate unique shift number. Please retry.');
+            }
 
             // Opening balance discrepancy: compare to last closed shift on same device
             $previousShift = SalesShift::forBusiness($businessId)
@@ -982,14 +1001,55 @@ class SalesShiftController extends Controller
     {
         $prefix = 'SHIFT';
         $date = now()->format('Ymd');
+        $like = sprintf('%s-%s-%%%%', $prefix, $date);
+
+        // Must run inside the same transaction as the insert; lock to avoid concurrent duplicates.
         $lastShift = SalesShift::forBusiness($businessId)
-            ->whereDate('created_at', now())
-            ->orderBy('id', 'desc')
+            ->where('shift_number', 'like', $like)
+            ->lockForUpdate()
+            ->orderByDesc('shift_number')
             ->first();
 
-        $sequence = $lastShift ? (intval(substr($lastShift->shift_number, -4)) + 1) : 1;
+        $sequence = 1;
+        if ($lastShift && is_string($lastShift->shift_number)) {
+            $tail = substr($lastShift->shift_number, -4);
+            if (ctype_digit($tail)) {
+                $sequence = ((int) $tail) + 1;
+            }
+        }
 
-        return sprintf('%s-%s-%04d', $prefix, $date, $sequence);
+        $candidate = sprintf('%s-%s-%04d', $prefix, $date, $sequence);
+
+        // Extra safety (e.g. if existing data doesn't match expected format)
+        $exists = SalesShift::forBusiness($businessId)
+            ->where('shift_number', $candidate)
+            ->exists();
+
+        if (! $exists) {
+            return $candidate;
+        }
+
+        // Fallback: walk forward until we find a free slot (still under lock).
+        for ($i = $sequence + 1; $i < $sequence + 1000; $i++) {
+            $next = sprintf('%s-%s-%04d', $prefix, $date, $i);
+            $taken = SalesShift::forBusiness($businessId)->where('shift_number', $next)->exists();
+            if (! $taken) {
+                return $next;
+            }
+        }
+
+        throw new \RuntimeException('Shift number sequence exhausted for today.');
+    }
+
+    private function isDuplicateShiftNumberException(QueryException $e): bool
+    {
+        // MySQL duplicate key error: 1062
+        if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
+            $msg = (string) $e->getMessage();
+            return str_contains($msg, 'sales_shifts_shift_number_unique') || str_contains($msg, 'shift_number');
+        }
+
+        return false;
     }
 
     /**

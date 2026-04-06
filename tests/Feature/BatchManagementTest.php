@@ -116,18 +116,15 @@ class BatchManagementTest extends TestCase
             'type' => 'purchase',
             'quantity' => 50,
             'unit_cost' => 10.00,
+            'manufacturing_date' => '2025-01-01',
             'expiry_date' => '2025-06-30',
             'lot_number' => 'LOT-AUTO-001',
         ], [
             'X-Business-Id' => $this->business->id,
         ]);
 
-        $response->assertStatus(201);
-
-        $batch = ProductBatch::where('lot_number', 'LOT-AUTO-001')->first();
-        $this->assertNotNull($batch);
-        $this->assertStringStartsWith('BATCH-', $batch->batch_number);
-        $this->assertEquals(50, $batch->current_quantity);
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors('batch_number');
     }
 
     /** @test */

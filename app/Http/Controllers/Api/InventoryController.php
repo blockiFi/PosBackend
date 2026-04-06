@@ -178,10 +178,10 @@ class InventoryController extends Controller
             'notes' => ['nullable', 'string'],
             'meta_data' => ['nullable', 'array'],
             // Batch tracking fields (for purchases)
-            'batch_number' => ['nullable', 'string', 'max:255'],
+            'batch_number' => ['required_if:type,purchase', 'string', 'max:255'],
             'lot_number' => ['nullable', 'string', 'max:255'],
-            'manufacturing_date' => ['nullable', 'date'],
-            'expiry_date' => ['nullable', 'date', 'after:manufacturing_date'],
+            'manufacturing_date' => ['required_if:type,purchase', 'date'],
+            'expiry_date' => ['required_if:type,purchase', 'date', 'after:manufacturing_date'],
             'supplier_name' => ['nullable', 'string', 'max:255'],
             'supplier_reference' => ['nullable', 'string', 'max:255'],
         ]);
