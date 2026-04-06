@@ -331,9 +331,9 @@ class SalesShiftController extends Controller
             $shift = null;
             $startTime = now();
 
-            // Guard against race conditions: generate shift_number under lock and retry on collisions.
-            for ($attempt = 0; $attempt < 10; $attempt++) {
-                $shiftNumber = $this->generateShiftNumber($businessId);
+            // Guard against rare collisions (unique index is final guardrail).
+            for ($attempt = 0; $attempt < 5; $attempt++) {
+                $shiftNumber = $this->generateShiftNumber($businessId, $startTime);
 
                 try {
                     $shift = SalesShift::create([
@@ -997,48 +997,24 @@ class SalesShiftController extends Controller
     /**
      * Generate unique shift number
      */
-    private function generateShiftNumber($businessId): string
+    private function generateShiftNumber($businessId, $time = null): string
     {
         $prefix = 'SHIFT';
-        $date = now()->format('Ymd');
-        $like = sprintf('%s-%s-%%%%', $prefix, $date);
 
-        // Must run inside the same transaction as the insert; lock to avoid concurrent duplicates.
-        $lastShift = SalesShift::forBusiness($businessId)
-            ->where('shift_number', 'like', $like)
-            ->lockForUpdate()
-            ->orderByDesc('shift_number')
-            ->first();
+        // Use UTC so sorting/format is consistent across servers.
+        $t = $time ? \Illuminate\Support\Carbon::parse($time) : now();
+        $t = $t->copy()->setTimezone('UTC');
 
-        $sequence = 1;
-        if ($lastShift && is_string($lastShift->shift_number)) {
-            $tail = substr($lastShift->shift_number, -4);
-            if (ctype_digit($tail)) {
-                $sequence = ((int) $tail) + 1;
-            }
-        }
+        // Example: 20260406-103012-482 (ms)
+        $timestamp = $t->format('Ymd-His-v');
 
-        $candidate = sprintf('%s-%s-%04d', $prefix, $date, $sequence);
+        // Reduce cross-business collision chance and keep it readable.
+        $biz = strtoupper(base_convert((int) $businessId, 10, 36));
 
-        // Extra safety (e.g. if existing data doesn't match expected format)
-        $exists = SalesShift::forBusiness($businessId)
-            ->where('shift_number', $candidate)
-            ->exists();
+        // Random suffix makes collisions practically impossible even within same millisecond.
+        $rand = strtoupper(bin2hex(random_bytes(2))); // 4 hex chars
 
-        if (! $exists) {
-            return $candidate;
-        }
-
-        // Fallback: walk forward until we find a free slot (still under lock).
-        for ($i = $sequence + 1; $i < $sequence + 1000; $i++) {
-            $next = sprintf('%s-%s-%04d', $prefix, $date, $i);
-            $taken = SalesShift::forBusiness($businessId)->where('shift_number', $next)->exists();
-            if (! $taken) {
-                return $next;
-            }
-        }
-
-        throw new \RuntimeException('Shift number sequence exhausted for today.');
+        return sprintf('%s-%s-%s-%s', $prefix, $timestamp, $biz, $rand);
     }
 
     private function isDuplicateShiftNumberException(QueryException $e): bool
