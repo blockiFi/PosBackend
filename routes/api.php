@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\BatchController;
 use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\BranchProductController;
 use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\BusinessSettingsController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PaymentMethodController;
@@ -55,6 +56,10 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('businesses/{id}', [BusinessController::class, 'show']);
         Route::put('businesses/{id}', [BusinessController::class, 'update']);
         Route::delete('businesses/{id}', [BusinessController::class, 'destroy']);
+
+        // Business settings (require business context)
+        Route::get('settings/business', [BusinessSettingsController::class, 'show']);
+        Route::put('settings/business', [BusinessSettingsController::class, 'update']);
 
         // Branch routes (require business context)
         Route::get('branches', [BranchController::class, 'index']);

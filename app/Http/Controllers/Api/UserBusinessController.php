@@ -285,9 +285,11 @@ class UserBusinessController extends Controller
         }
 
         // Check if user is owner (only owners can update users)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can update users'], 403);
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
+
 
         $targetUser = User::findOrFail($userId);
 
@@ -445,9 +447,11 @@ class UserBusinessController extends Controller
         }
 
         // Check if user is owner (only owners can remove users)
-        if ($business->owner_id !== $user->id) {
-            return response()->json(['message' => 'Only business owners can remove users'], 403);
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
+
 
         $targetUser = User::findOrFail($userId);
 

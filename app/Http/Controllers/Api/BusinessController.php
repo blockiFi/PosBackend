@@ -95,11 +95,15 @@ class BusinessController extends Controller
             'state' => $data['state'] ?? null,
             'postal_code' => $data['postal_code'] ?? null,
             'country' => $data['country'] ?? null,
-            'currency' => $data['currency'] ?? 'USD',
+            // Default to Naira for new installs unless explicitly set.
+            'currency' => $data['currency'] ?? 'NGN',
             'time_zone' => $data['time_zone'] ?? null,
             'tax_registration_number' => $data['tax_registration_number'] ?? null,
             'default_tax_rate' => $data['default_tax_rate'] ?? 0,
-            'settings' => $data['settings'] ?? null,
+            'settings' => array_merge(
+                ['currency_symbol' => '₦'],
+                is_array($data['settings'] ?? null) ? ($data['settings'] ?? []) : []
+            ),
             'is_active' => true,
         ]);
 
