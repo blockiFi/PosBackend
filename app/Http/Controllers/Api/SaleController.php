@@ -15,6 +15,7 @@ use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Str;
@@ -53,54 +54,26 @@ class SaleController extends Controller
         // Get accessible branches
         $accessibleBranches = $user->getBranchesInBusiness($businessId);
 
+        $aggregateQuery = Sale::query()->forBusiness($businessId);
+        if ($filterError = $this->applySaleIndexFilters($aggregateQuery, $request, $user, $businessId, $accessibleBranches)) {
+            return $filterError;
+        }
+
+        $matchingGrossTotal = (float) $aggregateQuery->sum('total_amount');
+
         $query = Sale::with(['customer', 'user', 'branch', 'items.product'])
             ->forBusiness($businessId);
-
-        // Filter by accessible branches
-        if ($accessibleBranches->isNotEmpty()) {
-            $query->whereIn('branch_id', $accessibleBranches->pluck('id'));
+        if ($filterError = $this->applySaleIndexFilters($query, $request, $user, $businessId, $accessibleBranches)) {
+            return $filterError;
         }
 
-        // Apply filters
-        if ($request->filled('branch_id')) {
-            $branchId = $request->branch_id;
-            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
-                return response()->json(['message' => 'Unauthorized access to this branch'], 403);
-            }
-            $query->where('branch_id', $branchId);
-        }
+        $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
+        $sales = $query->orderBy('sale_date', 'desc')->paginate($perPage);
 
-        if ($request->filled('customer_id')) {
-            $query->where('customer_id', $request->customer_id);
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('payment_status')) {
-            $query->where('payment_status', $request->payment_status);
-        }
-
-        if ($request->filled('sale_type')) {
-            $query->where('sale_type', $request->sale_type);
-        }
-
-        if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->dateRange($request->start_date, $request->end_date);
-        }
-
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('sale_number', 'like', '%'.$search.'%')
-                    ->orWhere('reference_id', 'like', '%'.$search.'%');
-            });
-        }
-
-        $sales = $query->orderBy('sale_date', 'desc')->paginate(15);
-
-        return response()->json($sales);
+        return response()->json(array_merge(
+            $sales->toArray(),
+            ['matching_gross_total' => $matchingGrossTotal],
+        ));
     }
 
     /**
@@ -617,6 +590,62 @@ class SaleController extends Controller
 
             return response()->json(['message' => 'Failed to cancel sale', 'error' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Apply the same filters as the sales index list (branch access, query params).
+     *
+     * @param  Builder<Sale>  $query
+     * @param  \Illuminate\Support\Collection<int, mixed>  $accessibleBranches
+     */
+    private function applySaleIndexFilters(
+        Builder $query,
+        Request $request,
+        $user,
+        mixed $businessId,
+        $accessibleBranches,
+    ): ?\Illuminate\Http\JsonResponse {
+        if ($accessibleBranches->isNotEmpty()) {
+            $query->whereIn('branch_id', $accessibleBranches->pluck('id'));
+        }
+
+        if ($request->filled('branch_id')) {
+            $branchId = $request->branch_id;
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+            }
+            $query->where('branch_id', $branchId);
+        }
+
+        if ($request->filled('customer_id')) {
+            $query->where('customer_id', $request->customer_id);
+        }
+
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+
+        if ($request->filled('payment_status')) {
+            $query->where('payment_status', $request->payment_status);
+        }
+
+        if ($request->filled('sale_type')) {
+            $query->where('sale_type', $request->sale_type);
+        }
+
+        if ($request->filled('start_date') && $request->filled('end_date')) {
+            $query->dateRange($request->start_date, $request->end_date);
+        }
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('sale_number', 'like', '%'.$search.'%')
+                    ->orWhere('reference_id', 'like', '%'.$search.'%');
+            });
+        }
+
+        return null;
     }
 
     /**
