@@ -54,7 +54,8 @@ class AnalyticsController extends Controller
 
         [$startDate, $endDate] = $this->getDateRange($period, $startDateInput, $endDateInput);
 
-        $cacheKey = "org_analytics_{$businessId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
+        // NOTE: cache key includes user id because branch_contributions are scoped by user's permitted branches.
+        $cacheKey = "org_analytics_{$businessId}_user_{$user->id}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
 
         return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($user, $businessId, $startDate, $endDate, $comparePrevious) {
             // Current period metrics
@@ -562,35 +563,55 @@ class AnalyticsController extends Controller
 
     private function calculateSalesCost($sales): float
     {
+        $salesCollection = $sales instanceof \Illuminate\Support\Collection ? $sales : collect($sales);
+        if ($salesCollection->isEmpty()) {
+            return 0;
+        }
+
+        $allProductIds = $salesCollection
+            ->flatMap(function ($sale) {
+                return $sale->items?->pluck('product_id') ?? collect();
+            })
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($allProductIds->isEmpty()) {
+            return 0;
+        }
+
+        $branchIds = $salesCollection
+            ->pluck('branch_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        $branchCostsByBranch = BranchProduct::query()
+            ->whereIn('branch_id', $branchIds)
+            ->whereIn('product_id', $allProductIds)
+            ->get(['branch_id', 'product_id', 'cost_price'])
+            ->groupBy('branch_id')
+            ->map(function ($rows) {
+                return $rows->pluck('cost_price', 'product_id');
+            });
+
+        $productCosts = Product::query()
+            ->whereIn('id', $allProductIds)
+            ->pluck('base_cost_price', 'id');
+
         $totalCost = 0;
-
-        foreach ($sales as $sale) {
-            $productIds = $sale->items->pluck('product_id')->unique();
-
-            if ($productIds->isEmpty()) {
-                continue;
-            }
-
-            $branchCosts = BranchProduct::query()
-                ->where('branch_id', $sale->branch_id)
-                ->whereIn('product_id', $productIds)
-                ->pluck('cost_price', 'product_id');
-
-            $productCosts = Product::query()
-                ->whereIn('id', $productIds)
-                ->pluck('base_cost_price', 'id');
-
+        foreach ($salesCollection as $sale) {
+            $costsForBranch = $branchCostsByBranch->get($sale->branch_id) ?? collect();
             foreach ($sale->items as $item) {
-                $unitCost = $branchCosts->get($item->product_id);
+                $unitCost = $costsForBranch->get($item->product_id);
                 if ($unitCost === null) {
                     $unitCost = $productCosts->get($item->product_id, 0);
                 }
-
-                $totalCost += $item->quantity * $unitCost;
+                $totalCost += ((float) $item->quantity) * ((float) $unitCost);
             }
         }
 
-        return $totalCost;
+        return (float) $totalCost;
     }
 
     private function calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId = null)

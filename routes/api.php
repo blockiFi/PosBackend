@@ -8,6 +8,7 @@ use App\Http\Controllers\Api\BranchProductController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\BusinessSettingsController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\ProductCategoryController;
@@ -53,6 +54,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // Business-specific actions require business context (header/query or pivot membership)
     Route::middleware(['business.context'])->group(function () {
+        Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+
         Route::get('businesses/{id}', [BusinessController::class, 'show']);
         Route::put('businesses/{id}', [BusinessController::class, 'update']);
         Route::delete('businesses/{id}', [BusinessController::class, 'destroy']);

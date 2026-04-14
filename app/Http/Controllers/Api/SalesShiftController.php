@@ -142,7 +142,15 @@ class SalesShiftController extends Controller
             ],
         ];
 
-        $shifts = $query->orderBy('start_time', 'desc')->paginate(15);
+        $perPage = (int) $request->input('per_page', 15);
+        if ($perPage < 1) {
+            $perPage = 15;
+        }
+        if ($perPage > 100) {
+            $perPage = 100;
+        }
+
+        $shifts = $query->orderBy('start_time', 'desc')->paginate($perPage);
 
         // Enhance each shift with statistics
         $shifts->getCollection()->transform(function ($shift) {

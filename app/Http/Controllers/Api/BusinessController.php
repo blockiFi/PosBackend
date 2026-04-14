@@ -22,6 +22,7 @@ class BusinessController extends Controller
 
         $businesses = $user->businesses()
             ->with('branches')
+            ->withCount('products')
             ->wherePivot('is_active', true)
             ->get()
             ->map(function (Business $business) {
@@ -30,10 +31,19 @@ class BusinessController extends Controller
                     'uuid' => $business->uuid,
                     'name' => $business->name,
                     'slug' => $business->slug,
+                    'legal_name' => $business->legal_name,
+                    'email' => $business->email,
+                    'phone' => $business->phone,
+                    'address' => $business->address,
+                    'city' => $business->city,
+                    'tax_registration_number' => $business->tax_registration_number,
                     'currency' => $business->currency,
                     'time_zone' => $business->time_zone,
-                    'branch_id' => $business->pivot->branch_id,
+                    'owner_id' => $business->owner_id,
+                    'branch_id' => $business->pivot->branch_id ?? null,
                     'is_active' => $business->is_active,
+                    'products_count' => (int) ($business->products_count ?? 0),
+                    'created_at' => $business->created_at?->toIso8601String(),
                     'branches' => $business->branches->map(function (Branch $branch) {
                         return [
                             'id' => $branch->id,
@@ -152,7 +162,8 @@ class BusinessController extends Controller
         $user = $request->user();
 
         $business = $user->businesses()
-            ->with('branches')
+            ->with(['branches'])
+            ->withCount('products')
             ->where('businesses.id', $id)
             ->first();
 
@@ -165,13 +176,42 @@ class BusinessController extends Controller
                 'id' => $business->id,
                 'uuid' => $business->uuid,
                 'name' => $business->name,
+                'legal_name' => $business->legal_name,
                 'slug' => $business->slug,
+                'email' => $business->email,
+                'phone' => $business->phone,
+                'address' => $business->address,
+                'city' => $business->city,
+                'state' => $business->state,
+                'postal_code' => $business->postal_code,
+                'country' => $business->country,
                 'currency' => $business->currency,
                 'time_zone' => $business->time_zone,
-                'role' => $business->pivot->role,
-                'branch_id' => $business->pivot->branch_id,
+                'tax_registration_number' => $business->tax_registration_number,
+                'default_tax_rate' => $business->default_tax_rate,
+                'settings' => $business->settings,
+                'owner_id' => $business->owner_id,
                 'is_active' => $business->is_active,
-                'branches' => $business->branches,
+                'products_count' => (int) ($business->products_count ?? 0),
+                'created_at' => $business->created_at?->toIso8601String(),
+                'updated_at' => $business->updated_at?->toIso8601String(),
+                'role' => $business->pivot->role ?? null,
+                'branch_id' => $business->pivot->branch_id ?? null,
+                'branches' => $business->branches->map(function (Branch $branch) {
+                    return [
+                        'id' => $branch->id,
+                        'uuid' => $branch->uuid,
+                        'name' => $branch->name,
+                        'code' => $branch->code,
+                        'email' => $branch->email,
+                        'phone' => $branch->phone,
+                        'address' => $branch->address,
+                        'city' => $branch->city,
+                        'state' => $branch->state,
+                        'is_main' => $branch->is_main,
+                        'is_active' => $branch->is_active,
+                    ];
+                }),
             ],
         ]);
     }
