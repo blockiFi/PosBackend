@@ -35,7 +35,8 @@ class DashboardController extends Controller
         $canViewAllShifts = $user->hasPermissionTo('view all shifts');
         $canViewOwnShifts = $user->hasPermissionTo('view user shift');
 
-        $cacheKey = "dashboard_summary_{$businessId}_{$user->id}";
+        // v2: revenue must not be summed across sale_items join (that double-counts total_amount).
+        $cacheKey = "dashboard_summary_v2_{$businessId}_{$user->id}";
         $cached = Cache::get($cacheKey);
 
         $branchesCount = (int) Branch::where('business_id', $businessId)->count();
@@ -174,7 +175,15 @@ class DashboardController extends Controller
 
     private function salesMetrics(int $businessId, Carbon $startDate, Carbon $endDate): array
     {
-        $row = DB::table('sales as s')
+        $totals = DB::table('sales as s')
+            ->where('s.business_id', $businessId)
+            ->where('s.status', 'completed')
+            ->whereBetween('s.sale_date', [$startDate, $endDate])
+            ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
+            ->selectRaw('COALESCE(COUNT(s.id),0) as transaction_count')
+            ->first();
+
+        $costRow = DB::table('sales as s')
             ->join('sale_items as si', 'si.sale_id', '=', 's.id')
             ->leftJoin('branch_products as bp', function ($join) {
                 $join->on('bp.product_id', '=', 'si.product_id')
@@ -184,15 +193,13 @@ class DashboardController extends Controller
             ->where('s.business_id', $businessId)
             ->where('s.status', 'completed')
             ->whereBetween('s.sale_date', [$startDate, $endDate])
-            ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
-            ->selectRaw('COALESCE(COUNT(DISTINCT s.id),0) as transaction_count')
             ->selectRaw('COALESCE(SUM(si.quantity * COALESCE(bp.cost_price, p.base_cost_price, 0)),0) as cost')
             ->first();
 
-        $revenue = (float) ($row->revenue ?? 0);
-        $cost = (float) ($row->cost ?? 0);
+        $revenue = (float) ($totals->revenue ?? 0);
+        $cost = (float) ($costRow->cost ?? 0);
+        $tx = (int) ($totals->transaction_count ?? 0);
         $profit = $revenue - $cost;
-        $tx = (int) ($row->transaction_count ?? 0);
         $aov = $tx > 0 ? $revenue / $tx : 0;
         $margin = $revenue > 0 ? ($profit / $revenue) * 100 : 0;
 
@@ -209,7 +216,16 @@ class DashboardController extends Controller
     private function salesMetricsDelta(int $businessId, Carbon $since, Carbon $endDate): array
     {
         // Delta scan: only sales strictly after last computed_at.
-        $row = DB::table('sales as s')
+        $totals = DB::table('sales as s')
+            ->where('s.business_id', $businessId)
+            ->where('s.status', 'completed')
+            ->where('s.sale_date', '>', $since)
+            ->where('s.sale_date', '<=', $endDate)
+            ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
+            ->selectRaw('COALESCE(COUNT(s.id),0) as transaction_count')
+            ->first();
+
+        $costRow = DB::table('sales as s')
             ->join('sale_items as si', 'si.sale_id', '=', 's.id')
             ->leftJoin('branch_products as bp', function ($join) {
                 $join->on('bp.product_id', '=', 'si.product_id')
@@ -220,15 +236,13 @@ class DashboardController extends Controller
             ->where('s.status', 'completed')
             ->where('s.sale_date', '>', $since)
             ->where('s.sale_date', '<=', $endDate)
-            ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
-            ->selectRaw('COALESCE(COUNT(DISTINCT s.id),0) as transaction_count')
             ->selectRaw('COALESCE(SUM(si.quantity * COALESCE(bp.cost_price, p.base_cost_price, 0)),0) as cost')
             ->first();
 
         return [
-            'revenue' => (float) ($row->revenue ?? 0),
-            'cost' => (float) ($row->cost ?? 0),
-            'transaction_count' => (int) ($row->transaction_count ?? 0),
+            'revenue' => (float) ($totals->revenue ?? 0),
+            'cost' => (float) ($costRow->cost ?? 0),
+            'transaction_count' => (int) ($totals->transaction_count ?? 0),
         ];
     }
 
