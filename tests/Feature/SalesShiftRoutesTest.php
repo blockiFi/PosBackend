@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\Branch;
 use App\Models\Business;
 use App\Models\Customer;
+use App\Models\DeviceGroup;
+use App\Models\DeviceRegistration;
 use App\Models\PaymentMethod;
 use App\Models\Sale;
 use App\Models\SalesShift;
@@ -67,6 +69,23 @@ class SalesShiftRoutesTest extends TestCase
 
     public function test_can_open_shift()
     {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-open-1',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
             'device_id' => 'device-open-1',
@@ -97,6 +116,7 @@ class SalesShiftRoutesTest extends TestCase
             'branch_id' => $this->branch->id,
             'user_id' => $this->user->id,
             'device_id' => 'device-open-1',
+            'group_id' => $group->id,
             'opening_balance' => 100.00,
             'status' => 'open',
         ]);
@@ -116,6 +136,23 @@ class SalesShiftRoutesTest extends TestCase
             'status' => 'open',
         ]);
 
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Kitchen',
+            'code' => 'KITCHEN',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-multi-1',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         // Try to open second shift
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
@@ -127,7 +164,7 @@ class SalesShiftRoutesTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJson([
-                'message' => 'You already have an active shift (open or paused). Please close or resume it before opening a new one.',
+                'message' => 'This device already has an active shift (open or paused). Please close it before opening a new one.',
             ]);
     }
 

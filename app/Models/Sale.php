@@ -79,6 +79,7 @@ class Sale extends Model
         return $this->belongsTo(SalesShift::class, 'shift_id');
     }
 
+
     public function items(): HasMany
     {
         return $this->hasMany(SaleItem::class);
@@ -104,6 +105,7 @@ class Sale extends Model
     {
         return $query->where('branch_id', $branchId);
     }
+
 
     public function scopeForCustomer($query, $customerId)
     {

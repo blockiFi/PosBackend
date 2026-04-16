@@ -15,6 +15,7 @@ class DeviceRegistration extends Model
         'device_id',
         'business_id',
         'branch_id',
+        'group_id',
         'user_id',
         'device_name',
         'device_type',
@@ -53,6 +54,11 @@ class DeviceRegistration extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(DeviceGroup::class, 'group_id');
     }
 
     public function syncSessions(): HasMany
