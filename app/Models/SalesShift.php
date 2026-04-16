@@ -17,6 +17,7 @@ class SalesShift extends Model
         'branch_id',
         'user_id',
         'device_id',
+        'group_id',
         'start_time',
         'end_time',
         'opening_balance',
@@ -76,6 +77,11 @@ class SalesShift extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function group(): BelongsTo
+    {
+        return $this->belongsTo(DeviceGroup::class, 'group_id');
+    }
+
     public function resolvedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'discrepancy_resolved_by');
@@ -105,6 +111,11 @@ class SalesShift extends Model
     public function scopeForUser($query, $userId)
     {
         return $query->where('user_id', $userId);
+    }
+
+    public function scopeForGroup($query, int|string $groupId)
+    {
+        return $query->where('group_id', $groupId);
     }
 
     public function scopeOpen($query)

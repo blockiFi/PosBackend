@@ -4,6 +4,8 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\DeviceGroup;
+use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,6 +67,23 @@ class ShiftDeviceIdAndOpeningBalanceDiscrepancyTest extends TestCase
 
     public function test_opening_shift_with_device_id_in_body_succeeds_and_stores_device_id(): void
     {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-abc-123',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
             'device_id' => 'device-abc-123',
@@ -78,6 +97,7 @@ class ShiftDeviceIdAndOpeningBalanceDiscrepancyTest extends TestCase
         $this->assertDatabaseHas('sales_shifts', [
             'business_id' => $this->business->id,
             'device_id' => 'device-abc-123',
+            'group_id' => $group->id,
             'opening_balance' => 100,
             'status' => 'open',
         ]);
@@ -85,6 +105,23 @@ class ShiftDeviceIdAndOpeningBalanceDiscrepancyTest extends TestCase
 
     public function test_opening_shift_with_device_id_in_header_succeeds(): void
     {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-header-99',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         $response = $this->actingAs($this->user)->postJson('/api/shifts', [
             'branch_id' => $this->branch->id,
             'opening_balance' => 50.00,
@@ -100,12 +137,30 @@ class ShiftDeviceIdAndOpeningBalanceDiscrepancyTest extends TestCase
 
     public function test_opening_balance_discrepancy_when_previous_shift_closed_with_different_actual_cash(): void
     {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-same',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         $previousShift = SalesShift::create([
             'shift_number' => 'SHIFT-PREV-001',
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'user_id' => $this->user->id,
             'device_id' => 'device-same',
+            'group_id' => $group->id,
             'start_time' => now()->subHours(10),
             'end_time' => now()->subHours(2),
             'opening_balance' => 200.00,
@@ -131,12 +186,30 @@ class ShiftDeviceIdAndOpeningBalanceDiscrepancyTest extends TestCase
 
     public function test_no_opening_balance_discrepancy_when_opening_balance_matches_previous_actual_cash(): void
     {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+        DeviceRegistration::create([
+            'device_id' => 'device-match',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Test Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
         SalesShift::create([
             'shift_number' => 'SHIFT-MATCH-001',
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'user_id' => $this->user->id,
             'device_id' => 'device-match',
+            'group_id' => $group->id,
             'start_time' => now()->subHours(10),
             'end_time' => now()->subHours(2),
             'opening_balance' => 100.00,

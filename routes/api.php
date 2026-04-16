@@ -9,6 +9,8 @@ use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\BusinessSettingsController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
+use App\Http\Controllers\Api\DeviceController;
+use App\Http\Controllers\Api\DeviceGroupController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\ProductCategoryController;
@@ -71,6 +73,19 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('branches/{id}', [BranchController::class, 'show']);
         Route::put('branches/{id}', [BranchController::class, 'update']);
         Route::delete('branches/{id}', [BranchController::class, 'destroy']);
+
+        // Device Group routes (require business context)
+        Route::get('device-groups', [DeviceGroupController::class, 'index']);
+        Route::get('device-groups/report', [DeviceGroupController::class, 'report']);
+        Route::post('device-groups', [DeviceGroupController::class, 'store']);
+        Route::get('device-groups/{id}', [DeviceGroupController::class, 'show']);
+        Route::put('device-groups/{id}', [DeviceGroupController::class, 'update']);
+        Route::delete('device-groups/{id}', [DeviceGroupController::class, 'destroy']);
+        Route::post('device-groups/{id}/assign-device', [DeviceGroupController::class, 'assignDevice']);
+        Route::post('device-groups/{id}/remove-device', [DeviceGroupController::class, 'removeDevice']);
+
+        // Devices (require business context)
+        Route::get('devices', [DeviceController::class, 'index']);
 
         // Role & Permission routes (require business context)
         Route::get('roles', [RolePermissionController::class, 'index']);

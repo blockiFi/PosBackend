@@ -5,9 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
+use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
-use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class SalesShiftController extends Controller
@@ -39,7 +40,7 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $query = SalesShift::with(['user', 'branch'])
+        $query = SalesShift::with(['user', 'branch', 'group'])
             ->forBusiness($businessId);
 
         // If user can only view their own shifts, filter by user_id
@@ -72,6 +73,10 @@ class SalesShiftController extends Controller
 
         if ($request->filled('device_id')) {
             $query->where('device_id', $request->device_id);
+        }
+
+        if ($request->filled('group_id')) {
+            $query->where('group_id', $request->group_id);
         }
 
         // Filter by discrepancies (variance on closed shifts or opening balance discrepancy)
@@ -309,9 +314,38 @@ class SalesShiftController extends Controller
             'opening_notes' => 'nullable|string',
         ]);
 
+        $device = DeviceRegistration::query()
+            ->where('business_id', $businessId)
+            ->where('device_id', $validated['device_id'])
+            ->first();
+
+        if (! $device) {
+            return response()->json(['message' => 'Device is not registered for this business'], 400);
+        }
+
         // Check branch access
         if (! $this->userHasBranchAccess($user, $businessId, $validated['branch_id'])) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        // Business Rule: Each device can only have ONE active shift at a time (open or paused)
+        $deviceActiveShift = SalesShift::forBusiness($businessId)
+            ->where('device_id', $validated['device_id'])
+            ->active()
+            ->first();
+
+        if ($deviceActiveShift) {
+            return response()->json([
+                'message' => 'This device already has an active shift (open or paused). Please close it before opening a new one.',
+                'current_shift' => [
+                    'id' => $deviceActiveShift->id,
+                    'shift_number' => $deviceActiveShift->shift_number,
+                    'branch_id' => $deviceActiveShift->branch_id,
+                    'branch_name' => $deviceActiveShift->branch->name ?? null,
+                    'status' => $deviceActiveShift->status,
+                    'opened_at' => $deviceActiveShift->start_time->toIso8601String(),
+                ],
+            ], 400);
         }
 
         // Business Rule: Each user can only have ONE active shift at a time (open or paused) across all branches
@@ -350,6 +384,7 @@ class SalesShiftController extends Controller
                         'branch_id' => $validated['branch_id'],
                         'user_id' => $user->id,
                         'device_id' => $validated['device_id'],
+                        'group_id' => $device->group_id,
                         'start_time' => $startTime,
                         'opening_balance' => $validated['opening_balance'],
                         'opening_notes' => $validated['opening_notes'] ?? null,
@@ -392,7 +427,7 @@ class SalesShiftController extends Controller
 
             return response()->json([
                 'message' => 'Shift opened successfully',
-                'shift' => $shift->load(['user', 'branch', 'previousShift']),
+                'shift' => $shift->load(['user', 'branch', 'previousShift', 'group']),
             ], 201);
 
         } catch (\Exception $e) {
@@ -427,7 +462,7 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $shift = SalesShift::with(['user', 'branch', 'previousShift', 'sales' => function ($query) {
+        $shift = SalesShift::with(['user', 'branch', 'group', 'previousShift', 'sales' => function ($query) {
             $query->with(['payments.paymentMethod', 'customer', 'items.product'])
                 ->withTrashed(); // Include voided/cancelled sales
         }])
@@ -476,7 +511,7 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $shift = SalesShift::with(['user', 'branch'])
+        $shift = SalesShift::with(['user', 'branch', 'group'])
             ->forBusiness($businessId)
             ->findOrFail($id);
 
@@ -708,7 +743,7 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $shift = SalesShift::with(['user', 'branch'])
+        $shift = SalesShift::with(['user', 'branch', 'group'])
             ->forBusiness($businessId)
             ->where('user_id', $user->id)
             ->active()
@@ -952,6 +987,12 @@ class SalesShiftController extends Controller
             'shift_id' => $shift->id,
             'shift_number' => $shift->shift_number,
             'status' => $shift->status,
+            'group_id' => $shift->group_id,
+            'group' => $shift->group ? [
+                'id' => $shift->group->id,
+                'name' => $shift->group->name,
+                'code' => $shift->group->code,
+            ] : null,
             'branch' => $shift->branch ? [
                 'id' => $shift->branch->id,
                 'name' => $shift->branch->name,
@@ -1030,6 +1071,7 @@ class SalesShiftController extends Controller
         // MySQL duplicate key error: 1062
         if ((int) ($e->errorInfo[1] ?? 0) === 1062) {
             $msg = (string) $e->getMessage();
+
             return str_contains($msg, 'sales_shifts_shift_number_unique') || str_contains($msg, 'shift_number');
         }
 
@@ -1073,6 +1115,12 @@ class SalesShiftController extends Controller
         // Add statistics to shift (device_id and opening balance discrepancy are model attributes, included in JSON)
         $shift->statistics = [
             'device_id' => $shift->device_id,
+            'group_id' => $shift->group_id,
+            'group' => $shift->relationLoaded('group') && $shift->group ? [
+                'id' => $shift->group->id,
+                'name' => $shift->group->name,
+                'code' => $shift->group->code,
+            ] : null,
             'opening_balance_discrepancy' => $shift->opening_balance_discrepancy !== null ? (float) $shift->opening_balance_discrepancy : null,
             'previous_shift_id' => $shift->previous_shift_id,
             'has_opening_balance_discrepancy' => $shift->hasOpeningBalanceDiscrepancy(),

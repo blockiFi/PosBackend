@@ -127,6 +127,7 @@ class SaleController extends Controller
 
         // Get or validate shift
         $shiftId = null;
+        $shift = null;
         if (isset($validated['shift_id'])) {
             // Validate provided shift
             $shift = SalesShift::forBusiness($businessId)
@@ -153,6 +154,7 @@ class SaleController extends Controller
 
             if ($currentShift) {
                 $shiftId = $currentShift->id;
+                $shift = $currentShift;
             }
         }
 
@@ -170,6 +172,7 @@ class SaleController extends Controller
                 'customer_id' => $validated['customer_id'] ?? null,
                 'user_id' => $user->id,
                 'shift_id' => $shiftId,
+                'group_id' => $shift?->group_id,
                 'sale_date' => now(),
                 'discount_amount' => $validated['discount_amount'] ?? 0,
                 'sale_type' => $validated['sale_type'] ?? 'pos',
