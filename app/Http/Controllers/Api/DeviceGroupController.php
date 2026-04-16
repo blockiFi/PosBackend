@@ -119,16 +119,21 @@ class DeviceGroupController extends Controller
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
             ->whereNull('sales.deleted_at')
-            ->whereNotNull('sales.group_id')
-            ->leftJoin('device_groups', 'device_groups.id', '=', 'sales.group_id')
+            ->join('sales_shifts as shifts', function ($join) use ($businessId) {
+                $join->on('shifts.id', '=', 'sales.shift_id')
+                    ->where('shifts.business_id', '=', $businessId)
+                    ->whereNull('shifts.deleted_at')
+                    ->whereNotNull('shifts.group_id');
+            })
+            ->join('device_groups', 'device_groups.id', '=', 'shifts.group_id')
             ->select([
-                'sales.group_id',
+                'shifts.group_id',
                 'device_groups.name as group_name',
                 'device_groups.code as group_code',
                 DB::raw('COUNT(*) as transactions_count'),
                 DB::raw('COALESCE(SUM(sales.total_amount),0) as total_revenue'),
             ])
-            ->groupBy('sales.group_id', 'device_groups.name', 'device_groups.code');
+            ->groupBy('shifts.group_id', 'device_groups.name', 'device_groups.code');
 
         if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
             $query->whereBetween('sales.sale_date', [$validated['start_date'], $validated['end_date']]);
@@ -139,11 +144,11 @@ class DeviceGroupController extends Controller
         }
 
         if (! empty($validated['group_id'])) {
-            $query->where('sales.group_id', (int) $validated['group_id']);
+            $query->where('shifts.group_id', (int) $validated['group_id']);
         }
 
         if (! empty($validated['device_id'])) {
-            $query->where('sales.device_id', $validated['device_id']);
+            $query->where('shifts.device_id', $validated['device_id']);
         }
 
         if (! empty($validated['shift_id'])) {

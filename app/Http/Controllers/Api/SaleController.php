@@ -172,7 +172,6 @@ class SaleController extends Controller
                 'customer_id' => $validated['customer_id'] ?? null,
                 'user_id' => $user->id,
                 'shift_id' => $shiftId,
-                'group_id' => $shift?->group_id,
                 'sale_date' => now(),
                 'discount_amount' => $validated['discount_amount'] ?? 0,
                 'sale_type' => $validated['sale_type'] ?? 'pos',

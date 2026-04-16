@@ -19,7 +19,6 @@ class Sale extends Model
         'customer_id',
         'user_id',
         'shift_id',
-        'group_id',
         'sale_date',
         'subtotal',
         'tax_amount',
@@ -80,10 +79,6 @@ class Sale extends Model
         return $this->belongsTo(SalesShift::class, 'shift_id');
     }
 
-    public function group(): BelongsTo
-    {
-        return $this->belongsTo(DeviceGroup::class, 'group_id');
-    }
 
     public function items(): HasMany
     {
@@ -111,10 +106,6 @@ class Sale extends Model
         return $query->where('branch_id', $branchId);
     }
 
-    public function scopeForGroup($query, int|string $groupId)
-    {
-        return $query->where('group_id', $groupId);
-    }
 
     public function scopeForCustomer($query, $customerId)
     {
