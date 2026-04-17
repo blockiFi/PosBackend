@@ -207,6 +207,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Sales Shift routes (require business context)
         Route::get('shifts', [SalesShiftController::class, 'index']);
         Route::get('shifts/branch-summary', [SalesShiftController::class, 'branchShiftsSummary']);
+        Route::post('shifts/backfill-groups', [SalesShiftController::class, 'backfillGroups']);
         Route::post('shifts', [SalesShiftController::class, 'store']);
         Route::get('shifts/current', [SalesShiftController::class, 'current']);
         Route::get('shifts/{id}', [SalesShiftController::class, 'show']);

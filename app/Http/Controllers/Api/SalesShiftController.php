@@ -281,6 +281,87 @@ class SalesShiftController extends Controller
     }
 
     /**
+     * Backfill group_id on shifts where it is null, using the device's current group_id.
+     */
+    public function backfillGroups(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $canManage = $business->owner_id === $user->id
+            || $user->hasPermissionTo('view all shifts')
+            || $user->hasPermissionTo('create shift');
+
+        if (! $canManage) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $payload = DB::transaction(function () use ($businessId) {
+            $shifts = SalesShift::forBusiness($businessId)
+                ->whereNull('group_id')
+                ->get(['id', 'device_id']);
+
+            $scanned = $shifts->count();
+
+            $shiftsWithDevice = $shifts->filter(fn ($s) => $s->device_id !== null && $s->device_id !== '');
+            $deviceIds = $shiftsWithDevice->pluck('device_id')->unique()->values();
+
+            $devices = DeviceRegistration::query()
+                ->where('business_id', $businessId)
+                ->whereIn('device_id', $deviceIds)
+                ->get(['device_id', 'group_id'])
+                ->keyBy('device_id');
+
+            $updated = 0;
+            $skippedNoDevice = 0;
+            $skippedDeviceHasNoGroup = 0;
+            $missingDeviceIds = [];
+
+            foreach ($shiftsWithDevice->groupBy('device_id') as $deviceId => $group) {
+                $device = $devices->get($deviceId);
+                if (! $device) {
+                    $skippedNoDevice += $group->count();
+                    $missingDeviceIds[] = $deviceId;
+
+                    continue;
+                }
+                if ($device->group_id === null) {
+                    $skippedDeviceHasNoGroup += $group->count();
+
+                    continue;
+                }
+
+                $updated += SalesShift::forBusiness($businessId)
+                    ->whereNull('group_id')
+                    ->where('device_id', $deviceId)
+                    ->update(['group_id' => $device->group_id]);
+            }
+
+            $nullDeviceShifts = $shifts->filter(fn ($s) => $s->device_id === null || $s->device_id === '');
+            $skippedNoDevice += $nullDeviceShifts->count();
+
+            return [
+                'scanned' => $scanned,
+                'updated' => $updated,
+                'skipped_no_device' => $skippedNoDevice,
+                'skipped_device_has_no_group' => $skippedDeviceHasNoGroup,
+                'missing_device_ids' => array_values(array_unique($missingDeviceIds)),
+            ];
+        });
+
+        return response()->json($payload);
+    }
+
+    /**
      * Open a new shift
      */
     public function store(Request $request)

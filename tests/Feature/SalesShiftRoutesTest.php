@@ -653,4 +653,54 @@ class SalesShiftRoutesTest extends TestCase
 
         $response->assertStatus(404);
     }
+
+    public function test_backfill_groups_sets_group_from_device(): void
+    {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Floor',
+            'code' => 'FLR',
+            'is_active' => true,
+        ]);
+
+        DeviceRegistration::create([
+            'device_id' => 'device-backfill-1',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'group_id' => $group->id,
+            'device_name' => 'Backfill Device',
+            'device_type' => 'web',
+            'status' => 'active',
+        ]);
+
+        $shift = SalesShift::create([
+            'shift_number' => 'SHIFT-BF-0001',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'device_id' => 'device-backfill-1',
+            'group_id' => null,
+            'start_time' => now(),
+            'opening_balance' => 50.00,
+            'status' => 'closed',
+        ]);
+
+        $response = $this->actingAs($this->user)->postJson('/api/shifts/backfill-groups', [], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $response->assertOk()
+            ->assertJson([
+                'scanned' => 1,
+                'updated' => 1,
+                'skipped_no_device' => 0,
+                'skipped_device_has_no_group' => 0,
+            ]);
+
+        $this->assertDatabaseHas('sales_shifts', [
+            'id' => $shift->id,
+            'group_id' => $group->id,
+        ]);
+    }
 }
