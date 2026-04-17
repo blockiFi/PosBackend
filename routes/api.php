@@ -23,6 +23,7 @@ use App\Http\Controllers\Api\SalesShiftController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
 use App\Http\Controllers\Api\StockTransferRequestController;
+use App\Http\Controllers\Api\SyncDashboardController;
 use App\Http\Controllers\Api\UserBusinessController;
 use App\Http\Controllers\StockWriteoffController;
 use App\Http\Controllers\SyncController;
@@ -86,6 +87,17 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
         // Devices (require business context)
         Route::get('devices', [DeviceController::class, 'index']);
+        Route::get('devices/{device}', [DeviceController::class, 'show']);
+        Route::put('devices/{device}', [DeviceController::class, 'update']);
+        Route::patch('devices/{device}', [DeviceController::class, 'update']);
+        Route::delete('devices/{device}', [DeviceController::class, 'destroy']);
+
+        // Sync Dashboard (require business context)
+        Route::prefix('sync/dashboard')->group(function () {
+            Route::get('summary', [SyncDashboardController::class, 'summary']);
+            Route::get('sessions', [SyncDashboardController::class, 'sessions']);
+            Route::get('conflicts', [SyncDashboardController::class, 'conflicts']);
+        });
 
         // Role & Permission routes (require business context)
         Route::get('roles', [RolePermissionController::class, 'index']);
