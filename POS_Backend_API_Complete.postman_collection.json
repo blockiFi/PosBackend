@@ -1,8 +1,8 @@
 {
     "info": {
-        "_postman_id": "pos-backend-api-complete-v1",
-        "name": "POS Backend API - Complete Reference",
-        "description": "Complete Postman collection for the POS Backend. Includes every route with full request bodies and detailed descriptions.\n\n**Setup:**\n1. Set `base_url` (e.g. http://127.0.0.1:8000). Paths include api/ automatically.\n2. Use Register or Login to get a token; it is stored in `auth_token`.\n3. Set `business_id` and optionally `branch_id` for business-scoped requests.\n4. All protected routes use Bearer token automatically.",
+        "_postman_id": "pos-backend-complete-v2",
+        "name": "POS Backend API (Complete)",
+        "description": "Complete Postman collection for this Laravel backend. Generated from `scripts/generate_postman_collection.php` (mirrors `routes/api.php` and `GET /up`).\n\n**Regenerate:** `php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json`\n\n**Find routes fast:**\n- **Device groups (terminals):** folder `4b. Device groups` \u2014 paths `device-groups`, `device-groups/report`.\n- **Deposits:** under `13. Sales` \u2192 subfolder `Deposits` \u2014 `GET sales/by-reference/...`, `POST sales/.../complete-deposit`. Deposit **stock mode** settings: `2c. Business settings` \u2192 `settings/business` (`deposit_stock_mode`).\n- **Shifts \u2194 group:** `14. Sales shifts` \u2014 `POST shifts/backfill-groups` links shift `group_id` to device group (not the same folder as device-groups CRUD).\n\n**Setup:**\n1. `base_url` = http://127.0.0.1:8000/api \u2014 use paths without a second `/api` prefix.\n2. `app_root` = http://127.0.0.1:8000 \u2014 for `/up` only.\n3. Register or Login sets `auth_token`.\n4. Use `X-Business-Id: {{business_id}}` on business-scoped routes.\n5. Collection uses Bearer auth; public endpoints override with noauth.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "auth": {
@@ -17,8 +17,13 @@
     },
     "variable": [
         {
-            "key": "base_url",
+            "key": "app_root",
             "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
+        {
+            "key": "base_url",
+            "value": "http://127.0.0.1:8000/api",
             "type": "string"
         },
         {
@@ -75,9 +80,61 @@
             "key": "device_id",
             "value": "device-postman-001",
             "type": "string"
+        },
+        {
+            "key": "seed_import_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "device_group_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "device_registration_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "sale_reference",
+            "value": "SALE-001",
+            "type": "string"
         }
     ],
     "item": [
+        {
+            "name": "0. System",
+            "description": "Laravel framework route (not under `/api`).",
+            "item": [
+                {
+                    "name": "Health (up)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{app_root}}/up",
+                            "host": [
+                                "{{app_root}}"
+                            ],
+                            "path": [
+                                "up"
+                            ]
+                        },
+                        "description": "Laravel default health endpoint (`bootstrap/app.php` \u2192 `health: '/up'`). Returns 200 when the application can boot. No authentication.\n\nUse collection variable `app_root` (not `base_url`).",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
         {
             "name": "1. Authentication",
             "description": "Public and protected auth endpoints. Register and Login store the token in collection variable `auth_token`.",
@@ -97,12 +154,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/user",
+                            "raw": "{{base_url}}/user",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "user"
                             ]
                         },
@@ -125,12 +181,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/user",
+                            "raw": "{{base_url}}/user",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "user"
                             ]
                         },
@@ -157,12 +212,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/register",
+                            "raw": "{{base_url}}/register",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "register"
                             ]
                         },
@@ -203,12 +257,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/login",
+                            "raw": "{{base_url}}/login",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "login"
                             ]
                         },
@@ -249,12 +302,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/pin-login",
+                            "raw": "{{base_url}}/pin-login",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "pin-login"
                             ]
                         },
@@ -284,12 +336,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/pin/set",
+                            "raw": "{{base_url}}/pin/set",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "pin",
                                 "set"
                             ]
@@ -317,12 +368,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/pin/remove",
+                            "raw": "{{base_url}}/pin/remove",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "pin",
                                 "remove"
                             ]
@@ -350,12 +400,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-details-with-branch-auth",
+                            "raw": "{{base_url}}/business-details-with-branch-auth",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-details-with-branch-auth"
                             ]
                         },
@@ -391,12 +440,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/businesses",
+                            "raw": "{{base_url}}/businesses",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "businesses"
                             ]
                         },
@@ -419,12 +467,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/businesses",
+                            "raw": "{{base_url}}/businesses",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "businesses"
                             ]
                         },
@@ -455,12 +502,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
@@ -488,12 +534,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
@@ -525,17 +570,128 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/businesses/{{business_id}}",
+                            "raw": "{{base_url}}/businesses/{{business_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "businesses",
                                 "{{business_id}}"
                             ]
                         },
                         "description": "Delete a business (soft delete). Requires X-Business-Id."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2b. Dashboard",
+            "description": "Business KPI summary (cached). Requires X-Business-Id and permissions for analytics, sales, inventory, or shifts.",
+            "item": [
+                {
+                    "name": "Dashboard Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/dashboard/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "dashboard",
+                                "summary"
+                            ]
+                        },
+                        "description": "Returns organization-level summary: revenue, order counts, low/out stock, open shifts, etc.\n\nX-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2c. Business settings (currency, deposit_stock_mode)",
+            "description": "**Search: deposit, deposit_stock_mode, settings.** Endpoints: `GET/PUT settings/business`. `deposit_stock_mode` controls when stock moves for **deposit** sales (reserve_on_create vs deduct_on_complete). GET: any member. PUT: owner or **manage-settings**.",
+            "item": [
+                {
+                    "name": "Get Business Settings",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/settings/business",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "settings",
+                                "business"
+                            ]
+                        },
+                        "description": "Returns currency (ISO 3), currency_symbol, deposit_stock_mode (reserve_on_create | deduct_on_complete).\n\nX-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Business Settings",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/settings/business",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "settings",
+                                "business"
+                            ]
+                        },
+                        "description": "Update business-level settings.\n\n**Fields:**\n- currency: optional | string | size:3\n- currency_symbol: optional | string | max:10\n- deposit_stock_mode: optional | reserve_on_create | deduct_on_complete\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"currency\": \"NGN\",\n  \"currency_symbol\": \"\u20a6\",\n  \"deposit_stock_mode\": \"reserve_on_create\"\n}"
+                        }
                     },
                     "response": []
                 }
@@ -560,12 +716,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/permissions",
+                            "raw": "{{base_url}}/permissions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "permissions"
                             ]
                         },
@@ -597,12 +752,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches",
+                            "raw": "{{base_url}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches"
                             ]
                         },
@@ -629,12 +783,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches/generate-auth-codes",
+                            "raw": "{{base_url}}/branches/generate-auth-codes",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches",
                                 "generate-auth-codes"
                             ]
@@ -662,12 +815,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches",
+                            "raw": "{{base_url}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches"
                             ]
                         },
@@ -698,12 +850,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
@@ -731,12 +882,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
@@ -768,17 +918,600 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches/{{branch_id}}",
+                            "raw": "{{base_url}}/branches/{{branch_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches",
                                 "{{branch_id}}"
                             ]
                         },
                         "description": "Delete a branch. X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4b. Device groups (path: device-groups)",
+            "description": "**Search: device-groups, group, terminal.** API path prefix is `device-groups` (not `groups`). Group POS **DeviceRegistration** rows for sales/shift reporting. Related: **4c. Devices**, and `POST shifts/backfill-groups` (14) to set `group_id` on old shifts. Permissions: view/manage device groups, assign device to group.",
+            "item": [
+                {
+                    "name": "List Device Groups",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups"
+                            ]
+                        },
+                        "description": "Query: branch_id, is_active, search. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Device Group Sales Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/report",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "report"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                }
+                            ]
+                        },
+                        "description": "Aggregate completed sales by device group. Query: start_date, end_date, branch_id, group_id, device_id, shift_id."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Device Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups"
+                            ]
+                        },
+                        "description": "Create a device group.\n\n**Fields:**\n- name: required | string\n- code: required | string | unique per business\n- branch_id: optional | integer\n- description: optional | string\n- is_active: optional | boolean\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": null,\n  \"name\": \"Front Counter\",\n  \"code\": \"FC01\",\n  \"description\": \"Main checkout terminals\",\n  \"is_active\": true\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Device Group",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Returns group with active_shifts_count. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device Group",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Update group. Same fields as create (optional). X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Front Counter A\",\n  \"is_active\": true\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Group",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Delete device group. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Device to Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}/assign-device",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}",
+                                "assign-device"
+                            ]
+                        },
+                        "description": "Set a device registration's group. **Body:** device_id (string, max 50) \u2014 the client device_id, not DB id.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_id\": \"{{device_id}}\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove Device from Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}/remove-device",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}",
+                                "remove-device"
+                            ]
+                        },
+                        "description": "Remove device from this group (group_id cleared on device if it was in this group). **Body:** device_id (string).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_id\": \"{{device_id}}\"\n}"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4c. Devices (registrations)",
+            "description": "Registered sync devices for the business. Path {device} is the **DeviceRegistration** id (integer), not the string device_id.",
+            "item": [
+                {
+                    "name": "List Devices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices"
+                            ]
+                        },
+                        "description": "Query: branch_id, status (active|inactive|blocked), search. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Device",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Get one device registration with branch, user, group. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Update device metadata and group/branch.\n\n**Fields:**\n- device_name, device_type: required on update (web|desktop|mobile|tablet)\n- status: required (active|inactive|blocked)\n- os, app_version, branch_id, group_id: optional",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_name\": \"POS Terminal 1\",\n  \"device_type\": \"desktop\",\n  \"os\": \"macOS\",\n  \"app_version\": \"1.0.0\",\n  \"branch_id\": 1,\n  \"group_id\": 1,\n  \"status\": \"active\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device (PATCH)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Same body as PUT.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_name\": \"POS Terminal 1\",\n  \"device_type\": \"desktop\",\n  \"status\": \"active\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Registration",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Remove device registration from business. X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4d. Sync Dashboard",
+            "description": "Ops overview for offline sync (distinct from **Sync** device endpoints below). Requires **sync data** permission.",
+            "item": [
+                {
+                    "name": "Sync Dashboard Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "summary"
+                            ]
+                        },
+                        "description": "Counts: online devices, pending changes, unresolved conflicts, last sync. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Sync Sessions List",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/sessions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "sessions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "25"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "to",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "description": "Paginated sync sessions. Query: status, direction, device_id (registration id), from, to, per_page (max 100)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Unresolved Sync Conflicts",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/conflicts",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "conflicts"
+                            ]
+                        },
+                        "description": "Sessions where conflicts_detected > conflicts_resolved (limit 100). X-Business-Id required."
                     },
                     "response": []
                 }
@@ -807,12 +1540,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles",
+                            "raw": "{{base_url}}/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles"
                             ]
                         },
@@ -839,12 +1571,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles",
+                            "raw": "{{base_url}}/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles"
                             ]
                         },
@@ -875,12 +1606,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/addpermission",
+                            "raw": "{{base_url}}/roles/addpermission",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "addpermission"
                             ]
@@ -912,12 +1642,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/removepermission",
+                            "raw": "{{base_url}}/roles/removepermission",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "removepermission"
                             ]
@@ -949,12 +1678,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/1",
+                            "raw": "{{base_url}}/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -982,12 +1710,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/1",
+                            "raw": "{{base_url}}/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -1019,12 +1746,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/1",
+                            "raw": "{{base_url}}/roles/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "1"
                             ]
@@ -1052,12 +1778,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/assign",
+                            "raw": "{{base_url}}/roles/assign",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "assign"
                             ]
@@ -1089,12 +1814,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles/remove",
+                            "raw": "{{base_url}}/roles/remove",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles",
                                 "remove"
                             ]
@@ -1126,12 +1850,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/users/{{user_id}}/roles",
+                            "raw": "{{base_url}}/users/{{user_id}}/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "users",
                                 "{{user_id}}",
                                 "roles"
@@ -1165,12 +1888,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users",
+                            "raw": "{{base_url}}/business-users",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users"
                             ]
                         },
@@ -1197,12 +1919,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users",
+                            "raw": "{{base_url}}/business-users",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users"
                             ]
                         },
@@ -1233,12 +1954,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1266,12 +1986,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1303,12 +2022,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users/{{user_id}}",
+                            "raw": "{{base_url}}/business-users/{{user_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users",
                                 "{{user_id}}"
                             ]
@@ -1336,12 +2054,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/business-users/{{user_id}}/set-password",
+                            "raw": "{{base_url}}/business-users/{{user_id}}/set-password",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "business-users",
                                 "{{user_id}}",
                                 "set-password"
@@ -1380,12 +2097,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories",
+                            "raw": "{{base_url}}/categories",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories"
                             ]
                         },
@@ -1412,12 +2128,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories",
+                            "raw": "{{base_url}}/categories",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories"
                             ]
                         },
@@ -1448,12 +2163,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories/{{category_id}}",
+                            "raw": "{{base_url}}/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1481,12 +2195,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories/{{category_id}}",
+                            "raw": "{{base_url}}/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1518,12 +2231,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories/{{category_id}}",
+                            "raw": "{{base_url}}/categories/{{category_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories",
                                 "{{category_id}}"
                             ]
@@ -1551,18 +2263,146 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/categories/{{category_id}}/breadcrumb",
+                            "raw": "{{base_url}}/categories/{{category_id}}/breadcrumb",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "categories",
                                 "{{category_id}}",
                                 "breadcrumb"
                             ]
                         },
                         "description": "Get breadcrumb path for a category (parent chain). X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "7b. Data Seeding",
+            "description": "Queue CSV/Excel import (products or product_categories). Returns 202 with id/uuid; poll GET seed/{id}/status for progress. Permission: create products. X-Business-Id required.",
+            "item": [
+                {
+                    "name": "Queue Seed Import",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/seed",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "seed"
+                            ]
+                        },
+                        "description": "**Multipart form-data.** Queues `ProcessSeedImport` job.\n\n**Fields:**\n- file: required | CSV or Excel (csv, xlsx, xls)\n- entity: required | products | product_categories\n- mapping: required | object or JSON string \u2014 file header \u2192 DB column (see config/seed.php allowed columns)\n- unique_key: required | string \u2014 must be one of the mapping target columns\n- branch_id: required | integer\n- delete: optional | boolean \u2014 when true, rows are hard-deleted by unique_key instead of upserted\n\n**Response (202):** message, id, uuid, status (pending). Use **Get Seed Import Status** with `id`.\n\n**Products:** optional virtual columns `category` (by name), `retail_value` (requires `stock_quantity`; selling_price = retail_value / stock_quantity).",
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": "",
+                                    "description": "CSV or Excel file"
+                                },
+                                {
+                                    "key": "entity",
+                                    "type": "text",
+                                    "value": "products"
+                                },
+                                {
+                                    "key": "mapping[ItemID]",
+                                    "type": "text",
+                                    "value": "barcode",
+                                    "description": "Example: map file column to DB column"
+                                },
+                                {
+                                    "key": "mapping[ItemDescription]",
+                                    "type": "text",
+                                    "value": "name"
+                                },
+                                {
+                                    "key": "mapping[SupplyPrice]",
+                                    "type": "text",
+                                    "value": "base_cost_price"
+                                },
+                                {
+                                    "key": "unique_key",
+                                    "type": "text",
+                                    "value": "barcode"
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "type": "text",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "delete",
+                                    "type": "text",
+                                    "value": "false",
+                                    "description": "Optional",
+                                    "disabled": true
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 202) {",
+                                    "    const j = pm.response.json();",
+                                    "    if (j.id) pm.collectionVariables.set('seed_import_id', String(j.id));",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Seed Import Status",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/seed/{{seed_import_id}}/status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "seed",
+                                "{{seed_import_id}}",
+                                "status"
+                            ]
+                        },
+                        "description": "Poll import job status.\n\n**Response:** id, uuid, status (pending|processing|completed|failed), entity, total_rows, created, updated, deleted, failed, errors, started_at, completed_at.\n\nX-Business-Id or business_id query recommended."
                     },
                     "response": []
                 }
@@ -1590,12 +2430,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products",
+                            "raw": "{{base_url}}/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products"
                             ],
                             "query": [
@@ -1640,12 +2479,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products",
+                            "raw": "{{base_url}}/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products"
                             ]
                         },
@@ -1676,12 +2514,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}",
+                            "raw": "{{base_url}}/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1709,12 +2546,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}",
+                            "raw": "{{base_url}}/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1746,12 +2582,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}",
+                            "raw": "{{base_url}}/products/{{product_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}"
                             ]
@@ -1779,12 +2614,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/branches",
+                            "raw": "{{base_url}}/products/{{product_id}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "branches"
@@ -1817,12 +2651,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/branches",
+                            "raw": "{{base_url}}/products/{{product_id}}/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "branches"
@@ -1861,12 +2694,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/base-selling-price",
+                            "raw": "{{base_url}}/products/{{product_id}}/base-selling-price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "base-selling-price"
@@ -1899,12 +2731,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/price",
+                            "raw": "{{base_url}}/products/{{product_id}}/price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "price"
@@ -1937,12 +2768,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/units",
+                            "raw": "{{base_url}}/products/{{product_id}}/units",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "units"
@@ -1971,12 +2801,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/units",
+                            "raw": "{{base_url}}/products/{{product_id}}/units",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "units"
@@ -2009,12 +2838,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/units/1",
+                            "raw": "{{base_url}}/products/{{product_id}}/units/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "units",
@@ -2048,12 +2876,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/units/1",
+                            "raw": "{{base_url}}/products/{{product_id}}/units/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "units",
@@ -2083,12 +2910,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branches/{{branch_id}}/products",
+                            "raw": "{{base_url}}/branches/{{branch_id}}/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branches",
                                 "{{branch_id}}",
                                 "products"
@@ -2123,12 +2949,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products",
+                            "raw": "{{base_url}}/branch-products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products"
                             ]
                         },
@@ -2155,12 +2980,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/by-category",
+                            "raw": "{{base_url}}/branch-products/by-category",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "by-category"
                             ]
@@ -2188,12 +3012,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products",
+                            "raw": "{{base_url}}/branch-products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products"
                             ]
                         },
@@ -2224,12 +3047,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/assign-multiple",
+                            "raw": "{{base_url}}/branch-products/assign-multiple",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "assign-multiple"
                             ]
@@ -2238,6 +3060,78 @@
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"product_ids\": [1, 2, 3]\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Bulk Move Shelf/Store",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/branch-products/bulk-move",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "branch-products",
+                                "bulk-move"
+                            ]
+                        },
+                        "description": "Bulk move stock between shelf and store within one branch. Requires same permissions as direct move-to-shelf/store (approve shelf store move or manage/adjust inventory).\n\n**Fields:**\n- branch_id: required\n- direction: required | to_shelf | to_store\n- mode: required | all | fixed_quantity | per_item\n- For mode=fixed_quantity: branch_product_ids (array), quantity (integer)\n- For mode=per_item: items: [{ branch_product_id, quantity }]\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": 1,\n  \"direction\": \"to_shelf\",\n  \"mode\": \"fixed_quantity\",\n  \"branch_product_ids\": [1, 2],\n  \"quantity\": 5\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Bulk Selling Price (per item)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/branch-products/bulk-selling-price",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "branch-products",
+                                "bulk-selling-price"
+                            ]
+                        },
+                        "description": "Update selling_price for multiple branch products in one branch. Same permission as PATCH branch-products/{id}/selling-price: business owner or **set branch product selling price**.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- items: required | array | min:1\n- items.*.branch_product_id: required | integer (must belong to branch_id)\n- items.*.selling_price: required | numeric | min:0\n\n**Response:** message, summary (processed, updated, skipped), results[] with previous_selling_price and selling_price per row.\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": 1,\n  \"items\": [\n    {\"branch_product_id\": 1, \"selling_price\": 29.99},\n    {\"branch_product_id\": 2, \"selling_price\": 15.5}\n  ]\n}"
                         }
                     },
                     "response": []
@@ -2261,12 +3155,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1",
+                            "raw": "{{base_url}}/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -2294,12 +3187,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/price",
+                            "raw": "{{base_url}}/branch-products/1/price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "price"
@@ -2334,12 +3226,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/unit-prices",
+                            "raw": "{{base_url}}/branch-products/1/unit-prices",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "unit-prices"
@@ -2368,12 +3259,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/unit-prices",
+                            "raw": "{{base_url}}/branch-products/1/unit-prices",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "unit-prices"
@@ -2406,12 +3296,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/unit-prices/1",
+                            "raw": "{{base_url}}/branch-products/1/unit-prices/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "unit-prices",
@@ -2445,12 +3334,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/unit-prices/1",
+                            "raw": "{{base_url}}/branch-products/1/unit-prices/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "unit-prices",
@@ -2480,12 +3368,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers",
+                            "raw": "{{base_url}}/branch-products/1/quantity-tiers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "quantity-tiers"
@@ -2514,12 +3401,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers",
+                            "raw": "{{base_url}}/branch-products/1/quantity-tiers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "quantity-tiers"
@@ -2552,12 +3438,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers/1",
+                            "raw": "{{base_url}}/branch-products/1/quantity-tiers/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "quantity-tiers",
@@ -2591,12 +3476,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/quantity-tiers/1",
+                            "raw": "{{base_url}}/branch-products/1/quantity-tiers/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "quantity-tiers",
@@ -2626,12 +3510,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1",
+                            "raw": "{{base_url}}/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -2663,12 +3546,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/selling-price",
+                            "raw": "{{base_url}}/branch-products/1/selling-price",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "selling-price"
@@ -2701,12 +3583,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1",
+                            "raw": "{{base_url}}/branch-products/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1"
                             ]
@@ -2734,12 +3615,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/stock",
+                            "raw": "{{base_url}}/branch-products/1/stock",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "stock"
@@ -2772,12 +3652,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/move-to-shelf",
+                            "raw": "{{base_url}}/branch-products/1/move-to-shelf",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "move-to-shelf"
@@ -2810,12 +3689,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/1/move-to-store",
+                            "raw": "{{base_url}}/branch-products/1/move-to-store",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "1",
                                 "move-to-store"
@@ -2848,12 +3726,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/summary/stock",
+                            "raw": "{{base_url}}/branch-products/summary/stock",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "summary",
                                 "stock"
@@ -2882,12 +3759,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/branch-products/bulk-update",
+                            "raw": "{{base_url}}/branch-products/bulk-update",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "branch-products",
                                 "bulk-update"
                             ]
@@ -2924,12 +3800,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/inventory/transactions",
+                            "raw": "{{base_url}}/inventory/transactions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "inventory",
                                 "transactions"
                             ],
@@ -2967,12 +3842,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/inventory/transactions",
+                            "raw": "{{base_url}}/inventory/transactions",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "inventory",
                                 "transactions"
                             ]
@@ -3004,12 +3878,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/inventory/transactions/1",
+                            "raw": "{{base_url}}/inventory/transactions/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "inventory",
                                 "transactions",
                                 "1"
@@ -3038,12 +3911,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/inventory/stock-summary",
+                            "raw": "{{base_url}}/inventory/stock-summary",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "inventory",
                                 "stock-summary"
                             ]
@@ -3077,12 +3949,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/customers",
+                            "raw": "{{base_url}}/customers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "customers"
                             ]
                         },
@@ -3109,12 +3980,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/customers",
+                            "raw": "{{base_url}}/customers",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "customers"
                             ]
                         },
@@ -3145,12 +4015,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -3178,12 +4047,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -3215,12 +4083,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/customers/{{customer_id}}",
+                            "raw": "{{base_url}}/customers/{{customer_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "customers",
                                 "{{customer_id}}"
                             ]
@@ -3253,12 +4120,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/payment-methods",
+                            "raw": "{{base_url}}/payment-methods",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "payment-methods"
                             ]
                         },
@@ -3285,12 +4151,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/payment-methods",
+                            "raw": "{{base_url}}/payment-methods",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "payment-methods"
                             ]
                         },
@@ -3321,12 +4186,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -3354,12 +4218,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -3391,12 +4254,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/payment-methods/{{payment_method_id}}",
+                            "raw": "{{base_url}}/payment-methods/{{payment_method_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "payment-methods",
                                 "{{payment_method_id}}"
                             ]
@@ -3409,8 +4271,84 @@
         },
         {
             "name": "13. Sales",
-            "description": "Sales (POS). Create sale with branch_id and items. Unit price can be computed automatically from tiered pricing (units and quantity tiers), or overridden when the user has the override sale price permission. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.",
+            "description": "**Search: sales, deposit, by-reference, complete-deposit.** Sales (POS). Open a **deposit** with **Create Sale** using `sale_type: \"deposit\"`. Deposit **stock policy** is in **2c. Business settings** (`deposit_stock_mode`). Subfolder **Deposits** has lookup + complete-only requests. Unit price: tiered pricing or override permission. Shift must be open for new sales. X-Business-Id required.",
             "item": [
+                {
+                    "name": "Deposits (search: deposit, complete-deposit)",
+                    "description": "**Search: deposit, complete-deposit, by-reference, recall.**\n\n- **Create** a deposit sale: use **Create Sale** in this folder with `sale_type: \"deposit\"` (and other required fields).\n- **When stock moves** (on create vs on complete): **2c. Business settings** \u2192 `GET/PUT settings/business` \u2192 `deposit_stock_mode`.\n- **Lookup** a sale: `GET /sales/by-reference/{reference}` (matches `sale_number` or `reference_id`).\n- **Complete** a pending deposit: `POST /sales/{id}/complete-deposit`.\n\nX-Business-Id required for all.",
+                    "item": [
+                        {
+                            "name": "GET sales/by-reference/{ref} \u2014 recall / lookup",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "X-Business-Id",
+                                        "value": "{{business_id}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/sales/by-reference/{{sale_reference}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "sales",
+                                        "by-reference",
+                                        "{{sale_reference}}"
+                                    ]
+                                },
+                                "description": "Look up a sale by **sale_number** or **reference_id** (path segment = `{{sale_reference}}`). Common for **recalling a deposit** at the till.\n\nX-Business-Id required."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST sales/{id}/complete-deposit \u2014 finish deposit",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "X-Business-Id",
+                                        "value": "{{business_id}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/sales/{{sale_id}}/complete-deposit",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "sales",
+                                        "{{sale_id}}",
+                                        "complete-deposit"
+                                    ]
+                                },
+                                "description": "Complete a **deposit** sale (`sale_type: deposit`, status **pending**). Optional final **payments**; if you send payments, you need an **open shift** on the sale\u2019s branch.\n\n**Fields:**\n- payments: optional | array of { payment_method_id, amount, reference_number?, notes? }\n- closing_notes: optional | string\n\nX-Business-Id required.",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 50.00,\n      \"reference_number\": null,\n      \"notes\": null\n    }\n  ],\n  \"closing_notes\": null\n}"
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
                 {
                     "name": "List Sales",
                     "request": {
@@ -3430,12 +4368,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sales",
+                            "raw": "{{base_url}}/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sales"
                             ],
                             "query": [
@@ -3472,16 +4409,15 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sales",
+                            "raw": "{{base_url}}/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sales"
                             ]
                         },
-                        "description": "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale (default: pos)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255",
+                        "description": "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale,**deposit** (use **deposit** for layaway / deposit flow)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"customer_id\": null,\n  \"shift_id\": null,\n  \"sale_type\": \"pos\",\n  \"discount_amount\": 0,\n  \"notes\": null,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2,\n      \"unit_price\": 29.99,\n      \"discount_percentage\": 0,\n      \"tax_rate\": 10\n    }\n  ],\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 65.98,\n      \"reference_number\": null\n    }\n  ]\n}"
@@ -3508,12 +4444,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sales/{{sale_id}}",
+                            "raw": "{{base_url}}/sales/{{sale_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sales",
                                 "{{sale_id}}"
                             ]
@@ -3541,12 +4476,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sales/{{sale_id}}/payments",
+                            "raw": "{{base_url}}/sales/{{sale_id}}/payments",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sales",
                                 "{{sale_id}}",
                                 "payments"
@@ -3579,12 +4513,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sales/{{sale_id}}/cancel",
+                            "raw": "{{base_url}}/sales/{{sale_id}}/cancel",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sales",
                                 "{{sale_id}}",
                                 "cancel"
@@ -3618,12 +4551,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts",
+                            "raw": "{{base_url}}/shifts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts"
                             ],
                             "query": [
@@ -3656,12 +4588,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts",
+                            "raw": "{{base_url}}/shifts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts"
                             ]
                         },
@@ -3692,12 +4623,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/current",
+                            "raw": "{{base_url}}/shifts/current",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "current"
                             ]
@@ -3725,12 +4655,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}"
                             ]
@@ -3758,12 +4687,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/sales",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "sales"
@@ -3792,12 +4720,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/close",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/close",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "close"
@@ -3830,12 +4757,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/pause",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/pause",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "pause"
@@ -3868,12 +4794,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/resume",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/resume",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "resume"
@@ -3906,12 +4831,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/resolve-discrepancy",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/resolve-discrepancy",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "resolve-discrepancy"
@@ -3944,12 +4868,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/branch-summary",
+                            "raw": "{{base_url}}/shifts/branch-summary",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "branch-summary"
                             ],
@@ -3961,6 +4884,42 @@
                             ]
                         },
                         "description": "Summary of shifts for a branch.\n\n**Query:**\n- branch_id: required | integer | exists:branches\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- user_id: optional | integer | exists:users\n\nX-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST shifts/backfill-groups (link shift \u2192 device group)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/shifts/backfill-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "backfill-groups"
+                            ]
+                        },
+                        "description": "Admin/maintenance: set **SalesShift.group_id** from the **device**'s **DeviceGroup** when the shift was missing `group_id`. **Not** the CRUD under `device-groups`\u2014this only backfills old shift rows. No body. Requires owner, **view all shifts**, or **create shift**.\n\n**Response:** scanned, updated, skipped counts.\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
                     },
                     "response": []
                 },
@@ -3983,12 +4942,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shifts/{{shift_id}}/summary",
+                            "raw": "{{base_url}}/shifts/{{shift_id}}/summary",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shifts",
                                 "{{shift_id}}",
                                 "summary"
@@ -4023,12 +4981,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/batches",
+                            "raw": "{{base_url}}/batches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "batches"
                             ]
                         },
@@ -4055,12 +5012,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/batches/near-expiry",
+                            "raw": "{{base_url}}/batches/near-expiry",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "batches",
                                 "near-expiry"
                             ],
@@ -4098,12 +5054,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/batches/expired",
+                            "raw": "{{base_url}}/batches/expired",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "batches",
                                 "expired"
                             ]
@@ -4131,12 +5086,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/batches/1",
+                            "raw": "{{base_url}}/batches/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "batches",
                                 "1"
                             ]
@@ -4164,12 +5118,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/batches/1",
+                            "raw": "{{base_url}}/batches/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "batches",
                                 "1"
                             ]
@@ -4201,12 +5154,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/{{product_id}}/batches",
+                            "raw": "{{base_url}}/products/{{product_id}}/batches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "{{product_id}}",
                                 "batches"
@@ -4240,12 +5192,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/analytics/organization",
+                            "raw": "{{base_url}}/analytics/organization",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "analytics",
                                 "organization"
                             ],
@@ -4287,12 +5238,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/analytics/branches",
+                            "raw": "{{base_url}}/analytics/branches",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "analytics",
                                 "branches"
                             ],
@@ -4330,12 +5280,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/analytics/products",
+                            "raw": "{{base_url}}/analytics/products",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "analytics",
                                 "products"
                             ],
@@ -4377,12 +5326,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/analytics/profit-loss",
+                            "raw": "{{base_url}}/analytics/profit-loss",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "analytics",
                                 "profit-loss"
                             ],
@@ -4420,12 +5368,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/analytics/growth-trends",
+                            "raw": "{{base_url}}/analytics/growth-trends",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "analytics",
                                 "growth-trends"
                             ],
@@ -4473,12 +5420,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests",
+                            "raw": "{{base_url}}/stock-transfer-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests"
                             ]
                         },
@@ -4505,12 +5451,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests",
+                            "raw": "{{base_url}}/stock-transfer-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests"
                             ]
                         },
@@ -4541,12 +5486,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1",
+                            "raw": "{{base_url}}/stock-transfer-requests/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1"
                             ]
@@ -4574,12 +5518,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/approve",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "approve"
@@ -4612,12 +5555,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/accept",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/accept",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "accept"
@@ -4650,12 +5592,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/reject-in",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/reject-in",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "reject-in"
@@ -4688,12 +5629,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/reject",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "reject"
@@ -4726,12 +5666,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/confirm",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/confirm",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "confirm"
@@ -4764,12 +5703,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-transfer-requests/1/cancel",
+                            "raw": "{{base_url}}/stock-transfer-requests/1/cancel",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-transfer-requests",
                                 "1",
                                 "cancel"
@@ -4808,12 +5746,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shelf-store-move-requests",
+                            "raw": "{{base_url}}/shelf-store-move-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shelf-store-move-requests"
                             ]
                         },
@@ -4840,12 +5777,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shelf-store-move-requests",
+                            "raw": "{{base_url}}/shelf-store-move-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shelf-store-move-requests"
                             ]
                         },
@@ -4876,12 +5812,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shelf-store-move-requests/1",
+                            "raw": "{{base_url}}/shelf-store-move-requests/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shelf-store-move-requests",
                                 "1"
                             ]
@@ -4909,12 +5844,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shelf-store-move-requests/1/approve",
+                            "raw": "{{base_url}}/shelf-store-move-requests/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shelf-store-move-requests",
                                 "1",
                                 "approve"
@@ -4947,12 +5881,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/shelf-store-move-requests/1/reject",
+                            "raw": "{{base_url}}/shelf-store-move-requests/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "shelf-store-move-requests",
                                 "1",
                                 "reject"
@@ -4990,12 +5923,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-writeoffs",
+                            "raw": "{{base_url}}/stock-writeoffs",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-writeoffs"
                             ]
                         },
@@ -5022,12 +5954,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-writeoffs",
+                            "raw": "{{base_url}}/stock-writeoffs",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-writeoffs"
                             ]
                         },
@@ -5058,12 +5989,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-writeoffs/1",
+                            "raw": "{{base_url}}/stock-writeoffs/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-writeoffs",
                                 "1"
                             ]
@@ -5091,12 +6021,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/stock-writeoffs/writeoff-batch",
+                            "raw": "{{base_url}}/stock-writeoffs/writeoff-batch",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "stock-writeoffs",
                                 "writeoff-batch"
                             ]
@@ -5134,12 +6063,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests",
+                            "raw": "{{base_url}}/refund-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests"
                             ]
                         },
@@ -5166,12 +6094,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests",
+                            "raw": "{{base_url}}/refund-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests"
                             ]
                         },
@@ -5202,12 +6129,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests",
+                            "raw": "{{base_url}}/refund-requests",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests"
                             ]
                         },
@@ -5238,12 +6164,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests/1",
+                            "raw": "{{base_url}}/refund-requests/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests",
                                 "1"
                             ]
@@ -5271,12 +6196,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests/1/approve",
+                            "raw": "{{base_url}}/refund-requests/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests",
                                 "1",
                                 "approve"
@@ -5309,12 +6233,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/refund-requests/1/reject",
+                            "raw": "{{base_url}}/refund-requests/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "refund-requests",
                                 "1",
                                 "reject"
@@ -5353,12 +6276,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales",
+                            "raw": "{{base_url}}/quick-sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales"
                             ]
                         },
@@ -5385,16 +6307,15 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales",
+                            "raw": "{{base_url}}/quick-sales",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales"
                             ]
                         },
-                        "description": "Request quick sale for a near-expiry product.\n\n**Fields:**\n- product_id: required | integer | exists:products\n- branch_id: required | integer | exists:branches\n- batch_id: nullable | integer | exists:product_batches\n- reason: required | string | max:500\n- expiry_date: required | date\n\nX-Business-Id required.",
+                        "description": "Request quick sale for a near-expiry product.\n\n**Fields:**\n- product_id: required | integer | exists:products\n- branch_id: required | integer | exists:branches\n- batch_id: nullable | integer | exists:product_batches\n- reason: required | string | min:10 | max:1000\n- expiry_date: required | date | after:today\n- discount_type: optional | percentage | fixed\n- discount_value: optional | numeric | min:0\n- start_time: optional | date | after_or_equal:now\n- end_time: optional | date | after:start_time (when start_time present)\n\n**Auto-approve:** If the user has **approve quick sale** (or is business owner) and sends **all four** optional discount/period fields, the quick sale is created and approved in one step (same rules as Approve endpoint). If `start_time` is now or past, status becomes **active** and discount applies to the branch product.\n\nX-Business-Id required.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"product_id\": 1,\n  \"branch_id\": 1,\n  \"batch_id\": null,\n  \"reason\": \"Near expiry - 2 weeks left\",\n  \"expiry_date\": \"2026-03-15\"\n}"
@@ -5421,12 +6342,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales/1",
+                            "raw": "{{base_url}}/quick-sales/1",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales",
                                 "1"
                             ]
@@ -5454,12 +6374,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales/1/approve",
+                            "raw": "{{base_url}}/quick-sales/1/approve",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales",
                                 "1",
                                 "approve"
@@ -5492,12 +6411,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales/1/reject",
+                            "raw": "{{base_url}}/quick-sales/1/reject",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales",
                                 "1",
                                 "reject"
@@ -5530,12 +6448,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/quick-sales/1/end",
+                            "raw": "{{base_url}}/quick-sales/1/end",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "quick-sales",
                                 "1",
                                 "end"
@@ -5574,12 +6491,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/register-device",
+                            "raw": "{{base_url}}/sync/register-device",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "register-device"
                             ]
@@ -5615,12 +6531,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/bootstrap",
+                            "raw": "{{base_url}}/sync/bootstrap",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "bootstrap"
                             ]
@@ -5656,12 +6571,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/pull",
+                            "raw": "{{base_url}}/sync/pull",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "pull"
                             ]
@@ -5697,12 +6611,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/push",
+                            "raw": "{{base_url}}/sync/push",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "push"
                             ]
@@ -5738,12 +6651,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/resolve-conflicts",
+                            "raw": "{{base_url}}/sync/resolve-conflicts",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "resolve-conflicts"
                             ]
@@ -5779,12 +6691,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/status",
+                            "raw": "{{base_url}}/sync/status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "status"
                             ]
@@ -5816,12 +6727,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/heartbeat",
+                            "raw": "{{base_url}}/sync/heartbeat",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "heartbeat"
                             ]
@@ -5853,12 +6763,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/sync/online-devices",
+                            "raw": "{{base_url}}/sync/online-devices",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "sync",
                                 "online-devices"
                             ]
@@ -5892,12 +6801,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/push",
+                            "raw": "{{base_url}}/server-sync/push",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "push"
                             ]
@@ -5929,12 +6837,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/pull",
+                            "raw": "{{base_url}}/server-sync/pull",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "pull"
                             ]
@@ -5966,12 +6873,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/status",
+                            "raw": "{{base_url}}/server-sync/status",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "status"
                             ]
@@ -5999,12 +6905,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/health",
+                            "raw": "{{base_url}}/server-sync/health",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "health"
                             ]
@@ -6032,12 +6937,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/receive",
+                            "raw": "{{base_url}}/server-sync/receive",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "receive"
                             ]
@@ -6069,12 +6973,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/server-sync/provide-changes",
+                            "raw": "{{base_url}}/server-sync/provide-changes",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "server-sync",
                                 "provide-changes"
                             ]
@@ -6108,12 +7011,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/user",
+                            "raw": "{{base_url}}/user",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "user"
                             ]
                         },
@@ -6153,12 +7055,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/register",
+                            "raw": "{{base_url}}/register",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "register"
                             ]
                         },
@@ -6206,12 +7107,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/roles",
+                            "raw": "{{base_url}}/roles",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "roles"
                             ]
                         },
@@ -6256,12 +7156,11 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/products/99999",
+                            "raw": "{{base_url}}/products/99999",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
-                                "api",
                                 "products",
                                 "99999"
                             ]

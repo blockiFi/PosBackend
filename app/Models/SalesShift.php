@@ -189,27 +189,60 @@ class SalesShift extends Model
             && abs((float) $this->opening_balance_discrepancy) >= 0.01;
     }
 
+    /**
+     * Live cash-basis metrics for this shift: completed payments with this shift_id.
+     * Used when closing a shift, and for read APIs so open shifts match drawer reality
+     * (e.g. pending deposit sales still have payments that must count before close).
+     *
+     * @return array{
+     *     cash_sales: float,
+     *     card_sales: float,
+     *     other_sales: float,
+     *     total_sales: float,
+     *     transactions_count: int
+     * }
+     */
+    public function computeMetricsFromShiftPayments(): array
+    {
+        $payments = Payment::query()
+            ->where('shift_id', $this->id)
+            ->where('status', 'completed')
+            // Exclude payments tied to cancelled (or soft-deleted) sales — those amounts are
+            // not in the drawer at close time. whereHas('sale', ...) implicitly filters
+            // soft-deleted sales out via the relation's default scope.
+            ->whereHas('sale', function ($q) {
+                $q->where('sales.status', '!=', 'cancelled');
+            })
+            ->with(['paymentMethod:id,type'])
+            ->get(['id', 'sale_id', 'amount', 'payment_method_id']);
+
+        $cash = (float) $payments->filter(fn ($p) => optional($p->paymentMethod)->type === 'cash')->sum('amount');
+        $card = (float) $payments->filter(fn ($p) => optional($p->paymentMethod)->type === 'card')->sum('amount');
+        $total = (float) $payments->sum('amount');
+        $other = max(0, $total - $cash - $card);
+        $count = $payments->pluck('sale_id')->unique()->count();
+
+        return [
+            'cash_sales' => $cash,
+            'card_sales' => $card,
+            'other_sales' => $other,
+            'total_sales' => $total,
+            'transactions_count' => $count,
+        ];
+    }
+
+    /**
+     * Cash-basis metrics: sum completed payments stamped to this shift, regardless of which
+     * shift the parent sale was opened in. This makes drawer reconciliation correct when
+     * deposit installments (or any addPayment) cross shift boundaries.
+     */
     public function updateSalesMetrics(): void
     {
-        // This should be called when closing the shift
-        $sales = $this->sales()->where('status', 'completed')->get();
-
-        $this->total_sales = $sales->sum('total_amount');
-        $this->transactions_count = $sales->count();
-
-        // Calculate by payment method
-        $this->cash_sales = $sales->sum(function ($sale) {
-            return $sale->payments()->whereHas('paymentMethod', function ($q) {
-                $q->where('type', 'cash');
-            })->sum('amount');
-        });
-
-        $this->card_sales = $sales->sum(function ($sale) {
-            return $sale->payments()->whereHas('paymentMethod', function ($q) {
-                $q->where('type', 'card');
-            })->sum('amount');
-        });
-
-        $this->other_sales = $this->total_sales - $this->cash_sales - $this->card_sales;
+        $m = $this->computeMetricsFromShiftPayments();
+        $this->cash_sales = $m['cash_sales'];
+        $this->card_sales = $m['card_sales'];
+        $this->total_sales = $m['total_sales'];
+        $this->other_sales = $m['other_sales'];
+        $this->transactions_count = $m['transactions_count'];
     }
 }

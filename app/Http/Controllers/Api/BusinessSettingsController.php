@@ -8,6 +8,10 @@ use Illuminate\Support\Facades\Validator;
 
 class BusinessSettingsController extends Controller
 {
+    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+
+    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+
     public function show(Request $request)
     {
         $user = $request->user();
@@ -31,11 +35,13 @@ class BusinessSettingsController extends Controller
         $settings = is_array($business->settings) ? $business->settings : [];
         $currency = $business->currency ?? 'NGN';
         $symbol = $settings['currency_symbol'] ?? $this->defaultSymbol($currency);
+        $depositStockMode = $this->normalizeDepositStockMode($settings['deposit_stock_mode'] ?? null);
 
         return response()->json([
             'data' => [
                 'currency' => $currency,
                 'currency_symbol' => $symbol,
+                'deposit_stock_mode' => $depositStockMode,
             ],
         ]);
     }
@@ -66,6 +72,7 @@ class BusinessSettingsController extends Controller
         $validator = Validator::make($request->all(), [
             'currency' => ['sometimes', 'required', 'string', 'size:3'],
             'currency_symbol' => ['sometimes', 'required', 'string', 'max:10'],
+            'deposit_stock_mode' => ['sometimes', 'required', 'string', 'in:'.implode(',', self::DEPOSIT_STOCK_MODES)],
         ]);
 
         if ($validator->fails()) {
@@ -88,6 +95,10 @@ class BusinessSettingsController extends Controller
             $settings['currency_symbol'] = $this->defaultSymbol($business->currency ?? 'NGN');
         }
 
+        if (array_key_exists('deposit_stock_mode', $data)) {
+            $settings['deposit_stock_mode'] = $data['deposit_stock_mode'];
+        }
+
         $business->settings = $settings;
         $business->save();
 
@@ -96,8 +107,18 @@ class BusinessSettingsController extends Controller
             'data' => [
                 'currency' => $business->currency ?? 'NGN',
                 'currency_symbol' => $settings['currency_symbol'] ?? $this->defaultSymbol($business->currency ?? 'NGN'),
+                'deposit_stock_mode' => $this->normalizeDepositStockMode($settings['deposit_stock_mode'] ?? null),
             ],
         ]);
+    }
+
+    private function normalizeDepositStockMode(mixed $value): string
+    {
+        if (is_string($value) && in_array($value, self::DEPOSIT_STOCK_MODES, true)) {
+            return $value;
+        }
+
+        return self::DEFAULT_DEPOSIT_STOCK_MODE;
     }
 
     private function defaultSymbol(string $currency): string

@@ -1,8 +1,8 @@
 {
     "info": {
         "_postman_id": "pos-backend-complete-v2",
-        "name": "POS Backend Complete API v2",
-        "description": "Generated from routes/api.php. Regenerate: php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json\n\n**Setup:**\n1. `base_url` defaults to http://127.0.0.1:8000/api (no extra /api in paths).\n2. Register or Login sets `auth_token`.\n3. Use X-Business-Id: {{business_id}} on business-scoped routes.\n4. Bearer auth on protected routes.",
+        "name": "POS Backend API (Complete)",
+        "description": "Complete Postman collection for this Laravel backend. Generated from `scripts/generate_postman_collection.php` (mirrors `routes/api.php` and `GET /up`).\n\n**Regenerate:** `php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json`\n\n**Find routes fast:**\n- **Device groups (terminals):** folder `4b. Device groups` \u2014 paths `device-groups`, `device-groups/report`.\n- **Deposits:** under `13. Sales` \u2192 subfolder `Deposits` \u2014 `GET sales/by-reference/...`, `POST sales/.../complete-deposit`. Deposit **stock mode** settings: `2c. Business settings` \u2192 `settings/business` (`deposit_stock_mode`).\n- **Shifts \u2194 group:** `14. Sales shifts` \u2014 `POST shifts/backfill-groups` links shift `group_id` to device group (not the same folder as device-groups CRUD).\n\n**Setup:**\n1. `base_url` = http://127.0.0.1:8000/api \u2014 use paths without a second `/api` prefix.\n2. `app_root` = http://127.0.0.1:8000 \u2014 for `/up` only.\n3. Register or Login sets `auth_token`.\n4. Use `X-Business-Id: {{business_id}}` on business-scoped routes.\n5. Collection uses Bearer auth; public endpoints override with noauth.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
     "auth": {
@@ -16,6 +16,11 @@
         ]
     },
     "variable": [
+        {
+            "key": "app_root",
+            "value": "http://127.0.0.1:8000",
+            "type": "string"
+        },
         {
             "key": "base_url",
             "value": "http://127.0.0.1:8000/api",
@@ -80,9 +85,56 @@
             "key": "seed_import_id",
             "value": "1",
             "type": "string"
+        },
+        {
+            "key": "device_group_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "device_registration_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "sale_reference",
+            "value": "SALE-001",
+            "type": "string"
         }
     ],
     "item": [
+        {
+            "name": "0. System",
+            "description": "Laravel framework route (not under `/api`).",
+            "item": [
+                {
+                    "name": "Health (up)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{app_root}}/up",
+                            "host": [
+                                "{{app_root}}"
+                            ],
+                            "path": [
+                                "up"
+                            ]
+                        },
+                        "description": "Laravel default health endpoint (`bootstrap/app.php` \u2192 `health: '/up'`). Returns 200 when the application can boot. No authentication.\n\nUse collection variable `app_root` (not `base_url`).",
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
         {
             "name": "1. Authentication",
             "description": "Public and protected auth endpoints. Register and Login store the token in collection variable `auth_token`.",
@@ -534,6 +586,118 @@
             ]
         },
         {
+            "name": "2b. Dashboard",
+            "description": "Business KPI summary (cached). Requires X-Business-Id and permissions for analytics, sales, inventory, or shifts.",
+            "item": [
+                {
+                    "name": "Dashboard Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/dashboard/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "dashboard",
+                                "summary"
+                            ]
+                        },
+                        "description": "Returns organization-level summary: revenue, order counts, low/out stock, open shifts, etc.\n\nX-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2c. Business settings (currency, deposit_stock_mode)",
+            "description": "**Search: deposit, deposit_stock_mode, settings.** Endpoints: `GET/PUT settings/business`. `deposit_stock_mode` controls when stock moves for **deposit** sales (reserve_on_create vs deduct_on_complete). GET: any member. PUT: owner or **manage-settings**.",
+            "item": [
+                {
+                    "name": "Get Business Settings",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/settings/business",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "settings",
+                                "business"
+                            ]
+                        },
+                        "description": "Returns currency (ISO 3), currency_symbol, deposit_stock_mode (reserve_on_create | deduct_on_complete).\n\nX-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Business Settings",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/settings/business",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "settings",
+                                "business"
+                            ]
+                        },
+                        "description": "Update business-level settings.\n\n**Fields:**\n- currency: optional | string | size:3\n- currency_symbol: optional | string | max:10\n- deposit_stock_mode: optional | reserve_on_create | deduct_on_complete\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"currency\": \"NGN\",\n  \"currency_symbol\": \"\u20a6\",\n  \"deposit_stock_mode\": \"reserve_on_create\"\n}"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "3. Permissions (Global)",
             "description": "Global list of all permissions in the system. Used when creating or editing roles. No business context required.",
             "item": [
@@ -764,6 +928,590 @@
                             ]
                         },
                         "description": "Delete a branch. X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4b. Device groups (path: device-groups)",
+            "description": "**Search: device-groups, group, terminal.** API path prefix is `device-groups` (not `groups`). Group POS **DeviceRegistration** rows for sales/shift reporting. Related: **4c. Devices**, and `POST shifts/backfill-groups` (14) to set `group_id` on old shifts. Permissions: view/manage device groups, assign device to group.",
+            "item": [
+                {
+                    "name": "List Device Groups",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups"
+                            ]
+                        },
+                        "description": "Query: branch_id, is_active, search. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Device Group Sales Report",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/report",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "report"
+                            ],
+                            "query": [
+                                {
+                                    "key": "start_date",
+                                    "value": "2026-02-01"
+                                },
+                                {
+                                    "key": "end_date",
+                                    "value": "2026-02-28"
+                                },
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                }
+                            ]
+                        },
+                        "description": "Aggregate completed sales by device group. Query: start_date, end_date, branch_id, group_id, device_id, shift_id."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Device Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups"
+                            ]
+                        },
+                        "description": "Create a device group.\n\n**Fields:**\n- name: required | string\n- code: required | string | unique per business\n- branch_id: optional | integer\n- description: optional | string\n- is_active: optional | boolean\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": null,\n  \"name\": \"Front Counter\",\n  \"code\": \"FC01\",\n  \"description\": \"Main checkout terminals\",\n  \"is_active\": true\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Device Group",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Returns group with active_shifts_count. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device Group",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Update group. Same fields as create (optional). X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Front Counter A\",\n  \"is_active\": true\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Group",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}"
+                            ]
+                        },
+                        "description": "Delete device group. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Assign Device to Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}/assign-device",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}",
+                                "assign-device"
+                            ]
+                        },
+                        "description": "Set a device registration's group. **Body:** device_id (string, max 50) \u2014 the client device_id, not DB id.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_id\": \"{{device_id}}\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Remove Device from Group",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/device-groups/{{device_group_id}}/remove-device",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "device-groups",
+                                "{{device_group_id}}",
+                                "remove-device"
+                            ]
+                        },
+                        "description": "Remove device from this group (group_id cleared on device if it was in this group). **Body:** device_id (string).",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_id\": \"{{device_id}}\"\n}"
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4c. Devices (registrations)",
+            "description": "Registered sync devices for the business. Path {device} is the **DeviceRegistration** id (integer), not the string device_id.",
+            "item": [
+                {
+                    "name": "List Devices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices"
+                            ]
+                        },
+                        "description": "Query: branch_id, status (active|inactive|blocked), search. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Device",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Get one device registration with branch, user, group. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Update device metadata and group/branch.\n\n**Fields:**\n- device_name, device_type: required on update (web|desktop|mobile|tablet)\n- status: required (active|inactive|blocked)\n- os, app_version, branch_id, group_id: optional",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_name\": \"POS Terminal 1\",\n  \"device_type\": \"desktop\",\n  \"os\": \"macOS\",\n  \"app_version\": \"1.0.0\",\n  \"branch_id\": 1,\n  \"group_id\": 1,\n  \"status\": \"active\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Device (PATCH)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Same body as PUT.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"device_name\": \"POS Terminal 1\",\n  \"device_type\": \"desktop\",\n  \"status\": \"active\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Device Registration",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/devices/{{device_registration_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "devices",
+                                "{{device_registration_id}}"
+                            ]
+                        },
+                        "description": "Remove device registration from business. X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4d. Sync Dashboard",
+            "description": "Ops overview for offline sync (distinct from **Sync** device endpoints below). Requires **sync data** permission.",
+            "item": [
+                {
+                    "name": "Sync Dashboard Summary",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/summary",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "summary"
+                            ]
+                        },
+                        "description": "Counts: online devices, pending changes, unresolved conflicts, last sync. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Sync Sessions List",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/sessions",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "sessions"
+                            ],
+                            "query": [
+                                {
+                                    "key": "per_page",
+                                    "value": "25"
+                                },
+                                {
+                                    "key": "from",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "to",
+                                    "value": ""
+                                }
+                            ]
+                        },
+                        "description": "Paginated sync sessions. Query: status, direction, device_id (registration id), from, to, per_page (max 100)."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Unresolved Sync Conflicts",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/sync/dashboard/conflicts",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "sync",
+                                "dashboard",
+                                "conflicts"
+                            ]
+                        },
+                        "description": "Sessions where conflicts_detected > conflicts_resolved (limit 100). X-Business-Id required."
                     },
                     "response": []
                 }
@@ -3523,8 +4271,84 @@
         },
         {
             "name": "13. Sales",
-            "description": "Sales (POS). Create sale with branch_id and items. Unit price can be computed automatically from tiered pricing (units and quantity tiers), or overridden when the user has the override sale price permission. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.",
+            "description": "**Search: sales, deposit, by-reference, complete-deposit.** Sales (POS). Open a **deposit** with **Create Sale** using `sale_type: \"deposit\"`. Deposit **stock policy** is in **2c. Business settings** (`deposit_stock_mode`). Subfolder **Deposits** has lookup + complete-only requests. Unit price: tiered pricing or override permission. Shift must be open for new sales. X-Business-Id required.",
             "item": [
+                {
+                    "name": "Deposits (search: deposit, complete-deposit)",
+                    "description": "**Search: deposit, complete-deposit, by-reference, recall.**\n\n- **Create** a deposit sale: use **Create Sale** in this folder with `sale_type: \"deposit\"` (and other required fields).\n- **When stock moves** (on create vs on complete): **2c. Business settings** \u2192 `GET/PUT settings/business` \u2192 `deposit_stock_mode`.\n- **Lookup** a sale: `GET /sales/by-reference/{reference}` (matches `sale_number` or `reference_id`).\n- **Complete** a pending deposit: `POST /sales/{id}/complete-deposit`.\n\nX-Business-Id required for all.",
+                    "item": [
+                        {
+                            "name": "GET sales/by-reference/{ref} \u2014 recall / lookup",
+                            "request": {
+                                "method": "GET",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "X-Business-Id",
+                                        "value": "{{business_id}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/sales/by-reference/{{sale_reference}}",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "sales",
+                                        "by-reference",
+                                        "{{sale_reference}}"
+                                    ]
+                                },
+                                "description": "Look up a sale by **sale_number** or **reference_id** (path segment = `{{sale_reference}}`). Common for **recalling a deposit** at the till.\n\nX-Business-Id required."
+                            },
+                            "response": []
+                        },
+                        {
+                            "name": "POST sales/{id}/complete-deposit \u2014 finish deposit",
+                            "request": {
+                                "method": "POST",
+                                "header": [
+                                    {
+                                        "key": "Accept",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "Content-Type",
+                                        "value": "application/json"
+                                    },
+                                    {
+                                        "key": "X-Business-Id",
+                                        "value": "{{business_id}}"
+                                    }
+                                ],
+                                "url": {
+                                    "raw": "{{base_url}}/sales/{{sale_id}}/complete-deposit",
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "sales",
+                                        "{{sale_id}}",
+                                        "complete-deposit"
+                                    ]
+                                },
+                                "description": "Complete a **deposit** sale (`sale_type: deposit`, status **pending**). Optional final **payments**; if you send payments, you need an **open shift** on the sale\u2019s branch.\n\n**Fields:**\n- payments: optional | array of { payment_method_id, amount, reference_number?, notes? }\n- closing_notes: optional | string\n\nX-Business-Id required.",
+                                "body": {
+                                    "mode": "raw",
+                                    "raw": "{\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 50.00,\n      \"reference_number\": null,\n      \"notes\": null\n    }\n  ],\n  \"closing_notes\": null\n}"
+                                }
+                            },
+                            "response": []
+                        }
+                    ]
+                },
                 {
                     "name": "List Sales",
                     "request": {
@@ -3593,7 +4417,7 @@
                                 "sales"
                             ]
                         },
-                        "description": "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale (default: pos)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255",
+                        "description": "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale,**deposit** (use **deposit** for layaway / deposit flow)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"branch_id\": 1,\n  \"customer_id\": null,\n  \"shift_id\": null,\n  \"sale_type\": \"pos\",\n  \"discount_amount\": 0,\n  \"notes\": null,\n  \"items\": [\n    {\n      \"product_id\": 1,\n      \"quantity\": 2,\n      \"unit_price\": 29.99,\n      \"discount_percentage\": 0,\n      \"tax_rate\": 10\n    }\n  ],\n  \"payments\": [\n    {\n      \"payment_method_id\": 1,\n      \"amount\": 65.98,\n      \"reference_number\": null\n    }\n  ]\n}"
@@ -4060,6 +4884,42 @@
                             ]
                         },
                         "description": "Summary of shifts for a branch.\n\n**Query:**\n- branch_id: required | integer | exists:branches\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- user_id: optional | integer | exists:users\n\nX-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "POST shifts/backfill-groups (link shift \u2192 device group)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/shifts/backfill-groups",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "shifts",
+                                "backfill-groups"
+                            ]
+                        },
+                        "description": "Admin/maintenance: set **SalesShift.group_id** from the **device**'s **DeviceGroup** when the shift was missing `group_id`. **Not** the CRUD under `device-groups`\u2014this only backfills old shift rows. No body. Requires owner, **view all shifts**, or **create shift**.\n\n**Response:** scanned, updated, skipped counts.\n\nX-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
                     },
                     "response": []
                 },
