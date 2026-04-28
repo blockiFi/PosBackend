@@ -2,17 +2,23 @@
 
 /**
  * Generates a complete Postman Collection v2.1 JSON for the POS Backend API.
- * Run: php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json
+ * Covers every route registered under the `api` prefix (see `php artisan route:list --path=api`)
+ * plus Laravel's `/up` health route.
+ *
+ * Regenerate:
+ *   php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json
+ *   cp POS_Backend_Complete_API_v2.postman_collection.json POS_Backend_API_Complete.postman_collection.json
  */
 $base = [
     'info' => [
         '_postman_id' => 'pos-backend-complete-v2',
-        'name' => 'POS Backend Complete API v2',
-        'description' => "Generated from routes/api.php. Regenerate: php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json\n\n**Setup:**\n1. `base_url` defaults to http://127.0.0.1:8000/api (no extra /api in paths).\n2. Register or Login sets `auth_token`.\n3. Use X-Business-Id: {{business_id}} on business-scoped routes.\n4. Bearer auth on protected routes.",
+        'name' => 'POS Backend API (Complete)',
+        'description' => "Complete Postman collection for this Laravel backend. Generated from `scripts/generate_postman_collection.php` (mirrors `routes/api.php` and `GET /up`).\n\n**Regenerate:** `php scripts/generate_postman_collection.php > POS_Backend_Complete_API_v2.postman_collection.json`\n\n**Find routes fast:**\n- **Device groups (terminals):** folder `4b. Device groups` — paths `device-groups`, `device-groups/report`.\n- **Deposits:** under `13. Sales` → subfolder `Deposits` — `GET sales/by-reference/...`, `POST sales/.../complete-deposit`. Deposit **stock mode** settings: `2c. Business settings` → `settings/business` (`deposit_stock_mode`).\n- **Shifts ↔ group:** `14. Sales shifts` — `POST shifts/backfill-groups` links shift `group_id` to device group (not the same folder as device-groups CRUD).\n\n**Setup:**\n1. `base_url` = http://127.0.0.1:8000/api — use paths without a second `/api` prefix.\n2. `app_root` = http://127.0.0.1:8000 — for `/up` only.\n3. Register or Login sets `auth_token`.\n4. Use `X-Business-Id: {{business_id}}` on business-scoped routes.\n5. Collection uses Bearer auth; public endpoints override with noauth.",
         'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
     ],
     'auth' => ['type' => 'bearer', 'bearer' => [['key' => 'token', 'value' => '{{auth_token}}', 'type' => 'string']]],
     'variable' => [
+        ['key' => 'app_root', 'value' => 'http://127.0.0.1:8000', 'type' => 'string'],
         ['key' => 'base_url', 'value' => 'http://127.0.0.1:8000/api', 'type' => 'string'],
         ['key' => 'auth_token', 'value' => '', 'type' => 'string'],
         ['key' => 'business_id', 'value' => '1', 'type' => 'string'],
@@ -26,6 +32,9 @@ $base = [
         ['key' => 'payment_method_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'device_id', 'value' => 'device-postman-001', 'type' => 'string'],
         ['key' => 'seed_import_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'device_group_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'device_registration_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'sale_reference', 'value' => 'SALE-001', 'type' => 'string'],
     ],
 ];
 
@@ -58,6 +67,36 @@ function req(string $name, string $method, string $path, string $description, ?s
     }
 
     return ['name' => $name, 'request' => $request, 'response' => $responses];
+}
+
+/**
+ * Request against app root (no /api), e.g. Laravel health `GET /up`.
+ */
+function reqAppRoot(string $name, string $method, string $path, string $description, ?string $body = null, bool $noAuth = true): array
+{
+    $fullPath = ltrim($path, '/');
+    $pathParts = array_values(array_filter(explode('/', $fullPath)));
+    $url = ['raw' => '{{app_root}}/'.$fullPath, 'host' => ['{{app_root}}'], 'path' => $pathParts];
+    $headers = [
+        ['key' => 'Accept', 'value' => 'application/json'],
+    ];
+    if ($body !== null || in_array($method, ['POST', 'PUT', 'PATCH'], true)) {
+        $headers[] = ['key' => 'Content-Type', 'value' => 'application/json'];
+    }
+    $request = [
+        'method' => $method,
+        'header' => $headers,
+        'url' => $url,
+        'description' => $description,
+    ];
+    if ($body !== null) {
+        $request['body'] = ['mode' => 'raw', 'raw' => $body];
+    }
+    if ($noAuth) {
+        $request['auth'] = ['type' => 'noauth'];
+    }
+
+    return ['name' => $name, 'request' => $request, 'response' => []];
 }
 
 /**
@@ -118,6 +157,15 @@ function saveTokenScript(): array
 }
 
 $items = [];
+
+// ---- 0. System (non-api) ----
+$items[] = [
+    'name' => '0. System',
+    'description' => 'Laravel framework route (not under `/api`).',
+    'item' => [
+        reqAppRoot('Health (up)', 'GET', 'up', "Laravel default health endpoint (`bootstrap/app.php` → `health: '/up'`). Returns 200 when the application can boot. No authentication.\n\nUse collection variable `app_root` (not `base_url`).", null, true),
+    ],
+];
 
 // ---- 1. Authentication ----
 $items[] = [
@@ -191,6 +239,29 @@ $items[] = [
     ],
 ];
 
+// ---- 2b. Dashboard ----
+$items[] = [
+    'name' => '2b. Dashboard',
+    'description' => 'Business KPI summary (cached). Requires X-Business-Id and permissions for analytics, sales, inventory, or shifts.',
+    'item' => [
+        req('Dashboard Summary', 'GET', 'dashboard/summary', "Returns organization-level summary: revenue, order counts, low/out stock, open shifts, etc.\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
+// ---- 2c. Business Settings ----
+$items[] = [
+    'name' => '2c. Business settings (currency, deposit_stock_mode)',
+    'description' => '**Search: deposit, deposit_stock_mode, settings.** Endpoints: `GET/PUT settings/business`. `deposit_stock_mode` controls when stock moves for **deposit** sales (reserve_on_create vs deduct_on_complete). GET: any member. PUT: owner or **manage-settings**.',
+    'item' => [
+        req('Get Business Settings', 'GET', 'settings/business', "Returns currency (ISO 3), currency_symbol, deposit_stock_mode (reserve_on_create | deduct_on_complete).\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Business Settings', 'PUT', 'settings/business', "Update business-level settings.\n\n**Fields:**\n- currency: optional | string | size:3\n- currency_symbol: optional | string | max:10\n- deposit_stock_mode: optional | reserve_on_create | deduct_on_complete\n\nX-Business-Id required.", '{
+  "currency": "NGN",
+  "currency_symbol": "₦",
+  "deposit_stock_mode": "reserve_on_create"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
 // ---- 3. Permissions (no business context) ----
 $items[] = [
     'name' => '3. Permissions (Global)',
@@ -230,6 +301,71 @@ $items[] = [
   "is_active": true
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Delete Branch', 'DELETE', 'branches/{{branch_id}}', 'Delete a branch. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
+// ---- 4b. Device Groups ----
+$items[] = [
+    'name' => '4b. Device groups (path: device-groups)',
+    'description' => '**Search: device-groups, group, terminal.** API path prefix is `device-groups` (not `groups`). Group POS **DeviceRegistration** rows for sales/shift reporting. Related: **4c. Devices**, and `POST shifts/backfill-groups` (14) to set `group_id` on old shifts. Permissions: view/manage device groups, assign device to group.',
+    'item' => [
+        req('List Device Groups', 'GET', 'device-groups', 'Query: branch_id, is_active, search. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Device Group Sales Report', 'GET', 'device-groups/report', 'Aggregate completed sales by device group. Query: start_date, end_date, branch_id, group_id, device_id, shift_id.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['start_date', '2026-02-01'], ['end_date', '2026-02-28'], ['branch_id', '{{branch_id}}']]),
+        req('Create Device Group', 'POST', 'device-groups', "Create a device group.\n\n**Fields:**\n- name: required | string\n- code: required | string | unique per business\n- branch_id: optional | integer\n- description: optional | string\n- is_active: optional | boolean\n\nX-Business-Id required.", '{
+  "branch_id": null,
+  "name": "Front Counter",
+  "code": "FC01",
+  "description": "Main checkout terminals",
+  "is_active": true
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Device Group', 'GET', 'device-groups/{{device_group_id}}', 'Returns group with active_shifts_count. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Device Group', 'PUT', 'device-groups/{{device_group_id}}', 'Update group. Same fields as create (optional). X-Business-Id required.', '{
+  "name": "Front Counter A",
+  "is_active": true
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Delete Device Group', 'DELETE', 'device-groups/{{device_group_id}}', 'Delete device group. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Assign Device to Group', 'POST', 'device-groups/{{device_group_id}}/assign-device', "Set a device registration's group. **Body:** device_id (string, max 50) — the client device_id, not DB id.", '{
+  "device_id": "{{device_id}}"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Remove Device from Group', 'POST', 'device-groups/{{device_group_id}}/remove-device', 'Remove device from this group (group_id cleared on device if it was in this group). **Body:** device_id (string).', '{
+  "device_id": "{{device_id}}"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
+// ---- 4c. Devices ----
+$items[] = [
+    'name' => '4c. Devices (registrations)',
+    'description' => 'Registered sync devices for the business. Path {device} is the **DeviceRegistration** id (integer), not the string device_id.',
+    'item' => [
+        req('List Devices', 'GET', 'devices', 'Query: branch_id, status (active|inactive|blocked), search. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Device', 'GET', 'devices/{{device_registration_id}}', 'Get one device registration with branch, user, group. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Device', 'PUT', 'devices/{{device_registration_id}}', "Update device metadata and group/branch.\n\n**Fields:**\n- device_name, device_type: required on update (web|desktop|mobile|tablet)\n- status: required (active|inactive|blocked)\n- os, app_version, branch_id, group_id: optional", '{
+  "device_name": "POS Terminal 1",
+  "device_type": "desktop",
+  "os": "macOS",
+  "app_version": "1.0.0",
+  "branch_id": 1,
+  "group_id": 1,
+  "status": "active"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Device (PATCH)', 'PATCH', 'devices/{{device_registration_id}}', 'Same body as PUT.', '{
+  "device_name": "POS Terminal 1",
+  "device_type": "desktop",
+  "status": "active"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Delete Device Registration', 'DELETE', 'devices/{{device_registration_id}}', 'Remove device registration from business. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
+// ---- 4d. Sync Dashboard (operations) ----
+$items[] = [
+    'name' => '4d. Sync Dashboard',
+    'description' => 'Ops overview for offline sync (distinct from **Sync** device endpoints below). Requires **sync data** permission.',
+    'item' => [
+        req('Sync Dashboard Summary', 'GET', 'sync/dashboard/summary', 'Counts: online devices, pending changes, unresolved conflicts, last sync. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Sync Sessions List', 'GET', 'sync/dashboard/sessions', 'Paginated sync sessions. Query: status, direction, device_id (registration id), from, to, per_page (max 100).', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['per_page', '25'], ['from', ''], ['to', '']]),
+        req('Unresolved Sync Conflicts', 'GET', 'sync/dashboard/conflicts', 'Sessions where conflicts_detected > conflicts_resolved (limit 100). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
 
@@ -581,10 +717,28 @@ $items[] = [
 // ---- 13. Sales ----
 $items[] = [
     'name' => '13. Sales',
-    'description' => 'Sales (POS). Create sale with branch_id and items. Unit price can be computed automatically from tiered pricing (units and quantity tiers), or overridden when the user has the override sale price permission. Shift must be open. Add payment, cancel sale. Filter list by branch_id, dates, status, customer_id. X-Business-Id required.',
+    'description' => '**Search: sales, deposit, by-reference, complete-deposit.** Sales (POS). Open a **deposit** with **Create Sale** using `sale_type: "deposit"`. Deposit **stock policy** is in **2c. Business settings** (`deposit_stock_mode`). Subfolder **Deposits** has lookup + complete-only requests. Unit price: tiered pricing or override permission. Shift must be open for new sales. X-Business-Id required.',
     'item' => [
+        [
+            'name' => 'Deposits (search: deposit, complete-deposit)',
+            'description' => "**Search: deposit, complete-deposit, by-reference, recall.**\n\n- **Create** a deposit sale: use **Create Sale** in this folder with `sale_type: \"deposit\"` (and other required fields).\n- **When stock moves** (on create vs on complete): **2c. Business settings** → `GET/PUT settings/business` → `deposit_stock_mode`.\n- **Lookup** a sale: `GET /sales/by-reference/{reference}` (matches `sale_number` or `reference_id`).\n- **Complete** a pending deposit: `POST /sales/{id}/complete-deposit`.\n\nX-Business-Id required for all.",
+            'item' => [
+                req('GET sales/by-reference/{ref} — recall / lookup', 'GET', 'sales/by-reference/{{sale_reference}}', "Look up a sale by **sale_number** or **reference_id** (path segment = `{{sale_reference}}`). Common for **recalling a deposit** at the till.\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+                req('POST sales/{id}/complete-deposit — finish deposit', 'POST', 'sales/{{sale_id}}/complete-deposit', "Complete a **deposit** sale (`sale_type: deposit`, status **pending**). Optional final **payments**; if you send payments, you need an **open shift** on the sale’s branch.\n\n**Fields:**\n- payments: optional | array of { payment_method_id, amount, reference_number?, notes? }\n- closing_notes: optional | string\n\nX-Business-Id required.", '{
+  "payments": [
+    {
+      "payment_method_id": 1,
+      "amount": 50.00,
+      "reference_number": null,
+      "notes": null
+    }
+  ],
+  "closing_notes": null
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+            ],
+        ],
         req('List Sales', 'GET', 'sales', "List sales.\n\n**Query:**\n- branch_id: optional | integer\n- start_date: optional | date (Y-m-d)\n- end_date: optional | date (Y-m-d)\n- status: optional | in:completed,voided\n- customer_id: optional | integer\n- per_page: optional | integer\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['per_page', '15']]),
-        req('Create Sale', 'POST', 'sales', "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale (default: pos)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255", '{
+        req('Create Sale', 'POST', 'sales', "Create a new sale. Shift must be open.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- customer_id: nullable | integer | exists:customers\n- shift_id: nullable | integer | exists:sales_shifts\n- sale_type: optional | in:pos,online,delivery,wholesale,**deposit** (use **deposit** for layaway / deposit flow)\n- discount_amount: optional | numeric | min:0\n- notes: nullable | string\n- items: required | array | min:1\n  - items.*.product_id: required | integer | exists:products\n  - items.*.quantity: required | numeric | min:0.01\n  - items.*.unit_price: optional | numeric | min:0 (auto-computed from tiered pricing unless overridden; override requires 'override sale price' permission)\n  - items.*.discount_percentage: optional | numeric | min:0 | max:100\n  - items.*.tax_rate: optional | numeric | min:0\n  - items.*.batch_id: nullable | integer\n- payments: optional | array\n  - payments.*.payment_method_id: required | integer | exists:payment_methods\n  - payments.*.amount: required | numeric | min:0.01\n  - payments.*.reference_number: nullable | string | max:255", '{
   "branch_id": 1,
   "customer_id": null,
   "shift_id": null,
@@ -641,6 +795,7 @@ $items[] = [
         req('Resume Shift', 'POST', 'shifts/{{shift_id}}/resume', 'Resume a paused shift. pin_code required (6 digits). User must have PIN set.', '{"pin_code": "123456"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Resolve Shift Discrepancy', 'POST', 'shifts/{{shift_id}}/resolve-discrepancy', 'Mark shift variance as resolved. resolution_notes required. Shift must be closed with variance.', '{"resolution_notes": "Counted twice, variance explained."}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Branch Shifts Summary', 'GET', 'shifts/branch-summary', "Summary of shifts for a branch.\n\n**Query:**\n- branch_id: required | integer | exists:branches\n- start_date: optional | date\n- end_date: optional | date | after_or_equal:start_date\n- user_id: optional | integer | exists:users\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}']]),
+        req('POST shifts/backfill-groups (link shift → device group)', 'POST', 'shifts/backfill-groups', "Admin/maintenance: set **SalesShift.group_id** from the **device**'s **DeviceGroup** when the shift was missing `group_id`. **Not** the CRUD under `device-groups`—this only backfills old shift rows. No body. Requires owner, **view all shifts**, or **create shift**.\n\n**Response:** scanned, updated, skipped counts.\n\nX-Business-Id required.", '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Get Shift Summary', 'GET', 'shifts/{{shift_id}}/summary', 'Get summary for a specific shift (totals, payment breakdown, etc.). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];

@@ -212,12 +212,14 @@ class SalesShiftRoutesTest extends TestCase
             'paid_amount' => 150.00,
         ]);
 
-        // Create payment
+        // Create payment (stamped with shift_id, mirroring controller flow for cash-basis metrics)
         $sale->payments()->create([
             'business_id' => $this->business->id,
+            'shift_id' => $shift->id,
             'payment_method_id' => $paymentMethod->id,
             'amount' => 150.00,
             'payment_date' => now(),
+            'status' => 'completed',
         ]);
 
         // Close shift

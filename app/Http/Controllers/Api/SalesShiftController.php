@@ -1016,28 +1016,14 @@ class SalesShiftController extends Controller
             $cardSales = (float) ($shift->card_sales ?? 0);
             $otherSales = (float) ($shift->other_sales ?? 0);
         } else {
-            $sales = $shift->sales()
-                ->where('status', 'completed')
-                ->withoutTrashed()
-                ->with(['payments.paymentMethod'])
-                ->get();
-
-            $grossSales = (float) $sales->sum('total_amount');
-            $totalTransactions = $sales->count();
-
-            $cashSales = 0;
-            $cardSales = 0;
-            foreach ($sales as $sale) {
-                foreach ($sale->payments as $payment) {
-                    $type = strtolower($payment->paymentMethod->type ?? 'other');
-                    if ($type === 'cash') {
-                        $cashSales += (float) $payment->amount;
-                    } elseif ($type === 'card') {
-                        $cardSales += (float) $payment->amount;
-                    }
-                }
-            }
-            $otherSales = $grossSales - $cashSales - $cardSales;
+            // Open / paused: same cash-basis logic as updateSalesMetrics() so pending deposit
+            // installments (sale still pending) count toward expected cash and totals.
+            $m = $shift->computeMetricsFromShiftPayments();
+            $grossSales = $m['total_sales'];
+            $totalTransactions = $m['transactions_count'];
+            $cashSales = $m['cash_sales'];
+            $cardSales = $m['card_sales'];
+            $otherSales = $m['other_sales'];
         }
 
         $expectedCash = (float) ($shift->opening_balance ?? 0) + $cashSales;
@@ -1164,10 +1150,18 @@ class SalesShiftController extends Controller
      */
     private function enrichShiftWithStats($shift)
     {
-        $totalSales = $shift->total_sales ?? 0;
-        $cashSales = $shift->cash_sales ?? 0;
-        $cardSales = $shift->card_sales ?? 0;
-        $transactionsCount = $shift->transactions_count ?? 0;
+        if ($shift->status === 'closed') {
+            $totalSales = $shift->total_sales ?? 0;
+            $cashSales = $shift->cash_sales ?? 0;
+            $cardSales = $shift->card_sales ?? 0;
+            $transactionsCount = $shift->transactions_count ?? 0;
+        } else {
+            $m = $shift->computeMetricsFromShiftPayments();
+            $totalSales = $m['total_sales'];
+            $cashSales = $m['cash_sales'];
+            $cardSales = $m['card_sales'];
+            $transactionsCount = $m['transactions_count'];
+        }
 
         // Calculate average basket value
         $averageBasketValue = $transactionsCount > 0
@@ -1283,28 +1277,16 @@ class SalesShiftController extends Controller
             ];
         });
 
-        // Calculate sales summary
-        $cashAmount = 0;
-        $posAmount = 0;
-
-        foreach ($activeSales as $sale) {
-            foreach ($sale->payments as $payment) {
-                $methodName = strtolower($payment->paymentMethod->name ?? '');
-                if (in_array($methodName, ['cash', 'cash payment'])) {
-                    $cashAmount += $payment->amount;
-                } else {
-                    $posAmount += $payment->amount;
-                }
-            }
-        }
+        // Cash/card collected this shift: payment.shift_id (includes deposit top-ups, excludes sale.status filter)
+        $fromPayments = $shift->computeMetricsFromShiftPayments();
 
         $shift->sales_details = [
             'summary' => [
                 'total_sold_amount' => (float) $activeSales->sum('total_amount'),
                 'sales_count' => $activeSales->count(),
                 'voided_sales_count' => $voidedSales->count(),
-                'cash_amount' => round($cashAmount, 2),
-                'pos_amount' => round($posAmount, 2),
+                'cash_amount' => round($fromPayments['cash_sales'], 2),
+                'pos_amount' => round($fromPayments['card_sales'] + $fromPayments['other_sales'], 2),
             ],
             'active_sales' => $salesByPaymentMethod->values(),
             'voided_sales' => $voidedSalesData->values(),

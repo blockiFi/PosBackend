@@ -200,8 +200,11 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Sale routes (require business context)
         Route::get('sales', [SaleController::class, 'index']);
         Route::post('sales', [SaleController::class, 'store']);
+        // NOTE: literal-segment routes must come before {id} routes so they win matching.
+        Route::get('sales/by-reference/{reference}', [SaleController::class, 'findByReference']);
         Route::get('sales/{id}', [SaleController::class, 'show']);
         Route::post('sales/{id}/payments', [SaleController::class, 'addPayment']);
+        Route::post('sales/{id}/complete-deposit', [SaleController::class, 'completeDeposit']);
         Route::post('sales/{id}/cancel', [SaleController::class, 'cancel']);
 
         // Sales Shift routes (require business context)
