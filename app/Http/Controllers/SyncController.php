@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\BranchProductQuantityTier;
 use App\Models\BranchProductUnitPrice;
+use App\Models\Business;
 use App\Models\ChangeLog;
 use App\Models\Customer;
 use App\Models\DeviceRegistration;
@@ -32,6 +33,10 @@ use Illuminate\Support\Str;
 class SyncController extends Controller
 {
     use HasBranchAccess;
+
+    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+
+    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
 
     public function __construct(
         protected InventoryBatchService $batchService
@@ -664,6 +669,16 @@ class SyncController extends Controller
             }
         }
 
+        $saleType = $data['sale_type'] ?? 'pos';
+        $isDeposit = $saleType === 'deposit';
+
+        if ($isDeposit && empty($data['customer_id'])) {
+            throw new \Exception('A customer is required for deposit sales');
+        }
+
+        $depositStockMode = $isDeposit ? $this->resolveDepositStockMode($businessId, $data['metadata'] ?? null) : null;
+        $deferStockToCompletion = $isDeposit && $depositStockMode === 'deduct_on_complete';
+
         // Resolve shift_id: client sends local id; use only if that shift exists on server for this business/branch
         $shiftId = null;
         if (! empty($data['shift_id'])) {
@@ -679,7 +694,7 @@ class SyncController extends Controller
         $branchId = (int) $data['branch_id'];
 
         // Validate inventory for all items before creating sale (so we don't persist a sale we then reject)
-        if (isset($data['items'])) {
+        if (! $deferStockToCompletion && isset($data['items'])) {
             foreach ($data['items'] as $item) {
                 $productId = (int) $item['product_id'];
                 $qtyForBatch = (int) round((float) $item['quantity']);
@@ -718,6 +733,23 @@ class SyncController extends Controller
             }
         }
 
+        $saleMetadata = [];
+        if ($isDeposit) {
+            $saleMetadata['deposit_stock_mode'] = $depositStockMode;
+        }
+
+        $totalAmount = $data['total_amount'] ?? $data['total'] ?? 0;
+        $paymentsTotal = 0;
+        if (isset($data['payments']) && is_array($data['payments'])) {
+            foreach ($data['payments'] as $p) {
+                $paymentsTotal += (float) ($p['amount'] ?? 0);
+            }
+        }
+        $computedPaymentStatus = $paymentsTotal >= (float) $totalAmount && (float) $totalAmount > 0 ? 'paid'
+            : ($paymentsTotal > 0 ? 'partial' : 'unpaid');
+
+        $defaultStatus = $isDeposit ? 'pending' : 'completed';
+
         // Create sale
         $sale = Sale::create([
             'business_id' => $businessId,
@@ -726,14 +758,14 @@ class SyncController extends Controller
             'customer_id' => $data['customer_id'] ?? null,
             'sale_number' => $data['sale_number'],
             'reference_id' => $data['reference_id'] ?? null,
-            'sale_type' => $data['sale_type'] ?? 'pos',
+            'sale_type' => $saleType,
             'sale_date' => $data['sale_date'],
             'subtotal' => $data['subtotal'],
             'tax_amount' => $data['tax_amount'] ?? $data['tax'] ?? 0,
             'discount_amount' => $data['discount'] ?? 0,
-            'total_amount' => $data['total_amount'] ?? $data['total'],
-            'payment_status' => $data['payment_status'] ?? 'paid',
-            'status' => $data['status'] ?? 'completed',
+            'total_amount' => $totalAmount,
+            'payment_status' => $data['payment_status'] ?? $computedPaymentStatus,
+            'status' => $data['status'] ?? $defaultStatus,
             'user_id' => $userId,
             'notes' => $data['notes'] ?? null,
             'client_uuid' => $data['client_uuid'] ?? null,
@@ -742,6 +774,7 @@ class SyncController extends Controller
             'sync_status' => 'synced',
             'synced_at' => now(),
             'origin' => $data['origin'] ?? 'offline',
+            'metadata' => $saleMetadata ?: null,
         ]);
 
         // Create items and deduct inventory
@@ -765,7 +798,7 @@ class SyncController extends Controller
                     );
                 }
 
-                if ($branchProduct->stock_quantity < $qtyForBatch) {
+                if (! $deferStockToCompletion && $branchProduct->stock_quantity < $qtyForBatch) {
                     $product = $branchProduct->product;
 
                     throw new \Exception(
@@ -776,32 +809,34 @@ class SyncController extends Controller
                 // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
                 $batch = null;
                 $batchId = null;
-                $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
-                if ($quickSale && $quickSale->batch_id) {
-                    $batch = $quickSale->batch;
-                    if ($batch && $batch->current_quantity >= $qtyForBatch) {
-                        $batchId = $batch->id;
+                if (! $deferStockToCompletion) {
+                    $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
+                    if ($quickSale && $quickSale->batch_id) {
+                        $batch = $quickSale->batch;
+                        if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                            $batchId = $batch->id;
+                        }
                     }
-                }
-                if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
-                    $batchId = (int) $item['batch_id'];
-                    $batch = ProductBatch::where('id', $batchId)
-                        ->where('product_id', $productId)
-                        ->where('branch_id', $branchId)
-                        ->where('business_id', $businessId)
-                        ->first();
-                    if (! $batch || $batch->current_quantity < $qtyForBatch) {
-                        $product = $branchProduct->product;
+                    if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
+                        $batchId = (int) $item['batch_id'];
+                        $batch = ProductBatch::where('id', $batchId)
+                            ->where('product_id', $productId)
+                            ->where('branch_id', $branchId)
+                            ->where('business_id', $businessId)
+                            ->first();
+                        if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                            $product = $branchProduct->product;
 
-                        throw new \Exception(
-                            "Invalid or insufficient batch quantity for product: {$product->name}"
-                        );
+                            throw new \Exception(
+                                "Invalid or insufficient batch quantity for product: {$product->name}"
+                            );
+                        }
                     }
                 }
 
                 // Unit price: apply quick sale discount when active quick sale exists for resolved batch
                 $unitPrice = (float) ($item['unit_price'] ?? $branchProduct->selling_price ?? 0);
-                if ($batchId !== null) {
+                if (! $deferStockToCompletion && $batchId !== null) {
                     $quickSaleForBatch = QuickSale::getActiveQuickSale($productId, $branchId, null, $batchId);
                     if ($quickSaleForBatch) {
                         $unitPrice = $quickSaleForBatch->calculateFinalPrice(
@@ -834,53 +869,55 @@ class SyncController extends Controller
                 }
                 SaleItem::create($payload);
 
-                $deductResult = $branchProduct->deductForSale($qtyForBatch);
-                if (! $deductResult['stock_tracked']) {
-                    $branchProduct->decrement('stock_quantity', $qtyForBatch);
-                    $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
-                    $deductResult['quantity_after'] = $branchProduct->stock_quantity;
-                }
+                if (! $deferStockToCompletion) {
+                    $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                    if (! $deductResult['stock_tracked']) {
+                        $branchProduct->decrement('stock_quantity', $qtyForBatch);
+                        $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
+                        $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                    }
 
-                if ($batchId !== null && $batch) {
-                    $batch->allocate($qtyForBatch);
-                }
+                    if ($batchId !== null && $batch) {
+                        $batch->allocate($qtyForBatch);
+                    }
 
-                $invPayload = [
-                    'uuid' => (string) Str::uuid(),
-                    'business_id' => $businessId,
-                    'branch_id' => $branchId,
-                    'product_id' => $productId,
-                    'user_id' => $userId,
-                    'type' => 'sale',
-                    'quantity' => -$qtyForBatch,
-                    'quantity_before' => $deductResult['quantity_before'],
-                    'quantity_after' => $deductResult['quantity_after'],
-                    'unit_cost' => $branchProduct->cost_price,
-                    'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
-                    'reference_number' => $saleNumber,
-                    'notes' => "Sale: {$saleNumber}",
-                ];
-                if ($deductResult['stock_tracked']) {
-                    $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
-                    $invPayload['store_quantity'] = -$deductResult['from_store'];
-                    $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
-                    $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
-                    $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
-                    $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
-                }
-                if ($batchId !== null) {
-                    $invPayload['batch_id'] = $batchId;
-                }
-                $invTransaction = InventoryTransaction::create($invPayload);
+                    $invPayload = [
+                        'uuid' => (string) Str::uuid(),
+                        'business_id' => $businessId,
+                        'branch_id' => $branchId,
+                        'product_id' => $productId,
+                        'user_id' => $userId,
+                        'type' => 'sale',
+                        'quantity' => -$qtyForBatch,
+                        'quantity_before' => $deductResult['quantity_before'],
+                        'quantity_after' => $deductResult['quantity_after'],
+                        'unit_cost' => $branchProduct->cost_price,
+                        'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
+                        'reference_number' => $saleNumber,
+                        'notes' => "Sale: {$saleNumber}",
+                    ];
+                    if ($deductResult['stock_tracked']) {
+                        $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
+                        $invPayload['store_quantity'] = -$deductResult['from_store'];
+                        $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
+                        $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
+                        $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
+                        $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
+                    }
+                    if ($batchId !== null) {
+                        $invPayload['batch_id'] = $batchId;
+                    }
+                    $invTransaction = InventoryTransaction::create($invPayload);
 
-                if ($batchId === null && $qtyForBatch > 0) {
-                    $this->batchService->allocateStockOut(
-                        $productId,
-                        $branchId,
-                        $qtyForBatch,
-                        $invTransaction,
-                        ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
-                    );
+                    if ($batchId === null && $qtyForBatch > 0) {
+                        $this->batchService->allocateStockOut(
+                            $productId,
+                            $branchId,
+                            $qtyForBatch,
+                            $invTransaction,
+                            ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                        );
+                    }
                 }
             }
         }
@@ -909,6 +946,29 @@ class SyncController extends Controller
             'sale_number' => $sale->sale_number,
             'status' => 'synced',
         ];
+    }
+
+    private function resolveDepositStockMode(int $businessId, mixed $saleMetadata): string
+    {
+        if (is_array($saleMetadata)) {
+            $stamped = $saleMetadata['deposit_stock_mode'] ?? null;
+            if (is_string($stamped) && in_array($stamped, self::DEPOSIT_STOCK_MODES, true)) {
+                return $stamped;
+            }
+        }
+
+        $business = Business::find($businessId);
+        if (! $business) {
+            return self::DEFAULT_DEPOSIT_STOCK_MODE;
+        }
+
+        $settings = is_array($business->settings) ? $business->settings : [];
+        $mode = $settings['deposit_stock_mode'] ?? null;
+        if (is_string($mode) && in_array($mode, self::DEPOSIT_STOCK_MODES, true)) {
+            return $mode;
+        }
+
+        return self::DEFAULT_DEPOSIT_STOCK_MODE;
     }
 
     /**

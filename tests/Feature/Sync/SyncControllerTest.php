@@ -309,6 +309,101 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function it_can_push_offline_deposit_sales_without_deducting_stock_when_configured()
+    {
+        $this->business->settings = ['deposit_stock_mode' => 'deduct_on_complete'];
+        $this->business->save();
+
+        $device = $this->registerDevice();
+
+        $customer = Customer::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+
+        $paymentMethod = PaymentMethod::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+
+        $clientUuid = Str::uuid()->toString();
+        $saleNumber = 'DEP-OFFLINE-'.time();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => $clientUuid,
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'customer_id' => $customer->id,
+                        'sale_type' => 'deposit',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 100.00,
+                        'tax_amount' => 0,
+                        'total_amount' => 100.00,
+                        'origin' => 'offline',
+                        'items' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'product_id' => $product->id,
+                                'quantity' => 2,
+                                'unit_price' => 50.00,
+                                'subtotal' => 100.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 20.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+
+        $serverSaleId = $response->json("results.sales.mappings.$clientUuid.server_id");
+        $this->assertNotEmpty($serverSaleId);
+
+        $this->assertDatabaseHas('sales', [
+            'id' => $serverSaleId,
+            'sale_number' => $saleNumber,
+            'sale_type' => 'deposit',
+            'status' => 'pending',
+        ]);
+
+        $this->assertDatabaseMissing('inventory_transactions', [
+            'reference_number' => $saleNumber,
+            'type' => 'sale',
+        ]);
+
+        $branchProduct->refresh();
+        $this->assertEquals(10, (int) $branchProduct->stock_quantity, 'Stock should not be decremented for deferred deposit sales');
+
+        $sale = Sale::findOrFail($serverSaleId);
+        $this->assertIsArray($sale->metadata);
+        $this->assertEquals('deduct_on_complete', $sale->metadata['deposit_stock_mode'] ?? null);
+    }
+
+    /** @test */
     public function it_rejects_push_sale_when_product_has_no_branch_product()
     {
         $device = $this->registerDevice();
