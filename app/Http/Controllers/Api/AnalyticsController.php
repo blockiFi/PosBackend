@@ -6,23 +6,95 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
-use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class AnalyticsController extends Controller
 {
     use HasBranchAccess;
+
+    protected function analyticsCacheTtl(): int
+    {
+        return config('analytics.use_rollups')
+            ? (int) config('analytics.rollup_cache_ttl_seconds', 120)
+            : (int) config('analytics.cache_ttl_seconds', 900);
+    }
+
+    /**
+     * File-backed cache + mutex so expensive analytics don't stampede the DB.
+     */
+    protected function analyticsRemember(string $cacheKey, ?int $ttlSeconds, \Closure $callback): mixed
+    {
+        $store = Cache::store('file');
+        $ttl = $ttlSeconds ?? $this->analyticsCacheTtl();
+
+        $hit = $store->get($cacheKey);
+        if ($hit !== null) {
+            return $hit;
+        }
+
+        return Cache::store('file')->lock('analytics_lock_'.$cacheKey, 120)->block(90, function () use ($store, $cacheKey, $ttl, $callback) {
+            $hit = $store->get($cacheKey);
+            if ($hit !== null) {
+                return $hit;
+            }
+            $value = $callback();
+            $store->put($cacheKey, $value, $ttl);
+
+            return $value;
+        });
+    }
+
+    protected function resolveTrendGranularity(?string $requested, Carbon $startDate, Carbon $endDate): string
+    {
+        if (in_array($requested, ['daily', 'weekly', 'monthly'], true)) {
+            return $requested;
+        }
+
+        $days = $startDate->copy()->startOfDay()->diffInDays($endDate->copy()->startOfDay()) + 1;
+        if ($days <= 31) {
+            return 'daily';
+        }
+        if ($days <= 180) {
+            return 'weekly';
+        }
+
+        return 'monthly';
+    }
 
     /**
      * Get organization-wide analytics
      */
     public function organizationAnalytics(Request $request)
     {
+        $agentRunId = bin2hex(random_bytes(4));
+        $agentStart = microtime(true);
+        // Agent debug: capture slow queries during this request only.
+        $slowQueries = [];
+        DB::listen(function ($query) use (&$slowQueries, $agentRunId) {
+            if (($query->time ?? 0) < 200) {
+                return;
+            }
+            $slowQueries[] = [
+                'time_ms' => $query->time,
+                'sql' => (string) $query->sql,
+            ];
+            // Keep memory bounded.
+            if (count($slowQueries) > 10) {
+                array_shift($slowQueries);
+            }
+            Log::info('AGENT_DEBUG bea792 analytics.slow_query', [
+                'run' => $agentRunId,
+                'time_ms' => $query->time,
+                'sql' => (string) $query->sql,
+            ]);
+        });
+
         $user = $request->user();
         $businessId = $request->current_business_id;
 
@@ -41,6 +113,7 @@ class AnalyticsController extends Controller
             'start_date' => 'required_if:period,custom|required_with:end_date|date',
             'end_date' => 'required_if:period,custom|required_with:start_date|date|after_or_equal:start_date',
             'compare_previous' => 'sometimes|boolean',
+            'granularity' => 'sometimes|in:auto,daily,weekly,monthly',
         ]);
 
         $period = $request->input('period', 'month');
@@ -54,10 +127,29 @@ class AnalyticsController extends Controller
 
         [$startDate, $endDate] = $this->getDateRange($period, $startDateInput, $endDateInput);
 
-        // NOTE: cache key includes user id because branch_contributions are scoped by user's permitted branches.
-        $cacheKey = "org_analytics_{$businessId}_user_{$user->id}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
+        $granularityReq = $request->input('granularity', 'auto');
+        $granularity = $this->resolveTrendGranularity(
+            $granularityReq === 'auto' ? null : $granularityReq,
+            $startDate,
+            $endDate
+        );
 
-        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($user, $businessId, $startDate, $endDate, $comparePrevious) {
+        // NOTE: cache key includes user id because branch_contributions are scoped by user's permitted branches.
+        $cacheKey = "org_analytics_{$businessId}_user_{$user->id}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}_{$granularity}";
+
+        Log::info('AGENT_DEBUG bea792 org_analytics:start', [
+            'run' => $agentRunId,
+            'business_id' => $businessId,
+            'period' => $period,
+            'start' => $startDate->format('Y-m-d'),
+            'end' => $endDate->format('Y-m-d'),
+            'compare_previous' => (bool) $comparePrevious,
+            'granularity' => $granularity,
+            'cache_key' => $cacheKey,
+            'cache_hit' => Cache::store('file')->has($cacheKey),
+        ]);
+
+        $response = $this->analyticsRemember($cacheKey, null, function () use ($user, $businessId, $startDate, $endDate, $comparePrevious, $granularity) {
             // Current period metrics
             $currentMetrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate);
 
@@ -87,11 +179,19 @@ class AnalyticsController extends Controller
             $permittedBranches = $this->getPermittedBranches($user, $businessId);
             $result['branch_contributions'] = $this->getBranchContributions($businessId, $startDate, $endDate, $permittedBranches);
 
-            // Revenue trend (daily breakdown)
-            $result['revenue_trend'] = $this->getRevenueTrend($businessId, $startDate, $endDate);
+            // Revenue trend (bucketed by granularity / range)
+            $result['revenue_trend'] = $this->getRevenueTrend($businessId, $startDate, $endDate, null, $granularity);
 
             return response()->json($result);
         });
+
+        Log::info('AGENT_DEBUG bea792 org_analytics:end', [
+            'run' => $agentRunId,
+            'duration_ms' => (int) round((microtime(true) - $agentStart) * 1000),
+            'slow_query_count' => count($slowQueries),
+        ]);
+
+        return $response;
     }
 
     /**
@@ -99,6 +199,27 @@ class AnalyticsController extends Controller
      */
     public function branchAnalytics(Request $request)
     {
+        $agentRunId = bin2hex(random_bytes(4));
+        $agentStart = microtime(true);
+        $slowQueries = [];
+        DB::listen(function ($query) use (&$slowQueries, $agentRunId) {
+            if (($query->time ?? 0) < 200) {
+                return;
+            }
+            $slowQueries[] = [
+                'time_ms' => $query->time,
+                'sql' => (string) $query->sql,
+            ];
+            if (count($slowQueries) > 10) {
+                array_shift($slowQueries);
+            }
+            Log::info('AGENT_DEBUG bea792 analytics.slow_query', [
+                'run' => $agentRunId,
+                'time_ms' => $query->time,
+                'sql' => (string) $query->sql,
+            ]);
+        });
+
         $user = $request->user();
         $businessId = $request->current_business_id;
 
@@ -114,6 +235,7 @@ class AnalyticsController extends Controller
             'start_date' => 'required_if:period,custom|date',
             'end_date' => 'required_if:period,custom|date|after_or_equal:start_date',
             'compare_previous' => 'sometimes|boolean',
+            'granularity' => 'sometimes|in:auto,daily,weekly,monthly',
         ]);
 
         // Determine branch access
@@ -144,11 +266,30 @@ class AnalyticsController extends Controller
 
         [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
 
+        $granularityReq = $request->input('granularity', 'auto');
+        $granularity = $this->resolveTrendGranularity(
+            $granularityReq === 'auto' ? null : $granularityReq,
+            $startDate,
+            $endDate
+        );
+
+        Log::info('AGENT_DEBUG bea792 branch_analytics:start', [
+            'run' => $agentRunId,
+            'business_id' => $businessId,
+            'period' => $period,
+            'start' => $startDate->format('Y-m-d'),
+            'end' => $endDate->format('Y-m-d'),
+            'compare_previous' => (bool) $comparePrevious,
+            'branch_id' => $request->input('branch_id') ? (string) $request->input('branch_id') : null,
+            'branches_count' => count($branches),
+            'granularity' => $granularity,
+        ]);
+
         $results = [];
         foreach ($branches as $branchId) {
-            $cacheKey = "branch_analytics_{$branchId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}";
+            $cacheKey = "branch_analytics_{$branchId}_{$period}_{$startDate}_{$endDate}_{$comparePrevious}_{$granularity}";
 
-            $branchData = Cache::remember($cacheKey, now()->addMinutes(15), function () use ($businessId, $branchId, $startDate, $endDate, $comparePrevious) {
+            $branchData = $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchId, $startDate, $endDate, $comparePrevious, $granularity) {
                 $branch = Branch::find($branchId);
 
                 $currentMetrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId);
@@ -176,13 +317,19 @@ class AnalyticsController extends Controller
                 }
 
                 // Revenue trend for this branch
-                $data['revenue_trend'] = $this->getRevenueTrend($businessId, $startDate, $endDate, $branchId);
+                $data['revenue_trend'] = $this->getRevenueTrend($businessId, $startDate, $endDate, $branchId, $granularity);
 
                 return $data;
             });
 
             $results[] = $branchData;
         }
+
+        Log::info('AGENT_DEBUG bea792 branch_analytics:end', [
+            'run' => $agentRunId,
+            'duration_ms' => (int) round((microtime(true) - $agentStart) * 1000),
+            'slow_query_count' => count($slowQueries),
+        ]);
 
         return response()->json([
             'branches' => $results,
@@ -232,7 +379,7 @@ class AnalyticsController extends Controller
 
         $cacheKey = "product_analytics_{$businessId}_{$branchId}_{$period}_{$startDate}_{$endDate}_{$limit}_{$sortBy}_{$direction}";
 
-        return Cache::remember($cacheKey, now()->addMinutes(15), function () use ($businessId, $branchId, $startDate, $endDate, $limit, $sortBy, $direction) {
+        return $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchId, $startDate, $endDate, $limit, $sortBy, $direction) {
             $query = SaleItem::query()
                 ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
                 ->join('products', 'sale_items.product_id', '=', 'products.id')
@@ -424,24 +571,60 @@ class AnalyticsController extends Controller
 
         $cacheKey = "pl_statement_{$businessId}_{$branchId}_{$period}_{$startDate}_{$endDate}";
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($businessId, $branchId, $startDate, $endDate) {
-            $salesQuery = Sale::where('business_id', $businessId)
-                ->where('status', 'completed')
-                ->whereBetween('sale_date', [$startDate, $endDate]);
+        return $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchId, $startDate, $endDate) {
+            if (config('analytics.use_rollups')) {
+                $rollupQuery = DB::table('analytics_daily_summaries')
+                    ->where('business_id', $businessId)
+                    ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
 
-            if ($branchId) {
-                $salesQuery->where('branch_id', $branchId);
+                if ($branchId) {
+                    $rollupQuery->where('branch_id', $branchId);
+                }
+
+                $agg = $rollupQuery->selectRaw(
+                    'SUM(txn_count) as txn_count, SUM(revenue) as revenue, SUM(discount) as discount, SUM(cost) as cost'
+                )->first();
+
+                $totalRevenue = (float) ($agg->revenue ?? 0);
+                $totalDiscount = (float) ($agg->discount ?? 0);
+                $transactionCount = (int) ($agg->txn_count ?? 0);
+                $totalCost = (float) ($agg->cost ?? 0);
+            } else {
+                $salesAgg = Sale::query()
+                    ->where('business_id', $businessId)
+                    ->where('status', 'completed')
+                    ->whereBetween('sale_date', [$startDate, $endDate])
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue, COALESCE(SUM(discount_amount), 0) as discount')
+                    ->first();
+
+                $transactionCount = (int) ($salesAgg->txn_count ?? 0);
+                $totalRevenue = (float) ($salesAgg->revenue ?? 0);
+                $totalDiscount = (float) ($salesAgg->discount ?? 0);
+
+                $costRow = DB::table('sale_items')
+                    ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+                    ->leftJoin('branch_products', function ($join) {
+                        $join->on('branch_products.product_id', '=', 'sale_items.product_id')
+                            ->on('branch_products.branch_id', '=', 'sales.branch_id')
+                            ->whereNull('branch_products.deleted_at');
+                    })
+                    ->join('products', 'sale_items.product_id', '=', 'products.id')
+                    ->whereNull('sales.deleted_at')
+                    ->whereNull('products.deleted_at')
+                    ->where('sales.business_id', $businessId)
+                    ->where('sales.status', 'completed')
+                    ->whereBetween('sales.sale_date', [$startDate, $endDate])
+                    ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
+                    ->selectRaw(
+                        'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
+                    )
+                    ->first();
+
+                $totalCost = (float) ($costRow->total_cost ?? 0);
             }
 
-            // Revenue calculations
-            $totalRevenue = (float) $salesQuery->sum('total_amount');
-            $totalDiscount = (float) $salesQuery->sum('discount_amount');
             $grossRevenue = $totalRevenue + $totalDiscount;
-
-            // Cost calculations
-            $salesWithItems = $salesQuery->with('items')->get();
-            $totalCost = 0;
-            $totalCost = $this->calculateSalesCost($salesWithItems);
 
             // Profit calculations
             $grossProfit = $totalRevenue - $totalCost;
@@ -473,9 +656,9 @@ class AnalyticsController extends Controller
                     'net_margin_percentage' => number_format($netMargin, 2, '.', ''),
                 ],
                 'metrics' => [
-                    'total_transactions' => $salesQuery->count(),
-                    'average_transaction_value' => $salesQuery->count() > 0
-                        ? number_format($totalRevenue / $salesQuery->count(), 2, '.', '')
+                    'total_transactions' => $transactionCount,
+                    'average_transaction_value' => $transactionCount > 0
+                        ? number_format($totalRevenue / $transactionCount, 2, '.', '')
                         : '0.00',
                 ],
             ]);
@@ -517,7 +700,7 @@ class AnalyticsController extends Controller
 
         $cacheKey = "growth_trends_{$businessId}_{$branchId}_{$interval}_{$periods}";
 
-        return Cache::remember($cacheKey, now()->addMinutes(30), function () use ($businessId, $branchId, $interval, $periods) {
+        return $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchId, $interval, $periods) {
             $trends = [];
 
             for ($i = $periods - 1; $i >= 0; $i--) {
@@ -561,76 +744,77 @@ class AnalyticsController extends Controller
 
     // Helper Methods
 
-    private function calculateSalesCost($sales): float
+    private function calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId = null): array
     {
-        $salesCollection = $sales instanceof \Illuminate\Support\Collection ? $sales : collect($sales);
-        if ($salesCollection->isEmpty()) {
-            return 0;
-        }
-
-        $allProductIds = $salesCollection
-            ->flatMap(function ($sale) {
-                return $sale->items?->pluck('product_id') ?? collect();
-            })
-            ->filter()
-            ->unique()
-            ->values();
-
-        if ($allProductIds->isEmpty()) {
-            return 0;
-        }
-
-        $branchIds = $salesCollection
-            ->pluck('branch_id')
-            ->filter()
-            ->unique()
-            ->values();
-
-        $branchCostsByBranch = BranchProduct::query()
-            ->whereIn('branch_id', $branchIds)
-            ->whereIn('product_id', $allProductIds)
-            ->get(['branch_id', 'product_id', 'cost_price'])
-            ->groupBy('branch_id')
-            ->map(function ($rows) {
-                return $rows->pluck('cost_price', 'product_id');
-            });
-
-        $productCosts = Product::query()
-            ->whereIn('id', $allProductIds)
-            ->pluck('base_cost_price', 'id');
-
-        $totalCost = 0;
-        foreach ($salesCollection as $sale) {
-            $costsForBranch = $branchCostsByBranch->get($sale->branch_id) ?? collect();
-            foreach ($sale->items as $item) {
-                $unitCost = $costsForBranch->get($item->product_id);
-                if ($unitCost === null) {
-                    $unitCost = $productCosts->get($item->product_id, 0);
-                }
-                $totalCost += ((float) $item->quantity) * ((float) $unitCost);
-            }
-        }
-
-        return (float) $totalCost;
+        return config('analytics.use_rollups')
+            ? $this->calculatePeriodMetricsFromRollup($businessId, $startDate, $endDate, $branchId)
+            : $this->calculatePeriodMetricsLive($businessId, $startDate, $endDate, $branchId);
     }
 
-    private function calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId = null)
+    private function calculatePeriodMetricsFromRollup($businessId, $startDate, $endDate, $branchId = null): array
     {
-        $query = Sale::where('business_id', $businessId)
-            ->where('status', 'completed')
-            ->whereBetween('sale_date', [$startDate, $endDate]);
+        $query = DB::table('analytics_daily_summaries')
+            ->where('business_id', $businessId)
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
         }
 
-        $sales = $query->with('items')->get();
+        $row = $query->selectRaw(
+            'SUM(txn_count) as txn_count, SUM(revenue) as revenue, SUM(cost) as cost'
+        )->first();
 
-        $revenue = $sales->sum('total_amount');
-        $transactionCount = $sales->count();
+        $transactionCount = (int) ($row->txn_count ?? 0);
+        $revenue = (float) ($row->revenue ?? 0);
+        $cost = (float) ($row->cost ?? 0);
+        $profit = $revenue - $cost;
+        $averageOrderValue = $transactionCount > 0 ? $revenue / $transactionCount : 0;
+        $margin = $revenue > 0 ? ($profit / $revenue) * 100 : 0;
 
-        $cost = $this->calculateSalesCost($sales);
+        return [
+            'revenue' => number_format($revenue, 2, '.', ''),
+            'cost' => number_format($cost, 2, '.', ''),
+            'profit' => number_format($profit, 2, '.', ''),
+            'margin_percentage' => number_format($margin, 2, '.', ''),
+            'transaction_count' => $transactionCount,
+            'average_order_value' => number_format($averageOrderValue, 2, '.', ''),
+        ];
+    }
 
+    private function calculatePeriodMetricsLive($businessId, $startDate, $endDate, $branchId = null): array
+    {
+        $salesAgg = Sale::query()
+            ->where('business_id', $businessId)
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
+            ->first();
+
+        $transactionCount = (int) ($salesAgg->txn_count ?? 0);
+        $revenue = (float) ($salesAgg->revenue ?? 0);
+
+        $costRow = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->leftJoin('branch_products', function ($join) {
+                $join->on('branch_products.product_id', '=', 'sale_items.product_id')
+                    ->on('branch_products.branch_id', '=', 'sales.branch_id')
+                    ->whereNull('branch_products.deleted_at');
+            })
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->whereNull('sales.deleted_at')
+            ->whereNull('products.deleted_at')
+            ->where('sales.business_id', $businessId)
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
+            ->selectRaw(
+                'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
+            )
+            ->first();
+
+        $cost = (float) ($costRow->total_cost ?? 0);
         $profit = $revenue - $cost;
         $averageOrderValue = $transactionCount > 0 ? $revenue / $transactionCount : 0;
         $margin = $revenue > 0 ? ($profit / $revenue) * 100 : 0;
@@ -697,43 +881,180 @@ class AnalyticsController extends Controller
 
     private function getBranchContributions($businessId, $startDate, $endDate, $permittedBranches = null)
     {
-        $query = Branch::where('business_id', $businessId);
+        return config('analytics.use_rollups')
+            ? $this->getBranchContributionsFromRollup($businessId, $startDate, $endDate, $permittedBranches)
+            : $this->getBranchContributionsLive($businessId, $startDate, $endDate, $permittedBranches);
+    }
+
+    private function getBranchContributionsLive($businessId, $startDate, $endDate, $permittedBranches = null): array
+    {
+        $branchQuery = Branch::where('business_id', $businessId);
         if ($permittedBranches !== null && $permittedBranches->isNotEmpty()) {
-            $query->whereIn('id', $permittedBranches);
+            $branchQuery->whereIn('id', $permittedBranches);
         }
-        $branches = $query->get();
+        $branches = $branchQuery->get();
+
+        $revRows = Sale::query()
+            ->where('business_id', $businessId)
+            ->where('status', 'completed')
+            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $permittedBranches))
+            ->selectRaw('branch_id, COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
+            ->groupBy('branch_id')
+            ->get()
+            ->keyBy('branch_id');
+
+        $costRows = DB::table('sale_items')
+            ->join('sales', 'sale_items.sale_id', '=', 'sales.id')
+            ->leftJoin('branch_products', function ($join) {
+                $join->on('branch_products.product_id', '=', 'sale_items.product_id')
+                    ->on('branch_products.branch_id', '=', 'sales.branch_id')
+                    ->whereNull('branch_products.deleted_at');
+            })
+            ->join('products', 'sale_items.product_id', '=', 'products.id')
+            ->whereNull('sales.deleted_at')
+            ->whereNull('products.deleted_at')
+            ->where('sales.business_id', $businessId)
+            ->where('sales.status', 'completed')
+            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('sales.branch_id', $permittedBranches))
+            ->groupBy('sales.branch_id')
+            ->selectRaw(
+                'sales.branch_id as branch_id,'.
+                ' COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
+            )
+            ->get()
+            ->keyBy('branch_id');
+
         $contributions = [];
-
         $totalRevenue = 0;
-        $branchMetrics = [];
 
         foreach ($branches as $branch) {
-            $metrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate, $branch->id);
-            $branchMetrics[$branch->id] = $metrics;
-            $totalRevenue += (float) $metrics['revenue'];
-        }
+            $rev = $revRows->get($branch->id);
+            $costRow = $costRows->get($branch->id);
+            $revenue = $rev ? (float) $rev->revenue : 0.0;
+            $cost = $costRow ? (float) $costRow->total_cost : 0.0;
+            $profit = $revenue - $cost;
+            $txnCount = $rev ? (int) $rev->txn_count : 0;
 
-        foreach ($branches as $branch) {
-            $metrics = $branchMetrics[$branch->id];
-            $revenue = (float) $metrics['revenue'];
-            $contribution = $totalRevenue > 0 ? ($revenue / $totalRevenue) * 100 : 0;
+            $totalRevenue += $revenue;
 
             $contributions[] = [
                 'branch_id' => $branch->id,
                 'branch_name' => $branch->name,
-                'revenue' => $metrics['revenue'],
-                'profit' => $metrics['profit'],
-                'transaction_count' => $metrics['transaction_count'],
-                'contribution_percentage' => number_format($contribution, 2, '.', ''),
+                '_revenue_float' => $revenue,
+                'revenue' => number_format($revenue, 2, '.', ''),
+                'profit' => number_format($profit, 2, '.', ''),
+                'transaction_count' => $txnCount,
+                'contribution_percentage' => '0.00',
             ];
         }
 
-        return collect($contributions)->sortByDesc('revenue')->values()->all();
+        foreach ($contributions as &$row) {
+            $rev = $row['_revenue_float'];
+            $row['contribution_percentage'] = number_format(
+                $totalRevenue > 0 ? ($rev / $totalRevenue) * 100 : 0,
+                2,
+                '.',
+                ''
+            );
+            unset($row['_revenue_float']);
+        }
+        unset($row);
+
+        return collect($contributions)->sortByDesc(fn ($r) => (float) $r['revenue'])->values()->all();
     }
 
-    private function getRevenueTrend($businessId, $startDate, $endDate, $branchId = null)
+    private function getBranchContributionsFromRollup($businessId, $startDate, $endDate, $permittedBranches = null): array
     {
-        $query = Sale::where('business_id', $businessId)
+        $branchQuery = Branch::where('business_id', $businessId);
+        if ($permittedBranches !== null && $permittedBranches->isNotEmpty()) {
+            $branchQuery->whereIn('id', $permittedBranches);
+        }
+        $branches = $branchQuery->get();
+
+        $aggRows = DB::table('analytics_daily_summaries')
+            ->where('business_id', $businessId)
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $permittedBranches))
+            ->groupBy('branch_id')
+            ->selectRaw('branch_id, SUM(txn_count) as txn_count, SUM(revenue) as revenue, SUM(cost) as cost')
+            ->get()
+            ->keyBy('branch_id');
+
+        $contributions = [];
+        $totalRevenue = 0;
+
+        foreach ($branches as $branch) {
+            $agg = $aggRows->get($branch->id);
+            $revenue = $agg ? (float) $agg->revenue : 0.0;
+            $cost = $agg ? (float) $agg->cost : 0.0;
+            $profit = $revenue - $cost;
+            $txnCount = $agg ? (int) $agg->txn_count : 0;
+            $totalRevenue += $revenue;
+
+            $contributions[] = [
+                'branch_id' => $branch->id,
+                'branch_name' => $branch->name,
+                '_revenue_float' => $revenue,
+                'revenue' => number_format($revenue, 2, '.', ''),
+                'profit' => number_format($profit, 2, '.', ''),
+                'transaction_count' => $txnCount,
+                'contribution_percentage' => '0.00',
+            ];
+        }
+
+        foreach ($contributions as &$row) {
+            $rev = $row['_revenue_float'];
+            $row['contribution_percentage'] = number_format(
+                $totalRevenue > 0 ? ($rev / $totalRevenue) * 100 : 0,
+                2,
+                '.',
+                ''
+            );
+            unset($row['_revenue_float']);
+        }
+        unset($row);
+
+        return collect($contributions)->sortByDesc(fn ($r) => (float) $r['revenue'])->values()->all();
+    }
+
+    private function getRevenueTrend($businessId, $startDate, $endDate, $branchId = null, ?string $granularity = null)
+    {
+        $granularity ??= $this->resolveTrendGranularity(null, $startDate, $endDate);
+
+        return config('analytics.use_rollups')
+            ? $this->getRevenueTrendFromRollup($businessId, $startDate, $endDate, $branchId, $granularity)
+            : $this->getRevenueTrendLive($businessId, $startDate, $endDate, $branchId, $granularity);
+    }
+
+    /**
+     * @return array{0:\Illuminate\Database\Query\Expression|string, 1:string}
+     */
+    private function trendBucketSelectExpr(string $granularity): array
+    {
+        return match ($granularity) {
+            'weekly' => [
+                DB::raw("DATE_FORMAT(sale_date, '%x-W%v') as date"),
+                "DATE_FORMAT(sale_date, '%x-W%v')",
+            ],
+            'monthly' => [
+                DB::raw("DATE_FORMAT(sale_date, '%Y-%m') as date"),
+                "DATE_FORMAT(sale_date, '%Y-%m')",
+            ],
+            default => [
+                DB::raw('DATE(sale_date) as date'),
+                'DATE(sale_date)',
+            ],
+        };
+    }
+
+    private function getRevenueTrendLive($businessId, $startDate, $endDate, $branchId, string $granularity)
+    {
+        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity);
+
+        $query = Sale::query()
+            ->where('business_id', $businessId)
             ->where('status', 'completed')
             ->whereBetween('sale_date', [$startDate, $endDate]);
 
@@ -741,12 +1062,13 @@ class AnalyticsController extends Controller
             $query->where('branch_id', $branchId);
         }
 
-        $dailyRevenue = $query->select(
-            DB::raw('DATE(sale_date) as date'),
-            DB::raw('SUM(total_amount) as revenue'),
-            DB::raw('COUNT(*) as transactions')
-        )
-            ->groupBy('date')
+        return $query
+            ->select(
+                $bucketSelect,
+                DB::raw('SUM(total_amount) as revenue'),
+                DB::raw('COUNT(*) as transactions')
+            )
+            ->groupBy(DB::raw($groupSql))
             ->orderBy('date')
             ->get()
             ->map(function ($item) {
@@ -756,8 +1078,36 @@ class AnalyticsController extends Controller
                     'transactions' => $item->transactions,
                 ];
             });
+    }
 
-        return $dailyRevenue;
+    private function getRevenueTrendFromRollup($businessId, $startDate, $endDate, $branchId, string $granularity)
+    {
+        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity);
+
+        $query = DB::table('analytics_daily_summaries')
+            ->where('business_id', $businessId)
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+
+        if ($branchId) {
+            $query->where('branch_id', $branchId);
+        }
+
+        return $query
+            ->select(
+                $bucketSelect,
+                DB::raw('SUM(revenue) as revenue'),
+                DB::raw('SUM(txn_count) as transactions')
+            )
+            ->groupBy(DB::raw($groupSql))
+            ->orderBy('date')
+            ->get()
+            ->map(function ($item) {
+                return [
+                    'date' => $item->date,
+                    'revenue' => number_format($item->revenue, 2, '.', ''),
+                    'transactions' => $item->transactions,
+                ];
+            });
     }
 
     private function getDateRange($period, $customStart = null, $customEnd = null)

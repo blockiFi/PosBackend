@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BranchAuthorization;
+use App\Models\DeviceRegistration;
 use App\Models\User;
 use App\Services\ProfileImageService;
 use Illuminate\Http\Request;
@@ -51,6 +52,95 @@ class AuthenticationController extends Controller
             'business' => $branchAuthorization->business,
             'branch' => $branchAuthorization->branch,
         ]);
+    }
+
+    /**
+     * Register a cashier terminal device using a valid branch authorization code (no Sanctum session).
+     * Used once during POS Cashier onboarding before PIN login.
+     */
+    public function registerCashierDeviceWithBranchAuthorization(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'auth_code' => ['required', 'string'],
+            'device_id' => ['required', 'string', 'max:50'],
+            'device_name' => ['required', 'string', 'max:100'],
+            'device_type' => ['nullable', 'in:web,desktop,mobile,tablet'],
+            'os' => ['nullable', 'string', 'max:50'],
+            'app_version' => ['nullable', 'string', 'max:20'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $branchAuthorization = BranchAuthorization::with(['business', 'branch'])
+            ->where('auth_code', $request->auth_code)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (! $branchAuthorization) {
+            return response()->json([
+                'message' => 'Invalid or expired auth code',
+            ], 401);
+        }
+
+        $businessId = (int) $branchAuthorization->business_id;
+        $validatedDeviceType = $request->input('device_type', 'desktop');
+
+        $existing = DeviceRegistration::query()->where('device_id', $request->device_id)->first();
+
+        if ($existing) {
+            if ((int) $existing->business_id !== $businessId) {
+                return response()->json([
+                    'message' => 'This device is already registered to another business',
+                ], 409);
+            }
+
+            $existing->update([
+                'branch_id' => $branchAuthorization->branch_id,
+                'user_id' => $branchAuthorization->user_id,
+                'device_name' => $request->device_name,
+                'device_type' => $validatedDeviceType,
+                'os' => $request->input('os') ?? $existing->os,
+                'app_version' => $request->input('app_version') ?? $existing->app_version,
+                'ip_address' => $request->ip(),
+                'last_seen_at' => now(),
+                'status' => 'active',
+            ]);
+
+            return response()->json([
+                'message' => 'Device already registered; updated',
+                'device' => $existing->fresh(),
+                'business' => $branchAuthorization->business,
+                'branch' => $branchAuthorization->branch,
+            ], 200);
+        }
+
+        $device = DeviceRegistration::create([
+            'device_id' => $request->device_id,
+            'business_id' => $branchAuthorization->business_id,
+            'branch_id' => $branchAuthorization->branch_id,
+            'user_id' => $branchAuthorization->user_id,
+            'device_name' => $request->device_name,
+            'device_type' => $validatedDeviceType,
+            'os' => $request->input('os') ?? 'desktop',
+            'app_version' => $request->app_version,
+            'ip_address' => $request->ip(),
+            'status' => 'active',
+            'last_seen_at' => now(),
+            'capabilities' => [],
+            'metadata' => [],
+        ]);
+
+        return response()->json([
+            'message' => 'Device registered',
+            'device' => $device,
+            'business' => $branchAuthorization->business,
+            'branch' => $branchAuthorization->branch,
+        ], 201);
     }
 
     public function register(Request $request)

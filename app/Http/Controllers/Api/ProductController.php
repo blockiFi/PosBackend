@@ -917,8 +917,29 @@ class ProductController extends Controller
             $query->where('products.id', '>=', $request->input('start_id'));
         }
 
-        // Order products
-        $query->orderBy('products.id', 'asc');
+        // Order: optional sort by this branch's selling_price (branch_products.selling_price)
+        $sort = $request->input('sort');
+        if ($sort === 'selling_price_asc') {
+            $query->join('branch_products', function ($join) use ($branchId) {
+                $join->on('products.id', '=', 'branch_products.product_id')
+                    ->where('branch_products.branch_id', '=', $branchId)
+                    ->whereNull('branch_products.deleted_at');
+            })
+                ->select('products.*')
+                ->orderBy('branch_products.selling_price', 'asc')
+                ->orderBy('products.id', 'asc');
+        } elseif ($sort === 'selling_price_desc') {
+            $query->join('branch_products', function ($join) use ($branchId) {
+                $join->on('products.id', '=', 'branch_products.product_id')
+                    ->where('branch_products.branch_id', '=', $branchId)
+                    ->whereNull('branch_products.deleted_at');
+            })
+                ->select('products.*')
+                ->orderBy('branch_products.selling_price', 'desc')
+                ->orderBy('products.id', 'asc');
+        } else {
+            $query->orderBy('products.id', 'asc');
+        }
 
         // Check if unpaginated response is requested
         $paginated = $request->boolean('paginated', true);

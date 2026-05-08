@@ -19,6 +19,7 @@ class InventoryTransaction extends Model
         'product_id',
         'user_id',
         'batch_id',
+        'goods_received_note_line_id',
         'type',
         'quantity',
         'shelf_quantity',
@@ -120,6 +121,11 @@ class InventoryTransaction extends Model
     public function batch(): BelongsTo
     {
         return $this->belongsTo(ProductBatch::class, 'batch_id');
+    }
+
+    public function goodsReceivedNoteLine(): BelongsTo
+    {
+        return $this->belongsTo(GoodsReceivedNoteLine::class, 'goods_received_note_line_id');
     }
 
     public function stockTransferRequest(): BelongsTo

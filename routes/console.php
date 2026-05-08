@@ -16,3 +16,11 @@ if (config('sync.mode') === 'edge' && config('sync.auto_sync')) {
 // Quick sale discount lifecycle
 Schedule::command('quicksales:activate')->everyMinute();
 Schedule::command('quicksales:cleanup-discounts --all')->dailyAt('01:00');
+
+// Analytics rollups (repair window; observers handle hot paths when ANALYTICS_USE_ROLLUPS=true)
+Schedule::call(function () {
+    Artisan::call('analytics:rollup', [
+        '--from' => now()->subDays(7)->toDateString(),
+        '--to' => now()->toDateString(),
+    ]);
+})->hourly()->name('analytics-rollup-repair')->withoutOverlapping();

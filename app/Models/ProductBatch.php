@@ -29,6 +29,7 @@ class ProductBatch extends Model
         'supplier_name',
         'supplier_reference',
         'inventory_transaction_id',
+        'goods_received_note_line_id',
         'status',
         'meta_data',
     ];
@@ -91,6 +92,11 @@ class ProductBatch extends Model
     public function inventoryTransaction(): BelongsTo
     {
         return $this->belongsTo(InventoryTransaction::class);
+    }
+
+    public function goodsReceivedNoteLine(): BelongsTo
+    {
+        return $this->belongsTo(GoodsReceivedNoteLine::class, 'goods_received_note_line_id');
     }
 
     public function transactions(): HasMany

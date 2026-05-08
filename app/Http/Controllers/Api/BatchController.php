@@ -55,12 +55,12 @@ class BatchController extends Controller
         ];
         if ($permittedBranches->isEmpty()) {
             // User has business-wide access
-            $query = ProductBatch::with(['product', 'branch'])
+            $query = ProductBatch::with(['product', 'branch', 'inventoryTransaction'])
                 ->withCount($withCount)
                 ->forBusiness($businessId);
         } else {
             // User has branch-specific access
-            $query = ProductBatch::with(['product', 'branch'])
+            $query = ProductBatch::with(['product', 'branch', 'inventoryTransaction'])
                 ->withCount($withCount)
                 ->forBusiness($businessId)
                 ->whereIn('branch_id', $permittedBranches);

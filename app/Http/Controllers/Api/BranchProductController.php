@@ -14,6 +14,7 @@ use App\Models\ProductUnit;
 use App\Models\QuickSale;
 use App\Models\User;
 use App\Services\TieredPricingService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -116,9 +117,9 @@ class BranchProductController extends Controller
             });
         }
 
-        $branchProducts = $query->orderBy('display_order')
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+        $this->applyBranchProductListSort($query, $request);
+
+        $branchProducts = $query->paginate($perPage);
 
         // Transform data (reuse shared transformer so shape matches other endpoints)
         $data = $branchProducts->map(function (BranchProduct $branchProduct) {
@@ -1128,9 +1129,9 @@ class BranchProductController extends Controller
             });
         }
 
-        $branchProducts = $query->orderBy('display_order')
-            ->orderBy('created_at', 'desc')
-            ->paginate($perPage);
+        $this->applyBranchProductListSort($query, $request);
+
+        $branchProducts = $query->paginate($perPage);
 
         // Transform data
         $data = $branchProducts->map(function ($branchProduct) {
@@ -1153,6 +1154,25 @@ class BranchProductController extends Controller
                 'total' => $branchProducts->total(),
             ],
         ]);
+    }
+
+    /**
+     * List ordering for {@see index} and {@see getByCategory}.
+     * Query: sort=selling_price_asc | selling_price_desc (optional; default display_order, then created_at).
+     *
+     * @param  Builder<BranchProduct>  $query
+     */
+    private function applyBranchProductListSort(Builder $query, Request $request): void
+    {
+        $sort = $request->input('sort');
+        if ($sort === 'selling_price_asc') {
+            $query->orderBy('selling_price', 'asc')->orderBy('id', 'asc');
+        } elseif ($sort === 'selling_price_desc') {
+            $query->orderBy('selling_price', 'desc')->orderBy('id', 'asc');
+        } else {
+            $query->orderBy('display_order')
+                ->orderBy('created_at', 'desc');
+        }
     }
 
     /**
