@@ -1,26 +1,21 @@
 <?php
 
 /**
- * CORS for SPA / Electron renderers (Vite dev servers, packaged apps loading http://localhost:*).
+ * CORS — permissive defaults for browser clients (SPA, Electron, any origin).
  *
- * Set CORS_ALLOWED_ORIGINS to a comma-separated list of extra origins (e.g. your deployed frontend).
- * Localhost-style origins are matched via allowed_origins_patterns so any dev port works.
+ * - paths `*` applies these rules to every route (not only api/*).
+ * - allowed_origins `*` allows any Origin. Browsers forbid combining this with
+ *   supports_credentials=true; keep credentials false unless you switch to an
+ *   explicit origin allowlist and reflect the request Origin in middleware.
  */
 return [
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['*'],
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => array_values(array_filter(array_merge(
-        array_filter([env('FRONTEND_URL')]),
-        array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', '')))),
-    ))),
+    'allowed_origins' => ['*'],
 
-    'allowed_origins_patterns' => [
-        '#^https?://localhost(:\d+)?$#',
-        '#^https?://127\.0\.0\.1(:\d+)?$#',
-        '#^https?://\[::1\](:\d+)?$#',
-    ],
+    'allowed_origins_patterns' => [],
 
     'allowed_headers' => ['*'],
 
