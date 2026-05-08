@@ -15,6 +15,8 @@ class BranchProduct extends Model
         'branch_id',
         'product_id',
         'cost_price',
+        'last_received_cost',
+        'avg_cost_price',
         'selling_price',
         'compare_price',
         'discount_amount',
@@ -37,6 +39,8 @@ class BranchProduct extends Model
 
     protected $casts = [
         'cost_price' => 'decimal:2',
+        'last_received_cost' => 'decimal:2',
+        'avg_cost_price' => 'decimal:4',
         'selling_price' => 'decimal:2',
         'compare_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',

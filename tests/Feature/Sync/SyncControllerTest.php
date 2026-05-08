@@ -352,6 +352,7 @@ class SyncControllerTest extends TestCase
                         'subtotal' => 100.00,
                         'tax_amount' => 0,
                         'total_amount' => 100.00,
+                        'payment_status' => 'unpaid',
                         'origin' => 'offline',
                         'items' => [
                             [
@@ -401,6 +402,9 @@ class SyncControllerTest extends TestCase
         $sale = Sale::findOrFail($serverSaleId);
         $this->assertIsArray($sale->metadata);
         $this->assertEquals('deduct_on_complete', $sale->metadata['deposit_stock_mode'] ?? null);
+        $sale->refresh();
+        $this->assertSame('partial', $sale->payment_status);
+        $this->assertEquals(20.0, (float) $sale->paid_amount);
     }
 
     /** @test */

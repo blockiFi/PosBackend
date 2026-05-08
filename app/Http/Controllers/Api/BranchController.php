@@ -388,7 +388,8 @@ class BranchController extends Controller
             $permittedBranchIds = Branch::where('business_id', $businessId)->pluck('id');
         }
 
-        $expiresAt = now()->addMinutes(2);
+        // Allow enough time for physical cashier onboarding (enter API URL + code + confirm device).
+        $expiresAt = now()->addMinutes(15);
         $authorizations = [];
 
         foreach ($permittedBranchIds as $branchId) {
@@ -430,7 +431,7 @@ class BranchController extends Controller
             'message' => 'Authorization codes generated',
             'authorizations' => $authorizations,
             'count' => count($authorizations),
-            'expires_in_minutes' => 2,
+            'expires_in_minutes' => 15,
         ]);
     }
 }

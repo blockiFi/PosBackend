@@ -11,10 +11,12 @@ use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DashboardController;
 use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceGroupController;
+use App\Http\Controllers\Api\GoodsReceivedNoteController;
 use App\Http\Controllers\Api\InventoryController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\PurchaseOrderController;
 use App\Http\Controllers\Api\QuickSaleController;
 use App\Http\Controllers\Api\RefundRequestController;
 use App\Http\Controllers\Api\RolePermissionController;
@@ -23,6 +25,7 @@ use App\Http\Controllers\Api\SalesShiftController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
 use App\Http\Controllers\Api\StockTransferRequestController;
+use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SyncDashboardController;
 use App\Http\Controllers\Api\UserBusinessController;
 use App\Http\Controllers\StockWriteoffController;
@@ -41,6 +44,7 @@ Route::post('register', [AuthenticationController::class, 'register']);
 Route::post('login', [AuthenticationController::class, 'login']);
 Route::post('pin-login', [AuthenticationController::class, 'pinLogin']);
 Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
+Route::post('register-cashier-device', [AuthenticationController::class, 'registerCashierDeviceWithBranchAuthorization']);
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -182,6 +186,38 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('inventory/transactions', [InventoryController::class, 'store']);
         Route::get('inventory/transactions/{id}', [InventoryController::class, 'show']);
         Route::get('inventory/stock-summary', [InventoryController::class, 'stockSummary']);
+
+        // Suppliers + GRN routes (require business context)
+        Route::get('suppliers', [SupplierController::class, 'index']);
+        Route::post('suppliers', [SupplierController::class, 'store']);
+        Route::get('suppliers/{id}', [SupplierController::class, 'show']);
+        Route::put('suppliers/{id}', [SupplierController::class, 'update']);
+        Route::delete('suppliers/{id}', [SupplierController::class, 'destroy']);
+        Route::get('suppliers/{id}/prices', [SupplierController::class, 'prices']);
+
+        Route::get('grn/analytics/receipts-by-supplier', [GoodsReceivedNoteController::class, 'receiptsBySupplier']);
+        Route::get('goods-received-notes', [GoodsReceivedNoteController::class, 'index']);
+        Route::post('goods-received-notes', [GoodsReceivedNoteController::class, 'store']);
+        Route::get('goods-received-notes/{id}', [GoodsReceivedNoteController::class, 'show']);
+        Route::put('goods-received-notes/{id}', [GoodsReceivedNoteController::class, 'update']);
+        Route::delete('goods-received-notes/{id}', [GoodsReceivedNoteController::class, 'destroy']);
+        Route::post('goods-received-notes/{id}/submit', [GoodsReceivedNoteController::class, 'submit']);
+        Route::post('goods-received-notes/{id}/approve', [GoodsReceivedNoteController::class, 'approve']);
+        Route::post('goods-received-notes/{id}/reject', [GoodsReceivedNoteController::class, 'reject']);
+        Route::post('goods-received-notes/{id}/cancel', [GoodsReceivedNoteController::class, 'cancel']);
+        Route::post('goods-received-notes/{id}/lines', [GoodsReceivedNoteController::class, 'addLine']);
+        Route::put('goods-received-notes/{id}/lines/{lineId}', [GoodsReceivedNoteController::class, 'updateLine']);
+        Route::delete('goods-received-notes/{id}/lines/{lineId}', [GoodsReceivedNoteController::class, 'deleteLine']);
+
+        // Purchase orders (Phase 2)
+        Route::get('purchase-orders/analytics/top-variance-items', [PurchaseOrderController::class, 'topVarianceItems']);
+        Route::get('purchase-orders', [PurchaseOrderController::class, 'index']);
+        Route::post('purchase-orders', [PurchaseOrderController::class, 'store']);
+        Route::get('purchase-orders/{id}', [PurchaseOrderController::class, 'show']);
+        Route::put('purchase-orders/{id}', [PurchaseOrderController::class, 'update']);
+        Route::post('purchase-orders/{id}/submit', [PurchaseOrderController::class, 'submit']);
+        Route::post('purchase-orders/{id}/cancel', [PurchaseOrderController::class, 'cancel']);
+        Route::get('purchase-orders/{id}/receivable', [PurchaseOrderController::class, 'receivable']);
 
         // Customer routes (require business context)
         Route::get('customers', [CustomerController::class, 'index']);

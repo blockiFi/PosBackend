@@ -23,6 +23,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Models\SyncSession;
+use App\Services\GoodsReceivingService;
 use App\Services\InventoryBatchService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -639,6 +640,12 @@ class SyncController extends Controller
                         $result['mappings'][$record['client_uuid']] = $mapping;
                         $result['accepted']++;
                         break;
+
+                    case 'grn':
+                        $mapping = $this->processGrn($record, $businessId, $userId, $deviceId);
+                        $result['mappings'][$record['client_uuid']] = $mapping;
+                        $result['accepted']++;
+                        break;
                 }
             } catch (\Exception $e) {
                 $result['rejected']++;
@@ -938,6 +945,16 @@ class SyncController extends Controller
             }
         }
 
+        // Align paid_amount / payment_status with persisted payments (esp. deposit sales from offline clients).
+        if (isset($data['payments']) && is_array($data['payments']) && count($data['payments']) > 0) {
+            $sale->refresh();
+            $sale->updatePaymentStatus();
+            if (! $isDeposit && $sale->isFullyPaid()) {
+                $sale->status = 'completed';
+                $sale->save();
+            }
+        }
+
         // Log change
         ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', 1, [], $deviceId, $userId, $businessId);
 
@@ -1011,6 +1028,99 @@ class SyncController extends Controller
             'server_id' => $customer->id,
             'customer_code' => $customer->customer_code,
             'status' => 'synced',
+        ];
+    }
+
+    /**
+     * Helper: Process GRN record (Phase 4).
+     *
+     * Expected payload: { client_uuid, branch_id, supplier_id, supplier_invoice_number?, notes?, lines: [...] }
+     */
+    private function processGrn($data, $businessId, $userId, $deviceId)
+    {
+        $clientUuid = $data['client_uuid'] ?? null;
+        if (! $clientUuid) {
+            throw new \Exception('client_uuid is required for GRN sync');
+        }
+
+        /** @var GoodsReceivingService $svc */
+        $svc = app(GoodsReceivingService::class);
+
+        $grn = $svc->createDraft([
+            'business_id' => (int) $businessId,
+            'branch_id' => (int) ($data['branch_id'] ?? 0),
+            'supplier_id' => (int) ($data['supplier_id'] ?? 0),
+            'supplier_invoice_number' => $data['supplier_invoice_number'] ?? null,
+            'supplier_invoice_date' => $data['supplier_invoice_date'] ?? null,
+            'notes' => $data['notes'] ?? null,
+            'device_id' => $deviceId,
+            'client_uuid' => $clientUuid,
+            'received_by' => $userId,
+        ]);
+
+        if (! isset($data['lines']) || ! is_array($data['lines'])) {
+            throw new \Exception('GRN lines are required');
+        }
+
+        if ($grn->status !== 'draft') {
+            return [
+                'server_id' => $grn->id,
+                'grn_number' => $grn->grn_number,
+                'status' => 'already_synced',
+            ];
+        }
+
+        foreach ($data['lines'] as $line) {
+            $productId = (int) ($line['product_id'] ?? 0);
+            $branchProductId = (int) ($line['branch_product_id'] ?? 0);
+            $qtyReceived = (float) ($line['quantity_received'] ?? 0);
+            $qtyAccepted = (float) ($line['quantity_accepted'] ?? 0);
+
+            $bp = BranchProduct::where('id', $branchProductId)
+                ->where('branch_id', $grn->branch_id)
+                ->where('product_id', $productId)
+                ->first();
+            if (! $bp) {
+                $svc->reject($grn, $userId, 'product_unavailable');
+                throw new \Exception('product_unavailable');
+            }
+
+            $batchNumber = $line['batch_number'] ?? null;
+            $unitCost = $line['unit_cost'] ?? null;
+            if ($batchNumber) {
+                $existing = ProductBatch::where('branch_id', $grn->branch_id)
+                    ->where('product_id', $productId)
+                    ->where('batch_number', $batchNumber)
+                    ->first();
+                if ($existing && $unitCost !== null && $existing->unit_cost !== null && (float) $existing->unit_cost !== (float) $unitCost) {
+                    $batchNumber = $batchNumber.'-2';
+                    $line['meta_data'] = array_merge($line['meta_data'] ?? [], ['batch_conflict' => true]);
+                }
+            }
+
+            $svc->addOrUpdateLine($grn, [
+                'product_id' => $productId,
+                'branch_product_id' => $branchProductId,
+                'quantity_received' => $qtyReceived,
+                'quantity_accepted' => $qtyAccepted,
+                'quantity_rejected' => (float) ($line['quantity_rejected'] ?? 0),
+                'unit_cost' => $unitCost,
+                'batch_number' => $batchNumber,
+                'lot_number' => $line['lot_number'] ?? null,
+                'manufacturing_date' => $line['manufacturing_date'] ?? null,
+                'expiry_date' => $line['expiry_date'] ?? null,
+                'storage_location' => $line['storage_location'] ?? 'store',
+                'notes' => $line['notes'] ?? null,
+                'meta_data' => $line['meta_data'] ?? null,
+            ]);
+        }
+
+        $svc->submit($grn, $userId);
+
+        return [
+            'server_id' => $grn->id,
+            'grn_number' => $grn->grn_number,
+            'status' => 'submitted',
         ];
     }
 

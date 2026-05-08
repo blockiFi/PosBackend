@@ -42,6 +42,8 @@ class DatabaseSeeder extends Seeder
             ProductPermissionSeeder::class,
             InventoryPermissionSeeder::class,
             BatchPermissionSeeder::class,
+            GoodsReceivingPermissionSeeder::class,
+            PurchaseOrderPermissionSeeder::class,
             SalesPermissionSeeder::class,
             ShiftPermissionSeeder::class,
             DeviceGroupPermissionSeeder::class,
