@@ -74,9 +74,20 @@ class SaleController extends Controller
         $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
         $sales = $query->orderBy('sale_date', 'desc')->paginate($perPage);
 
+        $totalMatching = $sales->total();
+        $avgAcrossMatching = $totalMatching > 0
+            ? round($matchingGrossTotal / $totalMatching, 4)
+            : 0.0;
+
         return response()->json(array_merge(
             $sales->toArray(),
-            ['matching_gross_total' => $matchingGrossTotal],
+            [
+                'matching_gross_total' => $matchingGrossTotal,
+                'summary' => [
+                    'gross_total' => $matchingGrossTotal,
+                    'avg_sale' => $avgAcrossMatching,
+                ],
+            ],
         ));
     }
 
@@ -719,7 +730,7 @@ class SaleController extends Controller
             $sale->status = 'completed';
             if (! empty($validated['closing_notes'])) {
                 $existingNotes = trim((string) $sale->notes);
-                $closing = "Deposit completed: ".$validated['closing_notes'];
+                $closing = 'Deposit completed: '.$validated['closing_notes'];
                 $sale->notes = $existingNotes === '' ? $closing : ($existingNotes."\n".$closing);
             }
             $sale->save();
