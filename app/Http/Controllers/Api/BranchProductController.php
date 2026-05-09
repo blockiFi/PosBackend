@@ -1158,7 +1158,9 @@ class BranchProductController extends Controller
 
     /**
      * List ordering for {@see index} and {@see getByCategory}.
-     * Query: sort=selling_price_asc|selling_price_desc|lowest_price|highest_price|price_asc|price_desc (optional; default display_order, then created_at).
+     * Query:
+     * - sort=selling_price_asc|selling_price_desc|lowest_price|highest_price|price_asc|price_desc (optional; default display_order, then created_at).
+     * - price_sort_basis=selling|cost (optional; default selling). Controls which column price sorts use.
      *
      * @param  Builder<BranchProduct>  $query
      */
@@ -1169,9 +1171,15 @@ class BranchProductController extends Controller
         $priceDesc = in_array($sort, ['selling_price_desc', 'highest_price', 'price_desc'], true);
 
         if ($priceAsc) {
-            $query->orderBy('selling_price', 'asc')->orderBy('id', 'asc');
+            $basis = $request->input('price_sort_basis', 'selling');
+            $priceColumn = $basis === 'cost' ? 'cost_price' : 'selling_price';
+
+            $query->orderBy($priceColumn, 'asc')->orderBy('id', 'asc');
         } elseif ($priceDesc) {
-            $query->orderBy('selling_price', 'desc')->orderBy('id', 'asc');
+            $basis = $request->input('price_sort_basis', 'selling');
+            $priceColumn = $basis === 'cost' ? 'cost_price' : 'selling_price';
+
+            $query->orderBy($priceColumn, 'desc')->orderBy('id', 'asc');
         } else {
             $query->orderBy('display_order')
                 ->orderBy('created_at', 'desc');
