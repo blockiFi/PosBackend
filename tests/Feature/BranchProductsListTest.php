@@ -840,6 +840,82 @@ class BranchProductsListTest extends TestCase
         $this->assertSame(['High Price Item', 'Mid Price Item', 'Low Price Item'], $namesDesc);
     }
 
+    public function test_branch_products_endpoint_price_sort_can_use_cost_price_basis(): void
+    {
+        $this->role->givePermissionTo('view products');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        $category = ProductCategory::create([
+            'business_id' => $this->business->id,
+            'name' => 'Electronics',
+        ]);
+
+        $pHighCost = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'category_id' => $category->id,
+            'name' => 'High Cost Item',
+        ]);
+        $pMidCost = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'category_id' => $category->id,
+            'name' => 'Mid Cost Item',
+        ]);
+        $pLowCost = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'category_id' => $category->id,
+            'name' => 'Low Cost Item',
+        ]);
+
+        // Keep selling_price same to ensure we're sorting by cost_price.
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $pMidCost->id,
+            'selling_price' => 100.00,
+            'cost_price' => 50.00,
+            'stock_quantity' => 10,
+        ]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $pHighCost->id,
+            'selling_price' => 100.00,
+            'cost_price' => 300.00,
+            'stock_quantity' => 10,
+        ]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $pLowCost->id,
+            'selling_price' => 100.00,
+            'cost_price' => 10.00,
+            'stock_quantity' => 10,
+        ]);
+
+        $asc = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/branch-products?'.http_build_query([
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'sort' => 'price_asc',
+                'price_sort_basis' => 'cost',
+                'per_page' => 50,
+            ]));
+
+        $asc->assertStatus(200);
+        $namesAsc = collect($asc->json('data'))->pluck('product.name')->all();
+        $this->assertSame(['Low Cost Item', 'Mid Cost Item', 'High Cost Item'], $namesAsc);
+
+        $desc = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/branch-products?'.http_build_query([
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'sort' => 'price_desc',
+                'price_sort_basis' => 'cost',
+                'per_page' => 50,
+            ]));
+
+        $desc->assertStatus(200);
+        $namesDesc = collect($desc->json('data'))->pluck('product.name')->all();
+        $this->assertSame(['High Cost Item', 'Mid Cost Item', 'Low Cost Item'], $namesDesc);
+    }
+
     public function test_unauthenticated_user_cannot_access(): void
     {
         $response = $this->getJson("/api/branches/{$this->branch->id}/products?current_business_id={$this->business->id}");
