@@ -25,6 +25,7 @@ use App\Models\SalesShift;
 use App\Models\SyncSession;
 use App\Services\GoodsReceivingService;
 use App\Services\InventoryBatchService;
+use App\Services\TieredPricingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -40,7 +41,8 @@ class SyncController extends Controller
     private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
 
     public function __construct(
-        protected InventoryBatchService $batchService
+        protected InventoryBatchService $batchService,
+        protected TieredPricingService $tieredPricingService
     ) {}
 
     /**
@@ -678,9 +680,14 @@ class SyncController extends Controller
 
         $saleType = $data['sale_type'] ?? 'pos';
         $isDeposit = $saleType === 'deposit';
-
         if ($isDeposit && empty($data['customer_id'])) {
             throw new \Exception('A customer is required for deposit sales');
+        }
+        if (empty($data['items']) || ! is_array($data['items']) || count($data['items']) === 0) {
+            throw new \Exception('At least one item is required for sales');
+        }
+        if(isset($data['payments']) && count($data['payments']) === 0) {   
+            throw new \Exception('At least one payment is required for sales');
         }
 
         $depositStockMode = $isDeposit ? $this->resolveDepositStockMode($businessId, $data['metadata'] ?? null) : null;
@@ -696,6 +703,9 @@ class SyncController extends Controller
             if ($shift) {
                 $shiftId = $shift->id;
             }
+        }
+        else{
+            throw new \Exception('Shift ID is required for sales');
         }
 
         $branchId = (int) $data['branch_id'];
@@ -745,19 +755,9 @@ class SyncController extends Controller
             $saleMetadata['deposit_stock_mode'] = $depositStockMode;
         }
 
-        $totalAmount = $data['total_amount'] ?? $data['total'] ?? 0;
-        $paymentsTotal = 0;
-        if (isset($data['payments']) && is_array($data['payments'])) {
-            foreach ($data['payments'] as $p) {
-                $paymentsTotal += (float) ($p['amount'] ?? 0);
-            }
-        }
-        $computedPaymentStatus = $paymentsTotal >= (float) $totalAmount && (float) $totalAmount > 0 ? 'paid'
-            : ($paymentsTotal > 0 ? 'partial' : 'unpaid');
+        $defaultStatus ='pending';
 
-        $defaultStatus = $isDeposit ? 'pending' : 'completed';
-
-        // Create sale
+        // Create sale (line economics are inferred server-side; totals filled after items via calculateTotals())
         $sale = Sale::create([
             'business_id' => $businessId,
             'branch_id' => $data['branch_id'],
@@ -767,12 +767,12 @@ class SyncController extends Controller
             'reference_id' => $data['reference_id'] ?? null,
             'sale_type' => $saleType,
             'sale_date' => $data['sale_date'],
-            'subtotal' => $data['subtotal'],
-            'tax_amount' => $data['tax_amount'] ?? $data['tax'] ?? 0,
-            'discount_amount' => $data['discount'] ?? 0,
-            'total_amount' => $totalAmount,
-            'payment_status' => $data['payment_status'] ?? $computedPaymentStatus,
-            'status' => $data['status'] ?? $defaultStatus,
+            'subtotal' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => $data['discount'] ?? $data['discount_amount'] ?? 0,
+            'total_amount' => 0,
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
             'user_id' => $userId,
             'notes' => $data['notes'] ?? null,
             'client_uuid' => $data['client_uuid'] ?? null,
@@ -780,6 +780,7 @@ class SyncController extends Controller
             'device_id' => $deviceId,
             'sync_status' => 'synced',
             'synced_at' => now(),
+
             'origin' => $data['origin'] ?? 'offline',
             'metadata' => $saleMetadata ?: null,
         ]);
@@ -841,40 +842,52 @@ class SyncController extends Controller
                     }
                 }
 
-                // Unit price: apply quick sale discount when active quick sale exists for resolved batch
-                $unitPrice = (float) ($item['unit_price'] ?? $branchProduct->selling_price ?? 0);
-                if (! $deferStockToCompletion && $batchId !== null) {
-                    $quickSaleForBatch = QuickSale::getActiveQuickSale($productId, $branchId, null, $batchId);
+                $product = $branchProduct->product;
+                if (! $product || (int) $product->business_id !== (int) $businessId) {
+                    throw new \Exception(
+                        'Product not found or does not belong to this business: '.($product ? $product->name : "ID {$productId}")
+                    );
+                }
+
+                // Authoritative line pricing from BranchProduct tiers (sync ignores client unit_price / names / SKU)
+                $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
+                $unitPrice = $tierResult['unit_price'];
+                $metadata = [
+                    'tier_type' => $tierResult['tier_type'],
+                ];
+                if ($tierResult['product_unit_id'] !== null) {
+                    $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                }
+                if ($tierResult['quantity_tier_id'] !== null) {
+                    $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                }
+
+                if ($batchId !== null) {
+                    $quickSaleForBatch = QuickSale::getActiveQuickSale($product->id, $branchId, null, $batchId);
                     if ($quickSaleForBatch) {
-                        $unitPrice = $quickSaleForBatch->calculateFinalPrice(
-                            $branchProduct->selling_price ?? $unitPrice
-                        );
+                        $originalPrice = $branchProduct->selling_price ?? $unitPrice;
+                        $unitPrice = $quickSaleForBatch->calculateFinalPrice($originalPrice);
                     }
                 }
 
-                $subtotal = round($qty * $unitPrice, 2);
-                $total = $subtotal;
+                if (isset($item['metadata']) && is_array($item['metadata'])) {
+                    $metadata = array_merge($metadata, $item['metadata']);
+                }
 
-                $payload = [
-                    'sale_id' => $sale->id,
-                    'product_id' => $item['product_id'],
-                    'product_name' => $item['product_name'] ?? $branchProduct->product?->name ?? 'Unknown Product',
-                    'product_sku' => $item['product_sku'] ?? $branchProduct->product?->sku ?? null,
+                $saleItem = new SaleItem([
+                    'product_id' => $product->id,
+                    'batch_id' => $batchId,
+                    'product_name' => $product->name,
+                    'product_sku' => $product->sku,
                     'description' => $item['description'] ?? null,
-                    'quantity' => $item['quantity'],
+                    'quantity' => $qty,
                     'unit_price' => $unitPrice,
-                    'discount_amount' => $item['discount'] ?? 0,
-                    'tax_amount' => $item['tax'] ?? 0,
-                    'subtotal' => $subtotal,
-                    'total' => $total,
-                ];
-                if (isset($item['metadata'])) {
-                    $payload['metadata'] = $item['metadata'];
-                }
-                if ($batchId !== null) {
-                    $payload['batch_id'] = $batchId;
-                }
-                SaleItem::create($payload);
+                    'discount_percentage' => isset($item['discount_percentage']) ? (float) $item['discount_percentage'] : 0,
+                    'tax_rate' => isset($item['tax_rate']) ? (float) $item['tax_rate'] : 0,
+                    'metadata' => $metadata ?: null,
+                ]);
+                $saleItem->calculateTotals();
+                $sale->items()->save($saleItem);
 
                 if (! $deferStockToCompletion) {
                     $deductResult = $branchProduct->deductForSale($qtyForBatch);
@@ -927,26 +940,51 @@ class SyncController extends Controller
                     }
                 }
             }
+
+            $sale->load('items');
+            $sale->calculateTotals();
+            $sale->save();
         }
 
-        // Create payments
-        if (isset($data['payments'])) {
+        // Create payments. Offline / sync clients often omit payment_date and shift_id;
+        // default to the sale's date and the resolved shift so deposits sync with their
+        // payments intact instead of being silently dropped (which used to leave the sale
+        // row committed without any of the customer's tendered cash).
+        $persistedPaymentCount = 0;
+        if (isset($data['payments']) && is_array($data['payments'])) {
+            $defaultPaymentDate = $sale->sale_date?->copy() ?? now();
             foreach ($data['payments'] as $payment) {
+                if (! is_array($payment)) {
+                    continue;
+                }
+
+                $methodId = $payment['payment_method_id'] ?? null;
+                $amount = (float) ($payment['amount'] ?? 0);
+                if (! $methodId || $amount <= 0) {
+                    continue;
+                }
+
+                $paymentDate = $payment['payment_date'] ?? null;
+                if (! $paymentDate) {
+                    $paymentDate = $defaultPaymentDate;
+                }
+
                 Payment::create([
                     'sale_id' => $sale->id,
-                    'payment_method_id' => $payment['payment_method_id'],
-                    'amount' => $payment['amount'],
-                    'payment_date' => $payment['payment_date'],
+                    'shift_id' =>  $shiftId,
+                    'payment_method_id' => $methodId,
+                    'amount' => $amount,
+                    'payment_date' => $paymentDate,
                     'reference_number' => $payment['reference_number'] ?? null,
                     'notes' => $payment['notes'] ?? null,
-                    'status' => $payment['status'] ?? 'completed',
-
+                    'status' => 'completed',
                 ]);
+                $persistedPaymentCount++;
             }
         }
 
         // Align paid_amount / payment_status with persisted payments (esp. deposit sales from offline clients).
-        if (isset($data['payments']) && is_array($data['payments']) && count($data['payments']) > 0) {
+        if ($persistedPaymentCount > 0) {
             $sale->refresh();
             $sale->updatePaymentStatus();
             if (! $isDeposit && $sale->isFullyPaid()) {
