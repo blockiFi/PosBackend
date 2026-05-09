@@ -72,7 +72,7 @@ class SaleController extends Controller
         }
 
         $perPage = max(1, min(100, (int) $request->input('per_page', 15)));
-        $sales = $query->orderBy('sale_date', 'desc')->paginate($perPage);
+        $sales = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
         $totalMatching = $sales->total();
         $avgAcrossMatching = $totalMatching > 0

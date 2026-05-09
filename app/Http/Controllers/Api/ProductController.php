@@ -919,7 +919,10 @@ class ProductController extends Controller
 
         // Order: optional sort by this branch's selling_price (branch_products.selling_price)
         $sort = $request->input('sort');
-        if ($sort === 'selling_price_asc') {
+        $priceAsc = in_array($sort, ['selling_price_asc', 'lowest_price', 'price_asc'], true);
+        $priceDesc = in_array($sort, ['selling_price_desc', 'highest_price', 'price_desc'], true);
+
+        if ($priceAsc) {
             $query->join('branch_products', function ($join) use ($branchId) {
                 $join->on('products.id', '=', 'branch_products.product_id')
                     ->where('branch_products.branch_id', '=', $branchId)
@@ -928,7 +931,7 @@ class ProductController extends Controller
                 ->select('products.*')
                 ->orderBy('branch_products.selling_price', 'asc')
                 ->orderBy('products.id', 'asc');
-        } elseif ($sort === 'selling_price_desc') {
+        } elseif ($priceDesc) {
             $query->join('branch_products', function ($join) use ($branchId) {
                 $join->on('products.id', '=', 'branch_products.product_id')
                     ->where('branch_products.branch_id', '=', $branchId)
