@@ -18,18 +18,25 @@ class SaleAnalyticsObserver
             return;
         }
 
-        if (! $sale->wasRecentlyCreated && ! $sale->wasChanged(['status', 'branch_id', 'sale_date', 'total_amount', 'discount_amount'])) {
+        if (! $sale->wasRecentlyCreated && ! $sale->wasChanged(['status', 'branch_id', 'total_amount', 'discount_amount', 'created_at'])) {
             return;
         }
 
         $this->rebuildForSale($sale);
 
-        if ($sale->wasChanged(['branch_id', 'sale_date'])) {
+        if ($sale->wasChanged('branch_id')) {
             $origBranch = $sale->getOriginal('branch_id');
-            $origDate = $sale->getOriginal('sale_date');
-            if ($origBranch !== null && $origDate !== null) {
-                $date = Carbon::parse($origDate)->format('Y-m-d');
-                $this->rollupService->rebuildDay((int) $sale->business_id, (int) $origBranch, $date);
+            if ($origBranch !== null) {
+                $origCreated = $sale->getOriginal('created_at') ?? $sale->created_at;
+                $this->rollupService->rebuildDay((int) $sale->business_id, (int) $origBranch, Carbon::parse($origCreated)->format('Y-m-d'));
+            }
+        }
+
+        if ($sale->wasChanged('created_at')) {
+            $origCreated = $sale->getOriginal('created_at');
+            if ($origCreated !== null) {
+                $branchForCleanup = (int) ($sale->getOriginal('branch_id') ?? $sale->branch_id);
+                $this->rollupService->rebuildDay((int) $sale->business_id, $branchForCleanup, Carbon::parse($origCreated)->format('Y-m-d'));
             }
         }
     }
@@ -47,8 +54,8 @@ class SaleAnalyticsObserver
     {
         $businessId = (int) $sale->business_id;
         $branchId = (int) ($useOriginalSnapshot ? ($sale->getOriginal('branch_id') ?? $sale->branch_id) : $sale->branch_id);
-        $dateSource = $useOriginalSnapshot ? ($sale->getOriginal('sale_date') ?? $sale->sale_date) : $sale->sale_date;
-        $date = Carbon::parse($dateSource)->format('Y-m-d');
+        $createdAt = $useOriginalSnapshot ? ($sale->getOriginal('created_at') ?? $sale->created_at) : $sale->created_at;
+        $date = Carbon::parse($createdAt)->format('Y-m-d');
 
         $this->rollupService->rebuildDay($businessId, $branchId, $date);
     }

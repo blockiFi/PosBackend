@@ -9,6 +9,10 @@ class AnalyticsRollupService
 {
     /**
      * Recompute rollup for one branch-day from raw sales (no rollup reads).
+     *
+     * @param  string  $saleDateYmd  Calendar day (Y-m-d) used as the rollup bucket key. This is stored in
+     *                               `analytics_daily_summaries.sale_date` and is derived from each sale's
+     *                               `created_at` date (not `sales.sale_date`).
      */
     public function rebuildDay(int $businessId, int $branchId, string $saleDateYmd): void
     {
@@ -24,7 +28,7 @@ class AnalyticsRollupService
                 ->where('sales.business_id', $businessId)
                 ->where('sales.branch_id', $branchId)
                 ->where('sales.status', 'completed')
-                ->whereDate('sales.sale_date', $saleDateYmd)
+                ->whereDate('sales.created_at', $saleDateYmd)
                 ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(sales.total_amount), 0) as revenue, COALESCE(SUM(sales.discount_amount), 0) as discount')
                 ->first();
 
@@ -45,7 +49,7 @@ class AnalyticsRollupService
                 ->where('sales.business_id', $businessId)
                 ->where('sales.branch_id', $branchId)
                 ->where('sales.status', 'completed')
-                ->whereDate('sales.sale_date', $saleDateYmd)
+                ->whereDate('sales.created_at', $saleDateYmd)
                 ->selectRaw(
                     'COALESCE(SUM(sale_items.quantity), 0) as items_sold,'.
                     ' COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as cost'
@@ -112,31 +116,31 @@ FROM (
     SELECT
         s.business_id,
         s.branch_id,
-        DATE(s.sale_date) AS sale_date,
+        DATE(s.created_at) AS sale_date,
         COUNT(*) AS txn_count,
         COALESCE(SUM(s.total_amount), 0) AS revenue,
         COALESCE(SUM(s.discount_amount), 0) AS discount
     FROM sales s
     WHERE s.deleted_at IS NULL
       AND s.status = 'completed'
-      AND DATE(s.sale_date) BETWEEN ? AND ?
+      AND DATE(s.created_at) BETWEEN ? AND ?
       {$bizFilter}
-    GROUP BY s.business_id, s.branch_id, DATE(s.sale_date)
+    GROUP BY s.business_id, s.branch_id, DATE(s.created_at)
 ) r
 LEFT JOIN (
     SELECT
         s.business_id,
         s.branch_id,
-        DATE(s.sale_date) AS sale_date,
+        DATE(s.created_at) AS sale_date,
         COALESCE(SUM(si.quantity), 0) AS items_sold,
         COALESCE(SUM(si.quantity * COALESCE(bp.cost_price, p.base_cost_price, 0)), 0) AS cost
     FROM sale_items si
     INNER JOIN sales s ON s.id = si.sale_id AND s.deleted_at IS NULL AND s.status = 'completed'
     LEFT JOIN branch_products bp ON bp.product_id = si.product_id AND bp.branch_id = s.branch_id AND bp.deleted_at IS NULL
     INNER JOIN products p ON p.id = si.product_id AND p.deleted_at IS NULL
-    WHERE DATE(s.sale_date) BETWEEN ? AND ?
+    WHERE DATE(s.created_at) BETWEEN ? AND ?
       {$bizFilter}
-    GROUP BY s.business_id, s.branch_id, DATE(s.sale_date)
+    GROUP BY s.business_id, s.branch_id, DATE(s.created_at)
 ) c ON c.business_id = r.business_id AND c.branch_id = r.branch_id AND c.sale_date = r.sale_date
 ON DUPLICATE KEY UPDATE
     txn_count = VALUES(txn_count),
@@ -166,7 +170,7 @@ ON DUPLICATE KEY UPDATE
             $pairs = DB::table('sales')
                 ->whereNull('deleted_at')
                 ->where('status', 'completed')
-                ->whereDate('sale_date', $ymd)
+                ->whereDate('created_at', $ymd)
                 ->when($businessId, fn ($q) => $q->where('business_id', $businessId))
                 ->select('business_id', 'branch_id')
                 ->distinct()
