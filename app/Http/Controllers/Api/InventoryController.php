@@ -8,6 +8,7 @@ use App\Models\BranchProduct;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
 use App\Models\ProductBatch;
+use App\Models\Supplier;
 use App\Services\InventoryBatchService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -182,6 +183,7 @@ class InventoryController extends Controller
             'lot_number' => ['nullable', 'string', 'max:255'],
             'manufacturing_date' => ['required_if:type,purchase', 'date'],
             'expiry_date' => ['required_if:type,purchase', 'date', 'after:manufacturing_date'],
+            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id,business_id,'.$businessId],
             'supplier_name' => ['nullable', 'string', 'max:255'],
             'supplier_reference' => ['nullable', 'string', 'max:255'],
         ]);
@@ -286,6 +288,14 @@ class InventoryController extends Controller
             }
 
             // Create transaction
+            $supplier = null;
+            if (! empty($data['supplier_id'])) {
+                $supplier = Supplier::query()
+                    ->where('business_id', $businessId)
+                    ->where('id', (int) $data['supplier_id'])
+                    ->first();
+            }
+
             $transaction = InventoryTransaction::create([
                 'uuid' => Str::uuid(),
                 'business_id' => $businessId,
@@ -308,6 +318,7 @@ class InventoryController extends Controller
                 'reference_number' => $data['reference_number'] ?? null,
                 'notes' => $data['notes'] ?? null,
                 'meta_data' => $data['meta_data'] ?? null,
+                'supplier_id' => $supplier?->id ?? null,
             ]);
 
             // Update branch product stock
@@ -348,7 +359,8 @@ class InventoryController extends Controller
                         'received_quantity' => abs($normalizedQuantity),
                         'current_quantity' => abs($normalizedQuantity),
                         'unit_cost' => $data['unit_cost'] ?? 0,
-                        'supplier_name' => $data['supplier_name'] ?? null,
+                        'supplier_id' => $supplier?->id ?? null,
+                        'supplier_name' => $supplier?->name ?? ($data['supplier_name'] ?? null),
                         'supplier_reference' => $data['supplier_reference'] ?? null,
                         'inventory_transaction_id' => $transaction->id,
                         'status' => 'active',

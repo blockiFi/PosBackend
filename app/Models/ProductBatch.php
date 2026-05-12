@@ -28,6 +28,7 @@ class ProductBatch extends Model
         'unit_cost',
         'supplier_name',
         'supplier_reference',
+        'supplier_id',
         'inventory_transaction_id',
         'goods_received_note_line_id',
         'status',
@@ -92,6 +93,11 @@ class ProductBatch extends Model
     public function inventoryTransaction(): BelongsTo
     {
         return $this->belongsTo(InventoryTransaction::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
     public function goodsReceivedNoteLine(): BelongsTo

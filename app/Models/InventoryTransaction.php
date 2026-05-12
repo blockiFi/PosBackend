@@ -34,6 +34,7 @@ class InventoryTransaction extends Model
         'total_cost',
         'related_branch_id',
         'related_transaction_id',
+        'supplier_id',
         'stock_transfer_request_id',
         'reference_number',
         'notes',
@@ -116,6 +117,11 @@ class InventoryTransaction extends Model
     public function relatedTransaction(): BelongsTo
     {
         return $this->belongsTo(InventoryTransaction::class, 'related_transaction_id');
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'supplier_id');
     }
 
     public function batch(): BelongsTo
