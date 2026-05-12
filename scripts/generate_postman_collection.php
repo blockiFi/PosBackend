@@ -35,6 +35,11 @@ $base = [
         ['key' => 'device_group_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'device_registration_id', 'value' => '1', 'type' => 'string'],
         ['key' => 'sale_reference', 'value' => 'SALE-001', 'type' => 'string'],
+        ['key' => 'supplier_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'grn_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'grn_line_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'purchase_order_id', 'value' => '1', 'type' => 'string'],
+        ['key' => 'inventory_transaction_id', 'value' => '1', 'type' => 'string'],
     ],
 ];
 
@@ -198,6 +203,14 @@ $items[] = [
 }', []),
         req('Get Business Details With Branch Auth', 'POST', 'business-details-with-branch-auth', "**Public.** Get business and branch by branch authorization code. Body: auth_code (required, string). Business is derived from the code; no business_id needed. Returns business + branch when code is valid and not expired.\n\n**Fields:**\n- auth_code: required | string", '{
   "auth_code": "847291"
+}', [], true),
+        req('Register Cashier Device', 'POST', 'register-cashier-device', "**Public.** Register a cashier device using a valid branch auth code.\n\n**Fields:**\n- auth_code: required | string\n- device_id: required | string | max:50\n- device_name: required | string | max:100\n- device_type: optional | web | desktop | mobile | tablet\n- os: optional | string | max:50\n- app_version: optional | string | max:20", '{
+  "auth_code": "847291",
+  "device_id": "{{device_id}}",
+  "device_name": "Postman POS",
+  "device_type": "desktop",
+  "os": "macOS",
+  "app_version": "0.1.0"
 }', [], true),
     ],
 ];
@@ -644,12 +657,91 @@ $items[] = [
     ],
 ];
 
+// ---- 9b. Suppliers, GRN & Purchase orders ----
+$items[] = [
+    'name' => '9b. Suppliers, GRN & Purchase orders',
+    'description' => 'Procurement: suppliers, goods received notes (GRN), purchase orders (PO). X-Business-Id required.',
+    'item' => [
+        req('List Suppliers', 'GET', 'suppliers', 'List suppliers. Query: q, is_active. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['q', ''], ['is_active', 'true']]),
+        req('Create Supplier', 'POST', 'suppliers', 'Create supplier. name required. X-Business-Id required.', '{
+  "name": "Acme Wholesale",
+  "code": "ACM-01",
+  "phone": "+2348000000000",
+  "email": "orders@acme.example",
+  "default_currency": "NGN",
+  "is_active": true
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Supplier', 'GET', 'suppliers/{{supplier_id}}', 'Get supplier. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Supplier', 'PUT', 'suppliers/{{supplier_id}}', 'Update supplier. X-Business-Id required.', '{"name": "Acme Wholesale Ltd"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Delete Supplier', 'DELETE', 'suppliers/{{supplier_id}}', 'Delete supplier. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Supplier Prices', 'GET', 'suppliers/{{supplier_id}}/prices', 'List supplier product prices. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+
+        req('GRN Analytics: Receipts by Supplier', 'GET', 'grn/analytics/receipts-by-supplier', 'Posted GRNs grouped by supplier. Query: days (default 30). X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['days', '30']]),
+        req('List GRNs', 'GET', 'goods-received-notes', 'List goods received notes. Query: branch_id, status. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['status', 'draft']]),
+        req('Create GRN', 'POST', 'goods-received-notes', 'Create draft GRN. branch_id and supplier_id required. X-Business-Id required.', '{
+  "branch_id": 1,
+  "supplier_id": 1,
+  "supplier_invoice_number": "INV-2026-001",
+  "notes": "Shipment dock 2"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get GRN', 'GET', 'goods-received-notes/{{grn_id}}', 'Get one GRN. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update GRN', 'PUT', 'goods-received-notes/{{grn_id}}', 'Update GRN header fields. X-Business-Id required.', '{"notes": "Updated notes"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Delete GRN', 'DELETE', 'goods-received-notes/{{grn_id}}', 'Delete GRN when allowed. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Submit GRN', 'POST', 'goods-received-notes/{{grn_id}}/submit', 'Submit GRN for approval. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Approve GRN', 'POST', 'goods-received-notes/{{grn_id}}/approve', 'Approve and post GRN. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Reject GRN', 'POST', 'goods-received-notes/{{grn_id}}/reject', 'Reject GRN. Body: reason. X-Business-Id required.', '{"reason": "Invoice mismatch"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Cancel GRN', 'POST', 'goods-received-notes/{{grn_id}}/cancel', 'Cancel GRN. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Add GRN Line', 'POST', 'goods-received-notes/{{grn_id}}/lines', 'Add GRN line. X-Business-Id required.', '{
+  "product_id": 1,
+  "branch_product_id": 1,
+  "quantity_received": 24,
+  "quantity_accepted": 24,
+  "quantity_rejected": 0,
+  "unit_cost": 500,
+  "storage_location": "store"
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update GRN Line', 'PUT', 'goods-received-notes/{{grn_id}}/lines/{{grn_line_id}}', 'Update GRN line. X-Business-Id required.', '{
+  "product_id": 1,
+  "branch_product_id": 1,
+  "quantity_received": 24,
+  "quantity_accepted": 22,
+  "quantity_rejected": 2,
+  "rejection_reason": "Damaged",
+  "unit_cost": 500
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Delete GRN Line', 'DELETE', 'goods-received-notes/{{grn_id}}/lines/{{grn_line_id}}', 'Delete GRN line. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+
+        req('List Purchase Orders', 'GET', 'purchase-orders', 'List purchase orders. Query: branch_id, status, supplier_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['status', 'draft']]),
+        req('PO Analytics: Top Variance Items', 'GET', 'purchase-orders/analytics/top-variance-items', 'Top variance items. Query: limit. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['limit', '10']]),
+        req('Create Purchase Order', 'POST', 'purchase-orders', 'Create PO. branch_id, supplier_id and lines[] required. X-Business-Id required.', '{
+  "branch_id": 1,
+  "supplier_id": 1,
+  "expected_at": "2026-06-01",
+  "currency": "NGN",
+  "notes": "Reorder fast movers",
+  "lines": [
+    {
+      "product_id": 1,
+      "branch_product_id": 1,
+      "quantity_ordered": 100,
+      "unit_cost": 450
+    }
+  ]
+}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Purchase Order', 'GET', 'purchase-orders/{{purchase_order_id}}', 'Get purchase order. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Purchase Order', 'PUT', 'purchase-orders/{{purchase_order_id}}', 'Update draft purchase order header. X-Business-Id required.', '{"notes": "Split delivery OK"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Submit Purchase Order', 'POST', 'purchase-orders/{{purchase_order_id}}/submit', 'Submit PO. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Cancel Purchase Order', 'POST', 'purchase-orders/{{purchase_order_id}}/cancel', 'Cancel PO. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Purchase Order Receivable', 'GET', 'purchase-orders/{{purchase_order_id}}/receivable', 'Receivable breakdown. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+    ],
+];
+
 // ---- 10. Inventory ----
 $items[] = [
     'name' => '10. Inventory',
     'item' => [
         req('List Inventory Transactions', 'GET', 'inventory/transactions', "List inventory transactions.\n\n**Query:**\n- branch_id: optional | integer\n- product_id: optional | integer\n- type: optional | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- start_date: optional | date\n- end_date: optional | date\n- reference_number: optional | string\n- per_page: optional | integer\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['per_page', '15']]),
-        req('Create Inventory Transaction', 'POST', 'inventory/transactions', "Create an inventory transaction.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- product_id: required | integer | exists:products\n- type: required | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- quantity: required | numeric | not:0 (positive=in, negative=out)\n- shelf_quantity: nullable | numeric\n- store_quantity: nullable | numeric\n- location: optional | in:shelf,store,both (default: both)\n- unit_cost: nullable | numeric | min:0\n- reference_number: nullable | string | max:255\n- related_branch_id: nullable | integer | exists:branches (for transfers)\n- notes: nullable | string\n- meta_data: nullable | array\n- batch_number: nullable | string | max:100\n- lot_number: nullable | string | max:100\n- manufacturing_date: nullable | date\n- expiry_date: nullable | date\n- supplier_name: nullable | string | max:255\n- supplier_reference: nullable | string | max:255\n\nServer allocates batches (FEFO) for batch-tracked products.", '{
+        req('Create Inventory Transaction', 'POST', 'inventory/transactions', "Create an inventory transaction.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- product_id: required | integer | exists:products\n- type: required | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- quantity: required | numeric | not:0 (positive=in, negative=out)\n- shelf_quantity: nullable | numeric\n- store_quantity: nullable | numeric\n- location: optional | in:shelf,store,both (default: both)\n- unit_cost: nullable | numeric | min:0\n- reference_number: nullable | string | max:255\n- related_branch_id: nullable | integer | exists:branches (for transfers)\n- notes: nullable | string\n- meta_data: nullable | array\n- batch_number: nullable | string | max:100\n- lot_number: nullable | string | max:100\n- manufacturing_date: nullable | date\n- expiry_date: nullable | date\n- supplier_id: nullable | integer | exists:suppliers,id\n- supplier_name: nullable | string | max:255 (legacy fallback)\n- supplier_reference: nullable | string | max:255\n\nServer allocates batches (FEFO) for batch-tracked products.", '{
   "branch_id": 1,
   "product_id": 1,
   "type": "adjustment",
@@ -666,10 +758,11 @@ $items[] = [
   "lot_number": null,
   "manufacturing_date": null,
   "expiry_date": null,
+  "supplier_id": null,
   "supplier_name": null,
   "supplier_reference": null
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Get Inventory Transaction', 'GET', 'inventory/transactions/1', 'Get one transaction. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Get Inventory Transaction', 'GET', 'inventory/transactions/{{inventory_transaction_id}}', 'Get one transaction. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Inventory Stock Summary', 'GET', 'inventory/stock-summary', 'Stock summary. Query: branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];

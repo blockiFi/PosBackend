@@ -389,7 +389,7 @@ class AnalyticsController extends Controller
                 })
                 ->where('sales.business_id', $businessId)
                 ->where('sales.status', 'completed')
-                ->whereBetween('sales.sale_date', [$startDate, $endDate]);
+                ->whereBetween('sales.created_at', [$startDate, $endDate]);
 
             if ($branchId) {
                 $query->where('sales.branch_id', $branchId);
@@ -593,7 +593,7 @@ class AnalyticsController extends Controller
                 $salesAgg = Sale::query()
                     ->where('business_id', $businessId)
                     ->where('status', 'completed')
-                    ->whereBetween('sale_date', [$startDate, $endDate])
+                    ->whereBetween('created_at', [$startDate, $endDate])
                     ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
                     ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue, COALESCE(SUM(discount_amount), 0) as discount')
                     ->first();
@@ -614,7 +614,7 @@ class AnalyticsController extends Controller
                     ->whereNull('products.deleted_at')
                     ->where('sales.business_id', $businessId)
                     ->where('sales.status', 'completed')
-                    ->whereBetween('sales.sale_date', [$startDate, $endDate])
+                    ->whereBetween('sales.created_at', [$startDate, $endDate])
                     ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
                     ->selectRaw(
                         'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
@@ -787,7 +787,7 @@ class AnalyticsController extends Controller
         $salesAgg = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
             ->first();
@@ -807,7 +807,7 @@ class AnalyticsController extends Controller
             ->whereNull('products.deleted_at')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->whereBetween('sales.created_at', [$startDate, $endDate])
             ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
             ->selectRaw(
                 'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
@@ -897,7 +897,7 @@ class AnalyticsController extends Controller
         $revRows = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->whereBetween('created_at', [$startDate, $endDate])
             ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $permittedBranches))
             ->selectRaw('branch_id, COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
             ->groupBy('branch_id')
@@ -916,7 +916,7 @@ class AnalyticsController extends Controller
             ->whereNull('products.deleted_at')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->whereBetween('sales.created_at', [$startDate, $endDate])
             ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('sales.branch_id', $permittedBranches))
             ->groupBy('sales.branch_id')
             ->selectRaw(
@@ -1031,32 +1031,36 @@ class AnalyticsController extends Controller
     /**
      * @return array{0:\Illuminate\Database\Query\Expression|string, 1:string}
      */
-    private function trendBucketSelectExpr(string $granularity): array
+    private function trendBucketSelectExpr(string $granularity, string $dateColumn = 'created_at'): array
     {
+        if (! preg_match('/^[a-z_]+$/', $dateColumn)) {
+            $dateColumn = 'created_at';
+        }
+
         return match ($granularity) {
             'weekly' => [
-                DB::raw("DATE_FORMAT(sale_date, '%x-W%v') as date"),
-                "DATE_FORMAT(sale_date, '%x-W%v')",
+                DB::raw("DATE_FORMAT(`{$dateColumn}`, '%x-W%v') as date"),
+                "DATE_FORMAT(`{$dateColumn}`, '%x-W%v')",
             ],
             'monthly' => [
-                DB::raw("DATE_FORMAT(sale_date, '%Y-%m') as date"),
-                "DATE_FORMAT(sale_date, '%Y-%m')",
+                DB::raw("DATE_FORMAT(`{$dateColumn}`, '%Y-%m') as date"),
+                "DATE_FORMAT(`{$dateColumn}`, '%Y-%m')",
             ],
             default => [
-                DB::raw('DATE(sale_date) as date'),
-                'DATE(sale_date)',
+                DB::raw("DATE(`{$dateColumn}`) as date"),
+                "DATE(`{$dateColumn}`)",
             ],
         };
     }
 
     private function getRevenueTrendLive($businessId, $startDate, $endDate, $branchId, string $granularity)
     {
-        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity);
+        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity, 'created_at');
 
         $query = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('sale_date', [$startDate, $endDate]);
+            ->whereBetween('created_at', [$startDate, $endDate]);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
@@ -1082,7 +1086,7 @@ class AnalyticsController extends Controller
 
     private function getRevenueTrendFromRollup($businessId, $startDate, $endDate, $branchId, string $granularity)
     {
-        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity);
+        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity, 'sale_date');
 
         $query = DB::table('analytics_daily_summaries')
             ->where('business_id', $businessId)

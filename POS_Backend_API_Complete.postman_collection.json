@@ -100,6 +100,31 @@
             "key": "sale_reference",
             "value": "SALE-001",
             "type": "string"
+        },
+        {
+            "key": "supplier_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "grn_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "grn_line_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "purchase_order_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "inventory_transaction_id",
+            "value": "1",
+            "type": "string"
         }
     ],
     "item": [
@@ -412,6 +437,40 @@
                         "body": {
                             "mode": "raw",
                             "raw": "{\n  \"auth_code\": \"847291\"\n}"
+                        },
+                        "auth": {
+                            "type": "noauth"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Register Cashier Device",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/register-cashier-device",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "register-cashier-device"
+                            ]
+                        },
+                        "description": "**Public.** Register a cashier device using a valid branch auth code.\n\n**Fields:**\n- auth_code: required | string\n- device_id: required | string | max:50\n- device_name: required | string | max:100\n- device_type: optional | web | desktop | mobile | tablet\n- os: optional | string | max:50\n- app_version: optional | string | max:20",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"auth_code\": \"847291\",\n  \"device_id\": \"{{device_id}}\",\n  \"device_name\": \"Postman POS\",\n  \"device_type\": \"desktop\",\n  \"os\": \"macOS\",\n  \"app_version\": \"0.1.0\"\n}"
                         },
                         "auth": {
                             "type": "noauth"
@@ -3779,6 +3838,983 @@
             ]
         },
         {
+            "name": "9b. Suppliers, GRN & Purchase orders",
+            "description": "Procurement: suppliers, goods received notes (GRN), purchase orders (PO). X-Business-Id required.",
+            "item": [
+                {
+                    "name": "List Suppliers",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers"
+                            ],
+                            "query": [
+                                {
+                                    "key": "q",
+                                    "value": ""
+                                },
+                                {
+                                    "key": "is_active",
+                                    "value": "true"
+                                }
+                            ]
+                        },
+                        "description": "List suppliers. Query: q, is_active. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Supplier",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers"
+                            ]
+                        },
+                        "description": "Create supplier. name required. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Acme Wholesale\",\n  \"code\": \"ACM-01\",\n  \"phone\": \"+2348000000000\",\n  \"email\": \"orders@acme.example\",\n  \"default_currency\": \"NGN\",\n  \"is_active\": true\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Supplier",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        },
+                        "description": "Get supplier. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Supplier",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        },
+                        "description": "Update supplier. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\": \"Acme Wholesale Ltd\"}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete Supplier",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers/{{supplier_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_id}}"
+                            ]
+                        },
+                        "description": "Delete supplier. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Supplier Prices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/suppliers/{{supplier_id}}/prices",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "suppliers",
+                                "{{supplier_id}}",
+                                "prices"
+                            ]
+                        },
+                        "description": "List supplier product prices. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "GRN Analytics: Receipts by Supplier",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/grn/analytics/receipts-by-supplier",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "grn",
+                                "analytics",
+                                "receipts-by-supplier"
+                            ],
+                            "query": [
+                                {
+                                    "key": "days",
+                                    "value": "30"
+                                }
+                            ]
+                        },
+                        "description": "Posted GRNs grouped by supplier. Query: days (default 30). X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List GRNs",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "draft"
+                                }
+                            ]
+                        },
+                        "description": "List goods received notes. Query: branch_id, status. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create GRN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes"
+                            ]
+                        },
+                        "description": "Create draft GRN. branch_id and supplier_id required. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": 1,\n  \"supplier_id\": 1,\n  \"supplier_invoice_number\": \"INV-2026-001\",\n  \"notes\": \"Shipment dock 2\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get GRN",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}"
+                            ]
+                        },
+                        "description": "Get one GRN. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update GRN",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}"
+                            ]
+                        },
+                        "description": "Update GRN header fields. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"notes\": \"Updated notes\"}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete GRN",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}"
+                            ]
+                        },
+                        "description": "Delete GRN when allowed. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Submit GRN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/submit",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "submit"
+                            ]
+                        },
+                        "description": "Submit GRN for approval. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Approve GRN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/approve",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "approve"
+                            ]
+                        },
+                        "description": "Approve and post GRN. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reject GRN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/reject",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "reject"
+                            ]
+                        },
+                        "description": "Reject GRN. Body: reason. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"reason\": \"Invoice mismatch\"}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cancel GRN",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/cancel",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "cancel"
+                            ]
+                        },
+                        "description": "Cancel GRN. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Add GRN Line",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/lines",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "lines"
+                            ]
+                        },
+                        "description": "Add GRN line. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": 1,\n  \"branch_product_id\": 1,\n  \"quantity_received\": 24,\n  \"quantity_accepted\": 24,\n  \"quantity_rejected\": 0,\n  \"unit_cost\": 500,\n  \"storage_location\": \"store\"\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update GRN Line",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/lines/{{grn_line_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "lines",
+                                "{{grn_line_id}}"
+                            ]
+                        },
+                        "description": "Update GRN line. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"product_id\": 1,\n  \"branch_product_id\": 1,\n  \"quantity_received\": 24,\n  \"quantity_accepted\": 22,\n  \"quantity_rejected\": 2,\n  \"rejection_reason\": \"Damaged\",\n  \"unit_cost\": 500\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Delete GRN Line",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/goods-received-notes/{{grn_id}}/lines/{{grn_line_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "goods-received-notes",
+                                "{{grn_id}}",
+                                "lines",
+                                "{{grn_line_id}}"
+                            ]
+                        },
+                        "description": "Delete GRN line. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "List Purchase Orders",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "branch_id",
+                                    "value": "{{branch_id}}"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "draft"
+                                }
+                            ]
+                        },
+                        "description": "List purchase orders. Query: branch_id, status, supplier_id. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "PO Analytics: Top Variance Items",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/analytics/top-variance-items",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "analytics",
+                                "top-variance-items"
+                            ],
+                            "query": [
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        },
+                        "description": "Top variance items. Query: limit. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Create Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders"
+                            ]
+                        },
+                        "description": "Create PO. branch_id, supplier_id and lines[] required. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"branch_id\": 1,\n  \"supplier_id\": 1,\n  \"expected_at\": \"2026-06-01\",\n  \"currency\": \"NGN\",\n  \"notes\": \"Reorder fast movers\",\n  \"lines\": [\n    {\n      \"product_id\": 1,\n      \"branch_product_id\": 1,\n      \"quantity_ordered\": 100,\n      \"unit_cost\": 450\n    }\n  ]\n}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Purchase Order",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_id}}"
+                            ]
+                        },
+                        "description": "Get purchase order. X-Business-Id required."
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Update Purchase Order",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_id}}"
+                            ]
+                        },
+                        "description": "Update draft purchase order header. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"notes\": \"Split delivery OK\"}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Submit Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}/submit",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_id}}",
+                                "submit"
+                            ]
+                        },
+                        "description": "Submit PO. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Cancel Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}/cancel",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_id}}",
+                                "cancel"
+                            ]
+                        },
+                        "description": "Cancel PO. X-Business-Id required.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}"
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Purchase Order Receivable",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "X-Business-Id",
+                                "value": "{{business_id}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/purchase-orders/{{purchase_order_id}}/receivable",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "purchase-orders",
+                                "{{purchase_order_id}}",
+                                "receivable"
+                            ]
+                        },
+                        "description": "Receivable breakdown. X-Business-Id required."
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
             "name": "10. Inventory",
             "item": [
                 {
@@ -3851,10 +4887,10 @@
                                 "transactions"
                             ]
                         },
-                        "description": "Create an inventory transaction.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- product_id: required | integer | exists:products\n- type: required | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- quantity: required | numeric | not:0 (positive=in, negative=out)\n- shelf_quantity: nullable | numeric\n- store_quantity: nullable | numeric\n- location: optional | in:shelf,store,both (default: both)\n- unit_cost: nullable | numeric | min:0\n- reference_number: nullable | string | max:255\n- related_branch_id: nullable | integer | exists:branches (for transfers)\n- notes: nullable | string\n- meta_data: nullable | array\n- batch_number: nullable | string | max:100\n- lot_number: nullable | string | max:100\n- manufacturing_date: nullable | date\n- expiry_date: nullable | date\n- supplier_name: nullable | string | max:255\n- supplier_reference: nullable | string | max:255\n\nServer allocates batches (FEFO) for batch-tracked products.",
+                        "description": "Create an inventory transaction.\n\n**Fields:**\n- branch_id: required | integer | exists:branches\n- product_id: required | integer | exists:products\n- type: required | in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial\n- quantity: required | numeric | not:0 (positive=in, negative=out)\n- shelf_quantity: nullable | numeric\n- store_quantity: nullable | numeric\n- location: optional | in:shelf,store,both (default: both)\n- unit_cost: nullable | numeric | min:0\n- reference_number: nullable | string | max:255\n- related_branch_id: nullable | integer | exists:branches (for transfers)\n- notes: nullable | string\n- meta_data: nullable | array\n- batch_number: nullable | string | max:100\n- lot_number: nullable | string | max:100\n- manufacturing_date: nullable | date\n- expiry_date: nullable | date\n- supplier_id: nullable | integer | exists:suppliers,id\n- supplier_name: nullable | string | max:255 (legacy fallback)\n- supplier_reference: nullable | string | max:255\n\nServer allocates batches (FEFO) for batch-tracked products.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"type\": \"adjustment\",\n  \"quantity\": 25,\n  \"shelf_quantity\": null,\n  \"store_quantity\": null,\n  \"location\": \"both\",\n  \"unit_cost\": 10.50,\n  \"reference_number\": \"ADJ-001\",\n  \"related_branch_id\": null,\n  \"notes\": \"Stock count correction\",\n  \"meta_data\": {},\n  \"batch_number\": null,\n  \"lot_number\": null,\n  \"manufacturing_date\": null,\n  \"expiry_date\": null,\n  \"supplier_name\": null,\n  \"supplier_reference\": null\n}"
+                            "raw": "{\n  \"branch_id\": 1,\n  \"product_id\": 1,\n  \"type\": \"adjustment\",\n  \"quantity\": 25,\n  \"shelf_quantity\": null,\n  \"store_quantity\": null,\n  \"location\": \"both\",\n  \"unit_cost\": 10.50,\n  \"reference_number\": \"ADJ-001\",\n  \"related_branch_id\": null,\n  \"notes\": \"Stock count correction\",\n  \"meta_data\": {},\n  \"batch_number\": null,\n  \"lot_number\": null,\n  \"manufacturing_date\": null,\n  \"expiry_date\": null,\n  \"supplier_id\": null,\n  \"supplier_name\": null,\n  \"supplier_reference\": null\n}"
                         }
                     },
                     "response": []
@@ -3878,14 +4914,14 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/inventory/transactions/1",
+                            "raw": "{{base_url}}/inventory/transactions/{{inventory_transaction_id}}",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "inventory",
                                 "transactions",
-                                "1"
+                                "{{inventory_transaction_id}}"
                             ]
                         },
                         "description": "Get one transaction. X-Business-Id required."
