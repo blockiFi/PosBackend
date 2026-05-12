@@ -36,7 +36,7 @@ class SaleItemAnalyticsObserver
 
         $businessId = (int) $sale->business_id;
         $branchId = (int) $sale->branch_id;
-        $date = Carbon::parse($sale->sale_date)->format('Y-m-d');
+        $date = Carbon::parse($sale->created_at)->format('Y-m-d');
 
         $this->rollupService->rebuildDay($businessId, $branchId, $date);
     }
