@@ -575,7 +575,7 @@ class AnalyticsController extends Controller
             if (config('analytics.use_rollups')) {
                 $rollupQuery = DB::table('analytics_daily_summaries')
                     ->where('business_id', $businessId)
-                    ->whereBetween('created_at', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+                    ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
 
                 if ($branchId) {
                     $rollupQuery->where('branch_id', $branchId);
@@ -755,7 +755,7 @@ class AnalyticsController extends Controller
     {
         $query = DB::table('analytics_daily_summaries')
             ->where('business_id', $businessId)
-            ->whereBetween('created_at', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
@@ -975,7 +975,7 @@ class AnalyticsController extends Controller
 
         $aggRows = DB::table('analytics_daily_summaries')
             ->where('business_id', $businessId)
-            ->whereBetween('created_at', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
             ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $permittedBranches))
             ->groupBy('branch_id')
             ->selectRaw('branch_id, SUM(txn_count) as txn_count, SUM(revenue) as revenue, SUM(cost) as cost')
@@ -1086,11 +1086,11 @@ class AnalyticsController extends Controller
 
     private function getRevenueTrendFromRollup($businessId, $startDate, $endDate, $branchId, string $granularity)
     {
-        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity, 'created_at');
+        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity, 'sale_date');
 
         $query = DB::table('analytics_daily_summaries')
             ->where('business_id', $businessId)
-            ->whereBetween('created_at', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
+            ->whereBetween('sale_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')]);
 
         if ($branchId) {
             $query->where('branch_id', $branchId);
