@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\BranchProduct;
+use App\Models\DeviceGroup;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
 use App\Models\Product;
@@ -939,6 +940,22 @@ class SaleController extends Controller
                 return response()->json(['message' => 'Unauthorized access to this branch'], 403);
             }
             $query->where('branch_id', $branchId);
+        }
+
+        if ($request->filled('group_id')) {
+            $groupId = $request->group_id;
+            $groupOk = DeviceGroup::query()
+                ->whereKey($groupId)
+                ->where('business_id', $businessId)
+                ->exists();
+            if (! $groupOk) {
+                return response()->json(['message' => 'Invalid or inaccessible device group'], 403);
+            }
+            $query->whereHas('shift', function ($q) use ($groupId, $businessId) {
+                $q->withTrashed()
+                    ->where('business_id', $businessId)
+                    ->where('group_id', $groupId);
+            });
         }
 
         if ($request->filled('customer_id')) {
