@@ -415,7 +415,9 @@ class SaleController extends Controller
                 $sale->status = 'completed';
                 $sale->save();
             }
-
+            $amountPaid = $sale->payments->sum('amount');
+             $sale->paid_amount = $amountPaid;
+             $sale->save();
             DB::commit();
 
             return response()->json([
@@ -538,7 +540,9 @@ class SaleController extends Controller
                 $sale->status = 'completed';
                 $sale->save();
             }
-
+            $amountPaid = $sale->payments->sum('amount');
+            $sale->paid_amount = $amountPaid;
+            $sale->save();
             DB::commit();
 
             return response()->json([
@@ -639,6 +643,9 @@ class SaleController extends Controller
                 }
                 $sale->updatePaymentStatus();
                 $sale->refresh();
+                $amountPaid = $sale->payments->sum('amount');
+                $sale->paid_amount = $amountPaid;
+                $sale->save();
             }
 
             if (! $sale->isFullyPaid()) {
@@ -794,7 +801,8 @@ class SaleController extends Controller
         if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
-
+        $amountPaid = $sale->payments->sum('amount');
+        $sale->paid_amount = $amountPaid;
         return response()->json(['sale' => $sale]);
     }
 

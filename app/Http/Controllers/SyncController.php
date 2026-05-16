@@ -991,6 +991,10 @@ class SyncController extends Controller
                 $sale->status = 'completed';
                 $sale->save();
             }
+
+            $amountPaid = $sale->payments->sum('amount');
+            $sale->paid_amount = $amountPaid;
+            $sale->save();
         }
 
         // Log change
