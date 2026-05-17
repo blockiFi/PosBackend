@@ -954,9 +954,8 @@ class SyncController extends Controller
         if (isset($data['payments']) && is_array($data['payments'])) {
             $defaultPaymentDate = $sale->sale_date?->copy() ?? now();
             foreach ($data['payments'] as $payment) {
-                if (! is_array($payment)) {
-                    continue;
-                }
+    
+        
 
                 $methodId = $payment['payment_method_id'] ?? null;
                 $amount = (float) ($payment['amount'] ?? 0);
