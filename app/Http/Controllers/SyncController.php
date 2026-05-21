@@ -354,6 +354,42 @@ class SyncController extends Controller
         DB::beginTransaction();
         try {
             foreach ($request->changes as $entityType => $records) {
+                // Persist incoming sales push payloads into change_logs for audit/sync tracing
+                if ($entityType === 'sales' && is_array($records)) {
+                    foreach ($records as $rec) {
+                        try {
+                            $entityId = $rec['server_id'] ?? ($rec['id'] ?? null);
+                            $entityUuid = $rec['client_uuid'] ?? null;
+                            $action = 'updated';
+                            if (! empty($rec['deleted']) || (isset($rec['action']) && $rec['action'] === 'deleted')) {
+                                $action = 'deleted';
+                            } elseif (empty($entityId) && empty($rec['deleted'])) {
+                                $action = 'created';
+                            }
+
+                            $version = $rec['version'] ?? ($rec['v'] ?? 1);
+
+                            ChangeLog::logChange(
+                                'sales',
+                                $entityId,
+                                $entityUuid,
+                                $action,
+                                (int) $version,
+                                ['push_payload' => $rec],
+                                $deviceUuid,
+                                $userId,
+                                $businessId
+                            );
+                        } catch (\Exception $e) {
+                            // non-fatal: log and continue processing other records
+                            // use logger if available
+                            if (method_exists($this, 'warn')) {
+                                $this->warn('Failed to persist incoming sales change log: ' . $e->getMessage());
+                            }
+                        }
+                    }
+                }
+
                 $results[$entityType] = $this->processPushRecords($entityType, $records, $businessId, $userId, $deviceUuid);
 
                 if ($results[$entityType]['conflicts'] > 0) {
@@ -758,242 +794,287 @@ class SyncController extends Controller
         $defaultStatus ='pending';
 
         // Create sale (line economics are inferred server-side; totals filled after items via calculateTotals())
-        $sale = Sale::create([
-            'business_id' => $businessId,
-            'branch_id' => $data['branch_id'],
-            'shift_id' => $shiftId,
-            'customer_id' => $data['customer_id'] ?? null,
-            'sale_number' => $data['sale_number'],
-            'reference_id' => $data['reference_id'] ?? null,
-            'sale_type' => $saleType,
-            'sale_date' => $data['sale_date'],
-            'subtotal' => 0,
-            'tax_amount' => 0,
-            'discount_amount' => $data['discount'] ?? $data['discount_amount'] ?? 0,
-            'total_amount' => 0,
-            'payment_status' => 'unpaid',
-            'status' => 'pending',
-            'user_id' => $userId,
-            'notes' => $data['notes'] ?? null,
-            'client_uuid' => $data['client_uuid'] ?? null,
-            'version' => $data['version'] ?? 1,
-            'device_id' => $deviceId,
-            'sync_status' => 'synced',
-            'synced_at' => now(),
+        // Wrap creation, items, and payments in a DB transaction so we don't leave orphaned sales when payments fail
+        DB::beginTransaction();
+        try {
+            $sale = Sale::create([
+                'business_id' => $businessId,
+                'branch_id' => $data['branch_id'],
+                'shift_id' => $shiftId,
+                'customer_id' => $data['customer_id'] ?? null,
+                'sale_number' => $data['sale_number'],
+                'reference_id' => $data['reference_id'] ?? null,
+                'sale_type' => $saleType,
+                'sale_date' => $data['sale_date'],
+                'subtotal' => 0,
+                'tax_amount' => 0,
+                'discount_amount' => $data['discount'] ?? $data['discount_amount'] ?? 0,
+                'total_amount' => 0,
+                'payment_status' => 'unpaid',
+                'status' => 'pending',
+                'user_id' => $userId,
+                'notes' => $data['notes'] ?? null,
+                'client_uuid' => $data['client_uuid'] ?? null,
+                'version' => $data['version'] ?? 1,
+                'device_id' => $deviceId,
+                'sync_status' => 'synced',
+                'synced_at' => now(),
 
-            'origin' => $data['origin'] ?? 'offline',
-            'metadata' => $saleMetadata ?: null,
-        ]);
+                'origin' => $data['origin'] ?? 'offline',
+                'metadata' => $saleMetadata ?: null,
+            ]);
 
-        // Create items and deduct inventory
-        $saleNumber = $data['sale_number'];
+            // Create items and deduct inventory
+            $saleNumber = $data['sale_number'];
 
-        if (isset($data['items'])) {
-            foreach ($data['items'] as $item) {
-                $productId = (int) $item['product_id'];
-                $qty = (float) $item['quantity'];
-                $qtyForBatch = (int) round($qty);
+            if (isset($data['items'])) {
+                foreach ($data['items'] as $item) {
+                    $productId = (int) $item['product_id'];
+                    $qty = (float) $item['quantity'];
+                    $qtyForBatch = (int) round($qty);
 
-                $branchProduct = BranchProduct::where('branch_id', $branchId)
-                    ->where('product_id', $productId)
-                    ->first();
+                    $branchProduct = BranchProduct::where('branch_id', $branchId)
+                        ->where('product_id', $productId)
+                        ->first();
 
-                if (! $branchProduct) {
-                    $product = Product::find($productId);
+                    if (! $branchProduct) {
+                        $product = Product::find($productId);
 
-                    throw new \Exception(
-                        'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
-                    );
-                }
+                        throw new \Exception(
+                            'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
+                        );
+                    }
 
-                if (! $deferStockToCompletion && $branchProduct->stock_quantity < $qtyForBatch) {
-                    $product = $branchProduct->product;
+                    if (! $deferStockToCompletion && $branchProduct->stock_quantity < $qtyForBatch) {
+                        $product = $branchProduct->product;
 
-                    throw new \Exception(
-                        "Insufficient stock for product: {$product->name}"
-                    );
-                }
+                        throw new \Exception(
+                            "Insufficient stock for product: {$product->name}"
+                        );
+                    }
 
-                // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
-                $batch = null;
-                $batchId = null;
-                if (! $deferStockToCompletion) {
-                    $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
-                    if ($quickSale && $quickSale->batch_id) {
-                        $batch = $quickSale->batch;
-                        if ($batch && $batch->current_quantity >= $qtyForBatch) {
-                            $batchId = $batch->id;
+                    // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
+                    $batch = null;
+                    $batchId = null;
+                    if (! $deferStockToCompletion) {
+                        $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
+                        if ($quickSale && $quickSale->batch_id) {
+                            $batch = $quickSale->batch;
+                            if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                                $batchId = $batch->id;
+                            }
+                        }
+                        if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
+                            $batchId = (int) $item['batch_id'];
+                            $batch = ProductBatch::where('id', $batchId)
+                                ->where('product_id', $productId)
+                                ->where('branch_id', $branchId)
+                                ->where('business_id', $businessId)
+                                ->first();
+                            if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                                $product = $branchProduct->product;
+
+                                throw new \Exception(
+                                    "Invalid or insufficient batch quantity for product: {$product->name}"
+                                );
+                            }
                         }
                     }
-                    if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
-                        $batchId = (int) $item['batch_id'];
-                        $batch = ProductBatch::where('id', $batchId)
-                            ->where('product_id', $productId)
-                            ->where('branch_id', $branchId)
-                            ->where('business_id', $businessId)
-                            ->first();
-                        if (! $batch || $batch->current_quantity < $qtyForBatch) {
-                            $product = $branchProduct->product;
 
-                            throw new \Exception(
-                                "Invalid or insufficient batch quantity for product: {$product->name}"
+                    $product = $branchProduct->product;
+                    if (! $product || (int) $product->business_id !== (int) $businessId) {
+                        throw new \Exception(
+                            'Product not found or does not belong to this business: '.($product ? $product->name : "ID {$productId}")
+                        );
+                    }
+
+                    // Authoritative line pricing from BranchProduct tiers (sync ignores client unit_price / names / SKU)
+                    $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
+                    $unitPrice = $tierResult['unit_price'];
+                    $metadata = [
+                        'tier_type' => $tierResult['tier_type'],
+                    ];
+                    if ($tierResult['product_unit_id'] !== null) {
+                        $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                    }
+                    if ($tierResult['quantity_tier_id'] !== null) {
+                        $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                    }
+
+                    if ($batchId !== null) {
+                        $quickSaleForBatch = QuickSale::getActiveQuickSale($product->id, $branchId, null, $batchId);
+                        if ($quickSaleForBatch) {
+                            $originalPrice = $branchProduct->selling_price ?? $unitPrice;
+                            $unitPrice = $quickSaleForBatch->calculateFinalPrice($originalPrice);
+                        }
+                    }
+
+                    if (isset($item['metadata']) && is_array($item['metadata'])) {
+                        $metadata = array_merge($metadata, $item['metadata']);
+                    }
+
+                    $saleItem = new SaleItem([
+                        'product_id' => $product->id,
+                        'batch_id' => $batchId,
+                        'product_name' => $product->name,
+                        'product_sku' => $product->sku,
+                        'description' => $item['description'] ?? null,
+                        'quantity' => $qty,
+                        'unit_price' => $unitPrice,
+                        'discount_percentage' => isset($item['discount_percentage']) ? (float) $item['discount_percentage'] : 0,
+                        'tax_rate' => isset($item['tax_rate']) ? (float) $item['tax_rate'] : 0,
+                        'metadata' => $metadata ?: null,
+                    ]);
+                    $saleItem->calculateTotals();
+                    $sale->items()->save($saleItem);
+
+                    if (! $deferStockToCompletion) {
+                        $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                        if (! $deductResult['stock_tracked']) {
+                            $branchProduct->decrement('stock_quantity', $qtyForBatch);
+                            $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
+                            $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                        }
+
+                        if ($batchId !== null && $batch) {
+                            $batch->allocate($qtyForBatch);
+                        }
+
+                        $invPayload = [
+                            'uuid' => (string) Str::uuid(),
+                            'business_id' => $businessId,
+                            'branch_id' => $branchId,
+                            'product_id' => $productId,
+                            'user_id' => $userId,
+                            'type' => 'sale',
+                            'quantity' => -$qtyForBatch,
+                            'quantity_before' => $deductResult['quantity_before'],
+                            'quantity_after' => $deductResult['quantity_after'],
+                            'unit_cost' => $branchProduct->cost_price,
+                            'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
+                            'reference_number' => $saleNumber,
+                            'notes' => "Sale: {$saleNumber}",
+                        ];
+                        if ($deductResult['stock_tracked']) {
+                            $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
+                            $invPayload['store_quantity'] = -$deductResult['from_store'];
+                            $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
+                            $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
+                            $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
+                            $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
+                        }
+                        if ($batchId !== null) {
+                            $invPayload['batch_id'] = $batchId;
+                        }
+                        $invTransaction = InventoryTransaction::create($invPayload);
+
+                        if ($batchId === null && $qtyForBatch > 0) {
+                            $this->batchService->allocateStockOut(
+                                $productId,
+                                $branchId,
+                                $qtyForBatch,
+                                $invTransaction,
+                                ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
                             );
                         }
                     }
                 }
 
-                $product = $branchProduct->product;
-                if (! $product || (int) $product->business_id !== (int) $businessId) {
-                    throw new \Exception(
-                        'Product not found or does not belong to this business: '.($product ? $product->name : "ID {$productId}")
-                    );
-                }
-
-                // Authoritative line pricing from BranchProduct tiers (sync ignores client unit_price / names / SKU)
-                $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
-                $unitPrice = $tierResult['unit_price'];
-                $metadata = [
-                    'tier_type' => $tierResult['tier_type'],
-                ];
-                if ($tierResult['product_unit_id'] !== null) {
-                    $metadata['product_unit_id'] = $tierResult['product_unit_id'];
-                }
-                if ($tierResult['quantity_tier_id'] !== null) {
-                    $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
-                }
-
-                if ($batchId !== null) {
-                    $quickSaleForBatch = QuickSale::getActiveQuickSale($product->id, $branchId, null, $batchId);
-                    if ($quickSaleForBatch) {
-                        $originalPrice = $branchProduct->selling_price ?? $unitPrice;
-                        $unitPrice = $quickSaleForBatch->calculateFinalPrice($originalPrice);
-                    }
-                }
-
-                if (isset($item['metadata']) && is_array($item['metadata'])) {
-                    $metadata = array_merge($metadata, $item['metadata']);
-                }
-
-                $saleItem = new SaleItem([
-                    'product_id' => $product->id,
-                    'batch_id' => $batchId,
-                    'product_name' => $product->name,
-                    'product_sku' => $product->sku,
-                    'description' => $item['description'] ?? null,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'discount_percentage' => isset($item['discount_percentage']) ? (float) $item['discount_percentage'] : 0,
-                    'tax_rate' => isset($item['tax_rate']) ? (float) $item['tax_rate'] : 0,
-                    'metadata' => $metadata ?: null,
-                ]);
-                $saleItem->calculateTotals();
-                $sale->items()->save($saleItem);
-
-                if (! $deferStockToCompletion) {
-                    $deductResult = $branchProduct->deductForSale($qtyForBatch);
-                    if (! $deductResult['stock_tracked']) {
-                        $branchProduct->decrement('stock_quantity', $qtyForBatch);
-                        $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
-                        $deductResult['quantity_after'] = $branchProduct->stock_quantity;
-                    }
-
-                    if ($batchId !== null && $batch) {
-                        $batch->allocate($qtyForBatch);
-                    }
-
-                    $invPayload = [
-                        'uuid' => (string) Str::uuid(),
-                        'business_id' => $businessId,
-                        'branch_id' => $branchId,
-                        'product_id' => $productId,
-                        'user_id' => $userId,
-                        'type' => 'sale',
-                        'quantity' => -$qtyForBatch,
-                        'quantity_before' => $deductResult['quantity_before'],
-                        'quantity_after' => $deductResult['quantity_after'],
-                        'unit_cost' => $branchProduct->cost_price,
-                        'total_cost' => $branchProduct->cost_price ? $branchProduct->cost_price * $qty : null,
-                        'reference_number' => $saleNumber,
-                        'notes' => "Sale: {$saleNumber}",
-                    ];
-                    if ($deductResult['stock_tracked']) {
-                        $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
-                        $invPayload['store_quantity'] = -$deductResult['from_store'];
-                        $invPayload['shelf_quantity_before'] = $deductResult['shelf_quantity_before'];
-                        $invPayload['store_quantity_before'] = $deductResult['store_quantity_before'];
-                        $invPayload['shelf_quantity_after'] = $deductResult['shelf_quantity_after'];
-                        $invPayload['store_quantity_after'] = $deductResult['store_quantity_after'];
-                    }
-                    if ($batchId !== null) {
-                        $invPayload['batch_id'] = $batchId;
-                    }
-                    $invTransaction = InventoryTransaction::create($invPayload);
-
-                    if ($batchId === null && $qtyForBatch > 0) {
-                        $this->batchService->allocateStockOut(
-                            $productId,
-                            $branchId,
-                            $qtyForBatch,
-                            $invTransaction,
-                            ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
-                        );
-                    }
-                }
-            }
-
-            $sale->load('items');
-            $sale->calculateTotals();
-            $sale->save();
-        }
-
-        // Create payments. Offline / sync clients often omit payment_date and shift_id;
-        // default to the sale's date and the resolved shift so deposits sync with their
-        // payments intact instead of being silently dropped (which used to leave the sale
-        // row committed without any of the customer's tendered cash).
-        $persistedPaymentCount = 0;
-        if (isset($data['payments']) && is_array($data['payments'])) {
-            $defaultPaymentDate = $sale->sale_date?->copy() ?? now();
-            foreach ($data['payments'] as $payment) {
-    
-        
-
-                $methodId = $payment['payment_method_id'] ?? null;
-                $amount = (float) ($payment['amount'] ?? 0);
-                if (! $methodId || $amount <= 0) {
-                    continue;
-                }
-
-                $paymentDate = $payment['payment_date'] ?? null;
-                if (! $paymentDate) {
-                    $paymentDate = $defaultPaymentDate;
-                }
-
-                Payment::create([
-                    'sale_id' => $sale->id,
-                    'shift_id' =>  $shiftId,
-                    'payment_method_id' => $methodId,
-                    'amount' => $amount,
-                    'payment_date' => $paymentDate,
-                    'reference_number' => $payment['reference_number'] ?? null,
-                    'notes' => $payment['notes'] ?? null,
-                    'status' => 'completed',
-                ]);
-                $persistedPaymentCount++;
-            }
-        }
-
-        // Align paid_amount / payment_status with persisted payments (esp. deposit sales from offline clients).
-        if ($persistedPaymentCount > 0) {
-            $sale->refresh();
-            $sale->updatePaymentStatus();
-            if (! $isDeposit && $sale->isFullyPaid()) {
-                $sale->status = 'completed';
+                $sale->load('items');
+                $sale->calculateTotals();
                 $sale->save();
             }
 
-            $amountPaid = $sale->payments->sum('amount');
-            $sale->paid_amount = $amountPaid;
-            $sale->save();
+            // Create payments. Offline / sync clients often omit payment_date and shift_id;
+            // default to the sale's date and the resolved shift so deposits sync with their
+            // payments intact instead of being silently dropped (which used to leave the sale
+            // row committed without any of the customer's tendered cash).
+            $persistedPaymentCount = 0;
+            $skippedPayments = [];
+            $mappedPayments = [];
+
+            // resolve a default method for mapping when client method is unknown
+            $defaultMethod = PaymentMethod::where('business_id', $businessId)
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->first();
+
+            if (isset($data['payments']) && is_array($data['payments'])) {
+                $defaultPaymentDate = $sale->sale_date?->copy() ?? now();
+                foreach ($data['payments'] as $payment) {
+                    $methodId = $payment['payment_method_id'] ?? null;
+                    $amount = (float) ($payment['amount'] ?? 0);
+
+                    // Basic validation
+                    if (! $methodId || $amount <= 0) {
+                        $skippedPayments[] = ['reason' => 'missing_method_or_amount', 'payload' => $payment];
+                        continue;
+                    }
+
+                    // Ensure method belongs to this business; if not, attempt mapping to defaultMethod
+                    $method = PaymentMethod::where('id', $methodId)
+                        ->where('business_id', $businessId)
+                        ->first();
+
+                    if (! $method) {
+                        if ($defaultMethod) {
+                            $mappedPayments[] = ['original' => $payment, 'mapped_to' => $defaultMethod->id];
+                            $methodId = $defaultMethod->id;
+                        } else {
+                            $skippedPayments[] = ['reason' => 'unknown_payment_method', 'payload' => $payment];
+                            continue;
+                        }
+                    }
+
+                    $paymentDate = $payment['payment_date'] ?? $defaultPaymentDate;
+
+                    Payment::create([
+                        'sale_id' => $sale->id,
+                        'shift_id' =>  $shiftId,
+                        'payment_method_id' => $methodId,
+                        'amount' => $amount,
+                        'payment_date' => $paymentDate,
+                        'reference_number' => $payment['reference_number'] ?? null,
+                        'notes' => $payment['notes'] ?? null,
+                        'status' => 'completed',
+                    ]);
+                    $persistedPaymentCount++;
+                }
+            }
+
+            // Align paid_amount / payment_status with persisted payments
+            if ($persistedPaymentCount > 0) {
+                $sale->refresh();
+                $sale->updatePaymentStatus();
+                if (! $isDeposit && $sale->isFullyPaid()) {
+                    $sale->status = 'completed';
+                    $sale->save();
+                }
+
+                $amountPaid = $sale->payments->sum('amount');
+                $sale->paid_amount = $amountPaid;
+                $sale->save();
+            }
+
+            // Log sale creation
+            ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', $sale->version ?? 1, [], $deviceId, $userId, $businessId);
+
+            // If any payments were skipped or mapped, log those details against the sale for traceability
+            if (! empty($skippedPayments) || ! empty($mappedPayments)) {
+                $sale->version = (($sale->version ?? 0) + 1);
+                $sale->save();
+                ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'updated', $sale->version, [
+                    'skipped_payments' => $skippedPayments,
+                    'mapped_payments' => $mappedPayments,
+                ], $deviceId, $userId, $businessId);
+            }
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            // Re-throw so caller can record conflict/rejection; sale won't be partially persisted
+            throw $e;
         }
 
         // Log change
