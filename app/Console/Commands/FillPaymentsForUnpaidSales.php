@@ -8,6 +8,7 @@ use App\Models\Sale;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use App\Models\ChangeLog;
 
 class FillPaymentsForUnpaidSales extends Command
 {
@@ -108,10 +109,45 @@ class FillPaymentsForUnpaidSales extends Command
                 // Persist corrected totals before creating payment
                 DB::beginTransaction();
                 try {
+                    // capture old values for audit
+                    $oldTotals = [
+                        'subtotal' => $sale->subtotal,
+                        'tax_amount' => $sale->tax_amount,
+                        'total_amount' => $sale->total_amount,
+                    ];
+
+                    // bump version
+                    $newVersion = ((int) ($sale->version ?? 0)) + 1;
+
                     $sale->subtotal = $itemsSubtotal;
                     $sale->tax_amount = $itemsTax;
                     $sale->total_amount = $computedTotal;
+                    $sale->version = $newVersion;
                     $sale->save();
+
+                    // log change to change_logs table
+                    $changes = [];
+                    foreach ($oldTotals as $k => $old) {
+                        $new = $sale->{$k};
+                        if ((string) $old !== (string) $new) {
+                            $changes[$k] = ['old' => $old, 'new' => $new];
+                        }
+                    }
+
+                    if (! empty($changes)) {
+                        ChangeLog::logChange(
+                            'sales',
+                            $sale->id,
+                            $sale->client_uuid ?? null,
+                            'updated',
+                            $newVersion,
+                            $changes,
+                            null,
+                            null,
+                            $sale->business_id
+                        );
+                    }
+
                     DB::commit();
                 } catch (\Exception $e) {
                     DB::rollBack();
@@ -156,7 +192,7 @@ class FillPaymentsForUnpaidSales extends Command
 
             DB::beginTransaction();
             try {
-                Payment::create([
+                $payment = Payment::create([
                     'sale_id' => $sale->id,
                     'shift_id' => null,
                     'payment_method_id' => $paymentMethod->id,
@@ -167,6 +203,24 @@ class FillPaymentsForUnpaidSales extends Command
                     'notes' => 'Auto-generated payment to clear unpaid sale',
                 ]);
 
+                // log created payment to change_logs for sync
+                try {
+                    ChangeLog::logChange(
+                        'payments',
+                        $payment->id,
+                        null,
+                        'created',
+                        1,
+                        $payment->toArray(),
+                        null,
+                        null,
+                        $sale->business_id
+                    );
+                } catch (\Exception $__e) {
+                    // non-fatal: log and continue
+                    $this->warn("Failed to write change log for payment {$payment->id}: " . $__e->getMessage());
+                }
+
                 // Recalculate payment status and paid amount
                 $sale->updatePaymentStatus();
 
@@ -174,6 +228,32 @@ class FillPaymentsForUnpaidSales extends Command
                 if ($sale->isFullyPaid() && $sale->status === 'pending') {
                     $sale->status = 'completed';
                     $sale->save();
+                }
+
+                // log sale payment/status update
+                try {
+                    $saleChanges = [
+                        'paid_amount' => (float) $sale->paid_amount,
+                        'payment_status' => $sale->payment_status,
+                        'status' => $sale->status,
+                        'version' => ($sale->version ?? 0) + 1,
+                    ];
+                    $sale->version = $saleChanges['version'];
+                    $sale->save();
+
+                    ChangeLog::logChange(
+                        'sales',
+                        $sale->id,
+                        $sale->client_uuid ?? null,
+                        'updated',
+                        $sale->version,
+                        $saleChanges,
+                        null,
+                        null,
+                        $sale->business_id
+                    );
+                } catch (\Exception $__e) {
+                    $this->warn("Failed to write change log for sale {$sale->id}: " . $__e->getMessage());
                 }
 
                 DB::commit();
