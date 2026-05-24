@@ -129,7 +129,7 @@ class Sale extends Model
 
     public function scopeDateRange($query, $startDate, $endDate)
     {
-        return $query->whereBetween('sale_date', [$startDate, $endDate]);
+        return $query->whereBetween('created_at', [$startDate, $endDate]);
     }
 
     // Helper methods
