@@ -23,24 +23,26 @@ class TieredPricingService
 
         $costPerUnit = (float) $branchProduct->getEffectiveCostPrice();
 
-        // 1) Exact pack match: quantity equals a unit's multiplier
-        $qtyInt = (int) round($quantity);
-        $unitPriceRow = $branchProduct->unitPrices
-            ->first(fn ($up) => (int) $up->productUnit->quantity_multiplier === $qtyInt
-                && ($up->productUnit->min_quantity === null || $qtyInt >= $up->productUnit->min_quantity));
+        // 1) Exact pack match: quantity equals a unit's multiplier (integer qty only)
+        if (fmod($quantity, 1.0) === 0.0) {
+            $qtyInt = (int) $quantity;
+            $unitPriceRow = $branchProduct->unitPrices
+                ->first(fn ($up) => (int) $up->productUnit->quantity_multiplier === $qtyInt
+                    && ($up->productUnit->min_quantity === null || $qtyInt >= $up->productUnit->min_quantity));
 
-        if ($unitPriceRow) {
+            if ($unitPriceRow) {
             $multiplier = (int) $unitPriceRow->productUnit->quantity_multiplier;
             $unitPrice = (float) $unitPriceRow->selling_price / $multiplier;
 
-            return [
-                'unit_price' => round($unitPrice, 2),
-                'total' => round($unitPrice * $quantity, 2),
-                'tier_type' => 'pack',
-                'product_unit_id' => $unitPriceRow->product_unit_id,
-                'quantity_tier_id' => null,
-                'cost_per_unit' => $costPerUnit,
-            ];
+                return [
+                    'unit_price' => round($unitPrice, 2),
+                    'total' => round($unitPrice * $quantity, 2),
+                    'tier_type' => 'pack',
+                    'product_unit_id' => $unitPriceRow->product_unit_id,
+                    'quantity_tier_id' => null,
+                    'cost_per_unit' => $costPerUnit,
+                ];
+            }
         }
 
         // 2) Quantity range tier

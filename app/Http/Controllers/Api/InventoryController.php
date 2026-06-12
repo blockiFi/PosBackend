@@ -10,6 +10,8 @@ use App\Models\Product;
 use App\Models\ProductBatch;
 use App\Models\Supplier;
 use App\Services\InventoryBatchService;
+use App\Support\BusinessQuantityPolicy;
+use App\Support\Quantity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -164,14 +166,16 @@ class InventoryController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
             'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
             'type' => ['required', 'in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial'],
-            'quantity' => ['required', 'integer', 'not_in:0'],
-            'shelf_quantity' => ['nullable', 'integer', 'min:0'],
-            'store_quantity' => ['nullable', 'integer', 'min:0'],
+            'quantity' => array_merge($stockQtyRules, ['not_in:0']),
+            'shelf_quantity' => ['nullable', 'numeric', 'min:0'],
+            'store_quantity' => ['nullable', 'numeric', 'min:0'],
             'location' => ['nullable', 'in:shelf,store,both'],
             'unit_cost' => ['nullable', 'numeric', 'min:0'],
             'reference_number' => ['nullable', 'string', 'max:255'],
@@ -193,6 +197,23 @@ class InventoryController extends Controller
                 'message' => 'Validation error',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        $data = $validator->validated();
+        $data['quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['quantity']);
+        $minStockIn = BusinessQuantityPolicy::minStockQuantity($business);
+        if (in_array($data['type'], ['purchase', 'initial', 'return', 'transfer_in'], true)
+            && $data['quantity'] < $minStockIn) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => ['quantity' => ["Quantity must be at least {$minStockIn} for stock-in transactions."]],
+            ], 422);
+        }
+        if (isset($data['shelf_quantity'])) {
+            $data['shelf_quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['shelf_quantity']);
+        }
+        if (isset($data['store_quantity'])) {
+            $data['store_quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['store_quantity']);
         }
 
         // Verify user has access to the branch
@@ -578,8 +599,9 @@ class InventoryController extends Controller
     /**
      * Normalize quantity based on transaction type
      */
-    private function normalizeQuantity(string $type, int $quantity): int
+    private function normalizeQuantity(string $type, float $quantity): float
     {
+        $quantity = \App\Support\Quantity::normalize($quantity);
         $stockInTypes = ['purchase', 'transfer_in', 'return', 'initial'];
         $stockOutTypes = ['sale', 'transfer_out', 'damage'];
 

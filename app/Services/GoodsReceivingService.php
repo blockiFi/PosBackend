@@ -9,6 +9,7 @@ use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
 use App\Models\SupplierProductPrice;
+use App\Support\Quantity;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -69,6 +70,19 @@ class GoodsReceivingService
         }
 
         $attributes['goods_received_note_id'] = $grn->id;
+
+        if (isset($attributes['quantity_received'])) {
+            $attributes['quantity_received'] = Quantity::normalize((float) $attributes['quantity_received']);
+        }
+        if (isset($attributes['quantity_accepted'])) {
+            $attributes['quantity_accepted'] = Quantity::normalize((float) $attributes['quantity_accepted']);
+        }
+        if (isset($attributes['quantity_rejected'])) {
+            $attributes['quantity_rejected'] = Quantity::normalize((float) $attributes['quantity_rejected']);
+        }
+        if (isset($attributes['quantity_ordered'])) {
+            $attributes['quantity_ordered'] = Quantity::normalize((float) $attributes['quantity_ordered']);
+        }
 
         return $line ? tap($line)->update($attributes) : GoodsReceivedNoteLine::create($attributes);
     }
@@ -210,8 +224,8 @@ class GoodsReceivingService
             return;
         }
 
-        $qtyAccepted = (float) ($line->quantity_accepted ?? 0);
-        if ($qtyAccepted <= 0) {
+        $qtyAccepted = Quantity::normalize((float) ($line->quantity_accepted ?? 0));
+        if (! Quantity::isPositive($qtyAccepted)) {
             // Nothing to post.
             return;
         }
@@ -222,18 +236,16 @@ class GoodsReceivingService
             // No stock tracking; still record transaction for audit.
         }
 
-        $qtyInt = (int) round($qtyAccepted);
-
         $isShelf = $line->storage_location === 'shelf';
-        $shelfDelta = $isShelf ? $qtyInt : 0;
-        $storeDelta = $isShelf ? 0 : $qtyInt;
+        $shelfDelta = $isShelf ? $qtyAccepted : 0.0;
+        $storeDelta = $isShelf ? 0.0 : $qtyAccepted;
 
-        $quantityBefore = (int) ($branchProduct->stock_quantity ?? 0);
-        $shelfBefore = (int) ($branchProduct->shelf_quantity ?? 0);
-        $storeBefore = (int) ($branchProduct->store_quantity ?? 0);
+        $quantityBefore = (float) ($branchProduct->stock_quantity ?? 0);
+        $shelfBefore = (float) ($branchProduct->shelf_quantity ?? 0);
+        $storeBefore = (float) ($branchProduct->store_quantity ?? 0);
 
         $unitCost = $line->unit_cost !== null ? (float) $line->unit_cost : null;
-        $totalCost = $unitCost !== null ? $unitCost * $qtyInt : null;
+        $totalCost = $unitCost !== null ? $unitCost * $qtyAccepted : null;
 
         $tx = InventoryTransaction::create([
             'uuid' => (string) Str::uuid(),
@@ -242,15 +254,15 @@ class GoodsReceivingService
             'product_id' => $line->product_id,
             'user_id' => $userId,
             'type' => 'purchase',
-            'quantity' => $qtyInt,
+            'quantity' => $qtyAccepted,
             'shelf_quantity' => $shelfDelta,
             'store_quantity' => $storeDelta,
             'quantity_before' => $quantityBefore,
             'shelf_quantity_before' => $shelfBefore,
             'store_quantity_before' => $storeBefore,
-            'quantity_after' => $quantityBefore + $qtyInt,
-            'shelf_quantity_after' => $shelfBefore + $shelfDelta,
-            'store_quantity_after' => $storeBefore + $storeDelta,
+            'quantity_after' => Quantity::normalize($quantityBefore + $qtyAccepted),
+            'shelf_quantity_after' => Quantity::normalize($shelfBefore + $shelfDelta),
+            'store_quantity_after' => Quantity::normalize($storeBefore + $storeDelta),
             'unit_cost' => $unitCost,
             'total_cost' => $totalCost,
             'reference_number' => $grn->grn_number,
@@ -266,7 +278,7 @@ class GoodsReceivingService
             productId: (int) $line->product_id,
             branchId: (int) $grn->branch_id,
             businessId: (int) $grn->business_id,
-            quantity: $qtyInt,
+            quantity: $qtyAccepted,
             transaction: $tx,
             existingBatchId: null,
             batchAttributes: [
@@ -286,17 +298,17 @@ class GoodsReceivingService
 
         // Update stock quantities
         if ($isShelf) {
-            $branchProduct->updateShelfQuantity($qtyInt, 'add');
+            $branchProduct->updateShelfQuantity($qtyAccepted, 'add');
         } else {
-            $branchProduct->updateStoreQuantity($qtyInt, 'add');
+            $branchProduct->updateStoreQuantity($qtyAccepted, 'add');
         }
 
         if ($unitCost !== null) {
             // Phase 3 costing: moving average
             $oldQty = max(0, $quantityBefore);
             $oldAvg = (float) ($branchProduct->avg_cost_price ?? $branchProduct->cost_price ?? 0);
-            $newQty = $oldQty + $qtyInt;
-            $newAvg = $newQty > 0 ? (($oldQty * $oldAvg) + ($qtyInt * $unitCost)) / $newQty : $unitCost;
+            $newQty = $oldQty + $qtyAccepted;
+            $newAvg = $newQty > 0 ? (($oldQty * $oldAvg) + ($qtyAccepted * $unitCost)) / $newQty : $unitCost;
 
             $branchProduct->update([
                 'cost_price' => $unitCost, // still keep "latest cost" for convenience

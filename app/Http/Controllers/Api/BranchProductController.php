@@ -14,6 +14,7 @@ use App\Models\ProductUnit;
 use App\Models\QuickSale;
 use App\Models\User;
 use App\Services\TieredPricingService;
+use App\Support\BusinessQuantityPolicy;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -176,13 +177,13 @@ class BranchProductController extends Controller
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_type' => ['nullable', 'in:fixed,percentage'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'stock_quantity' => ['nullable', 'integer', 'min:0'],
-            'shelf_quantity' => ['nullable', 'integer', 'min:0'],
-            'store_quantity' => ['nullable', 'integer', 'min:0'],
+            'stock_quantity' => ['nullable', 'numeric', 'min:0'],
+            'shelf_quantity' => ['nullable', 'numeric', 'min:0'],
+            'store_quantity' => ['nullable', 'numeric', 'min:0'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'allow_backorder' => ['nullable', 'boolean'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
-            'reorder_quantity' => ['nullable', 'integer', 'min:0'],
+            'reorder_quantity' => ['nullable', 'numeric', 'min:0'],
             'is_available' => ['nullable', 'boolean'],
             'is_featured' => ['nullable', 'boolean'],
             'display_order' => ['nullable', 'integer'],
@@ -570,13 +571,13 @@ class BranchProductController extends Controller
             'discount_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_type' => ['nullable', 'in:fixed,percentage'],
             'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'stock_quantity' => ['nullable', 'integer', 'min:0'],
-            'shelf_quantity' => ['nullable', 'integer', 'min:0'],
-            'store_quantity' => ['nullable', 'integer', 'min:0'],
+            'stock_quantity' => ['nullable', 'numeric', 'min:0'],
+            'shelf_quantity' => ['nullable', 'numeric', 'min:0'],
+            'store_quantity' => ['nullable', 'numeric', 'min:0'],
             'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
             'allow_backorder' => ['nullable', 'boolean'],
             'reorder_point' => ['nullable', 'integer', 'min:0'],
-            'reorder_quantity' => ['nullable', 'integer', 'min:0'],
+            'reorder_quantity' => ['nullable', 'numeric', 'min:0'],
             'is_available' => ['nullable', 'boolean'],
             'is_featured' => ['nullable', 'boolean'],
             'display_order' => ['nullable', 'integer'],
@@ -783,9 +784,11 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
-            'quantity' => ['required', 'integer'],
+            'quantity' => $stockQtyRules,
             'operation' => ['required', 'in:add,subtract,set'],
         ]);
 
@@ -795,6 +798,8 @@ class BranchProductController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
+        $data['quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['quantity']);
 
         $previousQuantity = $branchProduct->stock_quantity;
         $branchProduct->updateStock($data['quantity'], $data['operation']);
@@ -1250,9 +1255,11 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
-            'quantity' => ['required', 'integer', 'min:1'],
+            'quantity' => $stockQtyRules,
         ]);
 
         if ($validator->fails()) {
@@ -1261,6 +1268,8 @@ class BranchProductController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
+        $data['quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['quantity']);
 
         if ($data['quantity'] > $branchProduct->store_quantity) {
             return response()->json([
@@ -1332,9 +1341,11 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
-            'quantity' => ['required', 'integer', 'min:1'],
+            'quantity' => $stockQtyRules,
         ]);
 
         if ($validator->fails()) {
@@ -1343,6 +1354,8 @@ class BranchProductController extends Controller
                 'errors' => $validator->errors(),
             ], 422);
         }
+
+        $data['quantity'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $data['quantity']);
 
         if ($data['quantity'] > $branchProduct->shelf_quantity) {
             return response()->json([

@@ -45,12 +45,12 @@ class BranchProduct extends Model
         'compare_price' => 'decimal:2',
         'tax_rate' => 'decimal:2',
         'discount_amount' => 'decimal:2',
-        'stock_quantity' => 'integer',
-        'shelf_quantity' => 'integer',
-        'store_quantity' => 'integer',
+        'stock_quantity' => 'decimal:3',
+        'shelf_quantity' => 'decimal:3',
+        'store_quantity' => 'decimal:3',
         'low_stock_threshold' => 'integer',
         'reorder_point' => 'integer',
-        'reorder_quantity' => 'integer',
+        'reorder_quantity' => 'decimal:3',
         'is_available' => 'boolean',
         'is_featured' => 'boolean',
         'allow_backorder' => 'boolean',
@@ -231,16 +231,18 @@ class BranchProduct extends Model
     /**
      * Update stock quantity
      */
-    public function updateStock(int $quantity, string $operation = 'add'): bool
+    public function updateStock(float $quantity, string $operation = 'add'): bool
     {
         if ($this->product->stock_tracking === 'none') {
             return false;
         }
 
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
         if ($operation === 'add') {
-            $this->stock_quantity += $quantity;
+            $this->stock_quantity = \App\Support\Quantity::normalize((float) $this->stock_quantity + $quantity);
         } elseif ($operation === 'subtract') {
-            $this->stock_quantity -= $quantity;
+            $this->stock_quantity = \App\Support\Quantity::normalize((float) $this->stock_quantity - $quantity);
         } elseif ($operation === 'set') {
             $this->stock_quantity = $quantity;
         }
@@ -251,24 +253,23 @@ class BranchProduct extends Model
     /**
      * Update shelf quantity
      */
-    public function updateShelfQuantity(int $quantity, string $operation = 'add'): bool
+    public function updateShelfQuantity(float $quantity, string $operation = 'add'): bool
     {
         if ($this->product->stock_tracking === 'none') {
             return false;
         }
 
-        $oldShelf = $this->shelf_quantity;
+        $quantity = \App\Support\Quantity::normalize($quantity);
 
         if ($operation === 'add') {
-            $this->shelf_quantity += $quantity;
+            $this->shelf_quantity = \App\Support\Quantity::normalize((float) $this->shelf_quantity + $quantity);
         } elseif ($operation === 'subtract') {
-            $this->shelf_quantity = max(0, $this->shelf_quantity - $quantity);
+            $this->shelf_quantity = max(0, \App\Support\Quantity::normalize((float) $this->shelf_quantity - $quantity));
         } elseif ($operation === 'set') {
             $this->shelf_quantity = max(0, $quantity);
         }
 
-        // Update total stock quantity
-        $this->stock_quantity = $this->shelf_quantity + $this->store_quantity;
+        $this->stock_quantity = \App\Support\Quantity::normalize((float) $this->shelf_quantity + (float) $this->store_quantity);
 
         return $this->save();
     }
@@ -276,22 +277,23 @@ class BranchProduct extends Model
     /**
      * Update store quantity
      */
-    public function updateStoreQuantity(int $quantity, string $operation = 'add'): bool
+    public function updateStoreQuantity(float $quantity, string $operation = 'add'): bool
     {
         if ($this->product->stock_tracking === 'none') {
             return false;
         }
 
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
         if ($operation === 'add') {
-            $this->store_quantity += $quantity;
+            $this->store_quantity = \App\Support\Quantity::normalize((float) $this->store_quantity + $quantity);
         } elseif ($operation === 'subtract') {
-            $this->store_quantity = max(0, $this->store_quantity - $quantity);
+            $this->store_quantity = max(0, \App\Support\Quantity::normalize((float) $this->store_quantity - $quantity));
         } elseif ($operation === 'set') {
             $this->store_quantity = max(0, $quantity);
         }
 
-        // Update total stock quantity
-        $this->stock_quantity = $this->shelf_quantity + $this->store_quantity;
+        $this->stock_quantity = \App\Support\Quantity::normalize((float) $this->shelf_quantity + (float) $this->store_quantity);
 
         return $this->save();
     }
@@ -339,9 +341,9 @@ class BranchProduct extends Model
     /**
      * Get total stock quantity (shelf + store)
      */
-    public function getTotalStockQuantity(): int
+    public function getTotalStockQuantity(): float
     {
-        return $this->shelf_quantity + $this->store_quantity;
+        return (float) $this->shelf_quantity + (float) $this->store_quantity;
     }
 
     /**
@@ -349,43 +351,45 @@ class BranchProduct extends Model
      * Keeps stock_quantity = shelf_quantity + store_quantity. Handles legacy data
      * where only stock_quantity was set (shelf+store 0).
      *
-     * @return array{stock_tracked: bool, from_shelf: int, from_store: int, quantity_before: int, quantity_after: int, shelf_quantity_before: int, store_quantity_before: int, shelf_quantity_after: int, store_quantity_after: int}
+     * @return array{stock_tracked: bool, from_shelf: float, from_store: float, quantity_before: float, quantity_after: float, shelf_quantity_before: float, store_quantity_before: float, shelf_quantity_after: float, store_quantity_after: float}
      */
-    public function deductForSale(int $quantity): array
+    public function deductForSale(float $quantity): array
     {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
         $zeroResult = [
             'stock_tracked' => false,
-            'from_shelf' => 0,
-            'from_store' => 0,
-            'quantity_before' => $this->stock_quantity,
-            'quantity_after' => $this->stock_quantity,
-            'shelf_quantity_before' => $this->shelf_quantity,
-            'store_quantity_before' => $this->store_quantity,
-            'shelf_quantity_after' => $this->shelf_quantity,
-            'store_quantity_after' => $this->store_quantity,
+            'from_shelf' => 0.0,
+            'from_store' => 0.0,
+            'quantity_before' => (float) $this->stock_quantity,
+            'quantity_after' => (float) $this->stock_quantity,
+            'shelf_quantity_before' => (float) $this->shelf_quantity,
+            'store_quantity_before' => (float) $this->store_quantity,
+            'shelf_quantity_after' => (float) $this->shelf_quantity,
+            'store_quantity_after' => (float) $this->store_quantity,
         ];
 
         // if ($this->product->stock_tracking === 'none') {
         //     return $zeroResult;
         // }
 
-        $shelfBefore = (int) $this->shelf_quantity;
-        $storeBefore = (int) $this->store_quantity;
+        $shelfBefore = (float) $this->shelf_quantity;
+        $storeBefore = (float) $this->store_quantity;
         $totalAvailable = $shelfBefore + $storeBefore;
 
-        if ($totalAvailable === 0 && $this->stock_quantity > 0) {
+        if (\App\Support\Quantity::isZero($totalAvailable) && (float) $this->stock_quantity > 0) {
             $this->store_quantity = $this->stock_quantity;
-            $storeBefore = (int) $this->stock_quantity;
+            $storeBefore = (float) $this->stock_quantity;
             $totalAvailable = $storeBefore;
         }
 
         $toDeduct = min($quantity, $totalAvailable);
         $fromShelf = min($toDeduct, $shelfBefore);
-        $fromStore = $toDeduct - $fromShelf;
+        $fromStore = \App\Support\Quantity::normalize($toDeduct - $fromShelf);
 
-        $this->shelf_quantity = max(0, $shelfBefore - $fromShelf);
-        $this->store_quantity = max(0, $storeBefore - $fromStore);
-        $this->stock_quantity = $this->shelf_quantity + $this->store_quantity;
+        $this->shelf_quantity = max(0, \App\Support\Quantity::normalize($shelfBefore - $fromShelf));
+        $this->store_quantity = max(0, \App\Support\Quantity::normalize($storeBefore - $fromStore));
+        $this->stock_quantity = \App\Support\Quantity::normalize((float) $this->shelf_quantity + (float) $this->store_quantity);
         $this->save();
 
         return [

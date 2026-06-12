@@ -20,7 +20,7 @@ class AnalyticsRollupService
             DB::table('analytics_daily_summaries')
                 ->where('business_id', $businessId)
                 ->where('branch_id', $branchId)
-                ->where('sale_date', $saleDateYmd)
+                ->where('created_at', $saleDateYmd)
                 ->delete();
 
             $rev = DB::table('sales')

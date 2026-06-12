@@ -20,12 +20,14 @@ class InventoryBatchService
     public function allocateStockOut(
         int $productId,
         int $branchId,
-        int $quantity,
+        float $quantity,
         InventoryTransaction $parentTransaction,
         array $context = [],
         bool $failOnInsufficientBatches = true
     ): void {
-        if ($quantity <= 0) {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
+        if (! \App\Support\Quantity::isPositive($quantity)) {
             return;
         }
 
@@ -93,12 +95,14 @@ class InventoryBatchService
         int $productId,
         int $branchId,
         int $businessId,
-        int $quantity,
+        float $quantity,
         InventoryTransaction $transaction,
         ?int $existingBatchId = null,
         array $batchAttributes = []
     ): ?ProductBatch {
-        if ($quantity <= 0) {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
+        if (! \App\Support\Quantity::isPositive($quantity)) {
             return null;
         }
 

@@ -36,12 +36,14 @@ class BusinessSettingsController extends Controller
         $currency = $business->currency ?? 'NGN';
         $symbol = $settings['currency_symbol'] ?? $this->defaultSymbol($currency);
         $depositStockMode = $this->normalizeDepositStockMode($settings['deposit_stock_mode'] ?? null);
+        $allowDecimalQuantities = (bool) ($settings['allow_decimal_quantities'] ?? false);
 
         return response()->json([
             'data' => [
                 'currency' => $currency,
                 'currency_symbol' => $symbol,
                 'deposit_stock_mode' => $depositStockMode,
+                'allow_decimal_quantities' => $allowDecimalQuantities,
             ],
         ]);
     }
@@ -73,6 +75,7 @@ class BusinessSettingsController extends Controller
             'currency' => ['sometimes', 'required', 'string', 'size:3'],
             'currency_symbol' => ['sometimes', 'required', 'string', 'max:10'],
             'deposit_stock_mode' => ['sometimes', 'required', 'string', 'in:'.implode(',', self::DEPOSIT_STOCK_MODES)],
+            'allow_decimal_quantities' => ['sometimes', 'required', 'boolean'],
         ]);
 
         if ($validator->fails()) {
@@ -99,6 +102,10 @@ class BusinessSettingsController extends Controller
             $settings['deposit_stock_mode'] = $data['deposit_stock_mode'];
         }
 
+        if (array_key_exists('allow_decimal_quantities', $data)) {
+            $settings['allow_decimal_quantities'] = (bool) $data['allow_decimal_quantities'];
+        }
+
         $business->settings = $settings;
         $business->save();
 
@@ -108,6 +115,7 @@ class BusinessSettingsController extends Controller
                 'currency' => $business->currency ?? 'NGN',
                 'currency_symbol' => $settings['currency_symbol'] ?? $this->defaultSymbol($business->currency ?? 'NGN'),
                 'deposit_stock_mode' => $this->normalizeDepositStockMode($settings['deposit_stock_mode'] ?? null),
+                'allow_decimal_quantities' => (bool) ($settings['allow_decimal_quantities'] ?? false),
             ],
         ]);
     }

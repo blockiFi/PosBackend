@@ -7,6 +7,7 @@ use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\InventoryTransaction;
 use App\Models\Product;
+use App\Models\ProductBatch;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
@@ -173,6 +174,78 @@ class InventoryRoutesTest extends TestCase
         ]);
     }
 
+    public function test_can_create_fractional_purchase_transaction(): void
+    {
+        $this->enableDecimalQuantities($this->business);
+        $this->role->givePermissionTo('manage inventory');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        BranchProduct::where('branch_id', $this->branch->id)
+            ->where('product_id', $this->product->id)
+            ->update(['stock_quantity' => 0, 'shelf_quantity' => 0, 'store_quantity' => 0]);
+
+        $data = [
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'type' => 'purchase',
+            'quantity' => 10.5,
+            'unit_cost' => 10.50,
+            'batch_number' => 'BATCH-FRAC-001',
+            'manufacturing_date' => '2024-01-01',
+            'expiry_date' => '2025-01-01',
+            'reference_number' => 'PO-FRAC',
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
+
+        $response->assertStatus(201);
+        $this->assertEqualsWithDelta(10.5, (float) $response->json('data.transaction.quantity'), 0.001);
+
+        $this->assertDatabaseHas('branch_products', [
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'stock_quantity' => 10.5,
+        ]);
+
+        $batch = ProductBatch::where('product_id', $this->product->id)->first();
+        $this->assertNotNull($batch);
+        $this->assertEqualsWithDelta(10.5, (float) $batch->current_quantity, 0.001);
+    }
+
+    public function test_rejects_fractional_purchase_when_decimal_quantities_disabled(): void
+    {
+        $this->role->givePermissionTo('manage inventory');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $data = [
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'type' => 'purchase',
+            'quantity' => 10.5,
+            'unit_cost' => 10.50,
+            'batch_number' => 'BATCH-INT-001',
+            'manufacturing_date' => '2024-01-01',
+            'expiry_date' => '2025-01-01',
+            'reference_number' => 'PO-INT',
+        ];
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
+
+        $response->assertStatus(422);
+
+        $data['quantity'] = 10;
+        $data['batch_number'] = 'BATCH-INT-002';
+
+        $integerResponse = $this->actingAs($this->user, 'sanctum')
+            ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
+
+        $integerResponse->assertStatus(201);
+    }
+
     public function test_cannot_create_purchase_without_batch_tracking_fields(): void
     {
         $this->role->givePermissionTo('manage inventory');
@@ -272,7 +345,7 @@ class InventoryRoutesTest extends TestCase
             ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
         $response->assertStatus(422)
-            ->assertJsonFragment(['message' => 'Insufficient stock. Current stock: 10']);
+            ->assertJsonFragment(['message' => 'Insufficient stock. Current stock: 10.000']);
     }
 
     public function test_can_create_transfer_between_branches(): void

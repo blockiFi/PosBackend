@@ -13,6 +13,7 @@ use App\Models\ProductBatch;
 use App\Models\ProductCategory;
 use App\Models\QuickSale;
 use App\Models\Sale;
+use App\Models\SalesShift;
 use App\Models\SyncSession;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -147,6 +148,9 @@ class SyncControllerTest extends TestCase
             ->assertJsonStructure([
                 'session_id',
                 'server_timestamp',
+                'business_settings' => [
+                    'allow_decimal_quantities',
+                ],
                 'data' => [
                     'products',
                     'categories',
@@ -163,6 +167,7 @@ class SyncControllerTest extends TestCase
         $this->assertNotEmpty($data['products']);
         $this->assertNotEmpty($data['categories']);
         $this->assertNotEmpty($data['payment_methods']);
+        $this->assertFalse($response->json('business_settings.allow_decimal_quantities'));
     }
 
     /** @test */
@@ -218,6 +223,7 @@ class SyncControllerTest extends TestCase
     public function it_can_push_offline_sales()
     {
         $device = $this->registerDevice();
+        $shift = $this->openShift();
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
         ]);
@@ -243,6 +249,7 @@ class SyncControllerTest extends TestCase
                         'client_uuid' => $clientUuid,
                         'sale_number' => $saleNumber,
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 100.00,
@@ -305,7 +312,92 @@ class SyncControllerTest extends TestCase
             'quantity' => -2,
         ]);
         $branchProduct->refresh();
-        $this->assertEquals(8, $branchProduct->stock_quantity, 'Stock should be decremented by 2');
+        $this->assertEqualsWithDelta(8.0, (float) $branchProduct->stock_quantity, 0.001, 'Stock should be decremented by 2');
+    }
+
+    /** @test */
+    public function it_deducts_fractional_quantity_on_offline_sale_push()
+    {
+        $this->enableDecimalQuantities($this->business);
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 20,
+            'shelf_quantity' => 20,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+
+        $clientUuid = Str::uuid()->toString();
+        $saleNumber = 'SALE-FRAC-'.time();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => $clientUuid,
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
+                        'sale_type' => 'pos',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 525.00,
+                        'tax_amount' => 0,
+                        'total_amount' => 525.00,
+                        'payment_status' => 'paid',
+                        'status' => 'completed',
+                        'version' => 1,
+                        'origin' => 'offline',
+                        'items' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'product_id' => $product->id,
+                                'quantity' => 10.5,
+                                'unit_price' => 50.00,
+                                'subtotal' => 525.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 525.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, $response->json('results.sales.accepted'));
+
+        $this->assertDatabaseHas('sale_items', [
+            'product_id' => $product->id,
+            'quantity' => 10.5,
+        ]);
+
+        $this->assertDatabaseHas('inventory_transactions', [
+            'reference_number' => $saleNumber,
+            'type' => 'sale',
+            'quantity' => -10.5,
+        ]);
+
+        $branchProduct->refresh();
+        $this->assertEqualsWithDelta(9.5, (float) $branchProduct->stock_quantity, 0.001, 'Stock should be decremented by 10.5');
     }
 
     /** @test */
@@ -315,6 +407,7 @@ class SyncControllerTest extends TestCase
         $this->business->save();
 
         $device = $this->registerDevice();
+        $shift = $this->openShift();
 
         $customer = Customer::factory()->create([
             'business_id' => $this->business->id,
@@ -346,6 +439,7 @@ class SyncControllerTest extends TestCase
                         'client_uuid' => $clientUuid,
                         'sale_number' => $saleNumber,
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'customer_id' => $customer->id,
                         'sale_type' => 'deposit',
                         'sale_date' => now()->toIso8601String(),
@@ -411,6 +505,7 @@ class SyncControllerTest extends TestCase
     public function it_rejects_push_sale_when_product_has_no_branch_product()
     {
         $device = $this->registerDevice();
+        $shift = $this->openShift();
         $product = Product::factory()->create([
             'business_id' => $this->business->id,
         ]);
@@ -428,6 +523,7 @@ class SyncControllerTest extends TestCase
                         'client_uuid' => $clientUuid,
                         'sale_number' => $saleNumber,
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 100.00,
@@ -466,6 +562,7 @@ class SyncControllerTest extends TestCase
     public function it_deducts_from_active_quick_sale_batch_when_pushing_sale()
     {
         $device = $this->registerDevice();
+        $shift = $this->openShift();
         $product = Product::factory()->create(['business_id' => $this->business->id]);
         $branchProduct = BranchProduct::create([
             'branch_id' => $this->branch->id,
@@ -509,6 +606,7 @@ class SyncControllerTest extends TestCase
                         'client_uuid' => $clientUuid,
                         'sale_number' => $saleNumber,
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 135.00,
@@ -700,6 +798,7 @@ class SyncControllerTest extends TestCase
     public function it_tracks_sync_session_statistics()
     {
         $device = $this->registerDevice();
+        $shift = $this->openShift();
         $product = Product::factory()->create(['business_id' => $this->business->id]);
         BranchProduct::create([
             'branch_id' => $this->branch->id,
@@ -716,6 +815,7 @@ class SyncControllerTest extends TestCase
                         'client_uuid' => Str::uuid()->toString(),
                         'sale_number' => 'SALE-'.time(),
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 100.00,
@@ -828,6 +928,19 @@ class SyncControllerTest extends TestCase
             'os' => 'Test OS',
             'app_version' => '1.0.0',
             'status' => 'active',
+        ]);
+    }
+
+    protected function openShift(): SalesShift
+    {
+        return SalesShift::create([
+            'shift_number' => 'SHIFT-'.Str::random(8),
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now(),
+            'opening_balance' => 0,
+            'status' => 'open',
         ]);
     }
 

@@ -16,6 +16,8 @@ use App\Models\SaleItem;
 use App\Models\SalesShift;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
+use App\Support\BusinessQuantityPolicy;
+use App\Support\Quantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -124,7 +126,7 @@ class SaleController extends Controller
             'notes' => 'nullable|string',
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|numeric|min:0.01',
+            'items.*.quantity' => BusinessQuantityPolicy::saleQuantityRules($business),
             'items.*.unit_price' => 'nullable|numeric|min:0', // optional: computed from tiers unless override permission
             'items.*.batch_id' => 'nullable|exists:product_batches,id',
             'items.*.description' => 'nullable|string',
@@ -219,7 +221,7 @@ class SaleController extends Controller
             foreach ($validated['items'] as $itemData) {
                 $product = Product::findOrFail($itemData['product_id']);
                 $branchId = $validated['branch_id'];
-                $qty = (float) $itemData['quantity'];
+                $qty = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $itemData['quantity']);
 
                 $branchProduct = BranchProduct::where('branch_id', $branchId)
                     ->where('product_id', $product->id)
@@ -229,20 +231,19 @@ class SaleController extends Controller
                     throw new \Exception("Product not stocked at this branch: {$product->name}");
                 }
 
-                if (! $deferStockToCompletion && $branchProduct->stock_quantity < $qty) {
+                if (! $deferStockToCompletion && (float) $branchProduct->stock_quantity < $qty) {
                     throw new \Exception("Insufficient stock for product: {$product->name}");
                 }
 
                 $batch = null;
                 $batchId = null;
-                $qtyForBatch = (int) round($qty);
 
                 if (! $deferStockToCompletion) {
                     // Prefer quick sale batch when an active quick sale with a batch exists for this product/branch
                     $quickSale = QuickSale::getActiveQuickSaleForProduct($product->id, $branchId);
                     if ($quickSale && $quickSale->batch_id) {
                         $batch = $quickSale->batch;
-                        if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                        if ($batch && (float) $batch->current_quantity >= $qty) {
                             $batchId = $batch->id;
                         }
                     }
@@ -255,7 +256,7 @@ class SaleController extends Controller
                             ->where('branch_id', $branchId)
                             ->where('business_id', $businessId)
                             ->first();
-                        if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                        if (! $batch || (float) $batch->current_quantity < $qty) {
                             throw new \Exception("Invalid or insufficient batch quantity for product: {$product->name}");
                         }
                     }
@@ -337,15 +338,15 @@ class SaleController extends Controller
                     continue;
                 }
 
-                $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                $deductResult = $branchProduct->deductForSale($qty);
                 if (! $deductResult['stock_tracked']) {
-                    $branchProduct->decrement('stock_quantity', $qtyForBatch);
-                    $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
-                    $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                    $branchProduct->decrement('stock_quantity', $qty);
+                    $deductResult['quantity_before'] = (float) $branchProduct->stock_quantity + $qty;
+                    $deductResult['quantity_after'] = (float) $branchProduct->stock_quantity;
                 }
 
                 if ($batchId && $batch) {
-                    $batch->allocate($qtyForBatch);
+                    $batch->allocate($qty);
                 }
 
                 $invPayload = [
@@ -355,7 +356,7 @@ class SaleController extends Controller
                     'product_id' => $product->id,
                     'user_id' => $user->id,
                     'type' => 'sale',
-                    'quantity' => -$qtyForBatch,
+                    'quantity' => -$qty,
                     'quantity_before' => $deductResult['quantity_before'],
                     'quantity_after' => $deductResult['quantity_after'],
                     'unit_cost' => $branchProduct->cost_price,
@@ -376,11 +377,11 @@ class SaleController extends Controller
                 }
                 $invTransaction = InventoryTransaction::create($invPayload);
 
-                if (! $batchId && $qtyForBatch > 0) {
+                if (! $batchId && Quantity::isPositive($qty)) {
                     $this->batchService->allocateStockOut(
                         $product->id,
                         $branchId,
-                        $qtyForBatch,
+                        $qty,
                         $invTransaction,
                         ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"],
                         false
@@ -675,8 +676,8 @@ class SaleController extends Controller
                         ], 409);
                     }
 
-                    $qty = (float) $item->quantity;
-                    if ($branchProduct->stock_quantity < $qty) {
+                    $qty = Quantity::normalize((float) $item->quantity);
+                    if ((float) $branchProduct->stock_quantity < $qty) {
                         DB::rollBack();
 
                         return response()->json([
@@ -687,13 +688,11 @@ class SaleController extends Controller
                         ], 409);
                     }
 
-                    $qtyForBatch = (int) round($qty);
-
-                    $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                    $deductResult = $branchProduct->deductForSale($qty);
                     if (! $deductResult['stock_tracked']) {
-                        $branchProduct->decrement('stock_quantity', $qtyForBatch);
-                        $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
-                        $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                        $branchProduct->decrement('stock_quantity', $qty);
+                        $deductResult['quantity_before'] = (float) $branchProduct->stock_quantity + $qty;
+                        $deductResult['quantity_after'] = (float) $branchProduct->stock_quantity;
                     }
 
                     $invPayload = [
@@ -703,7 +702,7 @@ class SaleController extends Controller
                         'product_id' => $item->product_id,
                         'user_id' => $user->id,
                         'type' => 'sale',
-                        'quantity' => -$qtyForBatch,
+                        'quantity' => -$qty,
                         'quantity_before' => $deductResult['quantity_before'],
                         'quantity_after' => $deductResult['quantity_after'],
                         'unit_cost' => $branchProduct->cost_price,
@@ -722,11 +721,11 @@ class SaleController extends Controller
 
                     $invTransaction = InventoryTransaction::create($invPayload);
 
-                    if ($qtyForBatch > 0) {
+                    if (Quantity::isPositive($qty)) {
                         $this->batchService->allocateStockOut(
                             $item->product_id,
                             $sale->branch_id,
-                            $qtyForBatch,
+                            $qty,
                             $invTransaction,
                             ['reference_number' => $sale->sale_number, 'notes' => "Deposit completed: {$sale->sale_number}"],
                             false

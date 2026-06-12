@@ -263,14 +263,15 @@ $items[] = [
 
 // ---- 2c. Business Settings ----
 $items[] = [
-    'name' => '2c. Business settings (currency, deposit_stock_mode)',
-    'description' => '**Search: deposit, deposit_stock_mode, settings.** Endpoints: `GET/PUT settings/business`. `deposit_stock_mode` controls when stock moves for **deposit** sales (reserve_on_create vs deduct_on_complete). GET: any member. PUT: owner or **manage-settings**.',
+    'name' => '2c. Business settings (currency, deposit_stock_mode, allow_decimal_quantities)',
+    'description' => '**Search: deposit, deposit_stock_mode, allow_decimal_quantities, settings.** Endpoints: `GET/PUT settings/business`. `deposit_stock_mode` controls when stock moves for **deposit** sales. `allow_decimal_quantities` (default false) enables fractional qty on sales, purchases, GRN, and stock moves. GET: any member. PUT: owner or **manage-settings**.',
     'item' => [
-        req('Get Business Settings', 'GET', 'settings/business', "Returns currency (ISO 3), currency_symbol, deposit_stock_mode (reserve_on_create | deduct_on_complete).\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Update Business Settings', 'PUT', 'settings/business', "Update business-level settings.\n\n**Fields:**\n- currency: optional | string | size:3\n- currency_symbol: optional | string | max:10\n- deposit_stock_mode: optional | reserve_on_create | deduct_on_complete\n\nX-Business-Id required.", '{
+        req('Get Business Settings', 'GET', 'settings/business', "Returns currency (ISO 3), currency_symbol, deposit_stock_mode (reserve_on_create | deduct_on_complete), allow_decimal_quantities (boolean, default false).\n\nX-Business-Id required.", null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Business Settings', 'PUT', 'settings/business', "Update business-level settings.\n\n**Fields:**\n- currency: optional | string | size:3\n- currency_symbol: optional | string | max:10\n- deposit_stock_mode: optional | reserve_on_create | deduct_on_complete\n- allow_decimal_quantities: optional | boolean\n\nX-Business-Id required.", '{
   "currency": "NGN",
   "currency_symbol": "₦",
-  "deposit_stock_mode": "reserve_on_create"
+  "deposit_stock_mode": "reserve_on_create",
+  "allow_decimal_quantities": false
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
     ],
 ];
@@ -644,9 +645,9 @@ $items[] = [
 }', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Update Branch Product Selling Price', 'PATCH', 'branch-products/1/selling-price', "Set selling price for branch product. Requires 'set branch product selling price' permission. selling_price required.", '{"selling_price": 32.99}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Delete Branch Product', 'DELETE', 'branch-products/1', 'Remove product from branch. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Update Branch Product Stock', 'POST', 'branch-products/1/stock', 'Adjust stock. quantity (integer), operation: add|subtract|set. X-Business-Id required.', '{"quantity": 10, "operation": "add"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Move Stock to Shelf', 'POST', 'branch-products/1/move-to-shelf', 'Direct move (store to shelf). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Move Stock to Store', 'POST', 'branch-products/1/move-to-store', 'Direct move (shelf to store). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required.', '{"quantity": 5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Update Branch Product Stock', 'POST', 'branch-products/1/stock', 'Adjust stock. quantity (numeric, decimal supported), operation: add|subtract|set. X-Business-Id required.', '{"quantity": 10.5, "operation": "add"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Move Stock to Shelf', 'POST', 'branch-products/1/move-to-shelf', 'Direct move (store to shelf). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required (numeric, min 0.001).', '{"quantity": 5.5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
+        req('Move Stock to Store', 'POST', 'branch-products/1/move-to-store', 'Direct move (shelf to store). Requires approve shelf store move or manage/adjust inventory. Otherwise use shelf-store-move-requests. quantity required (numeric, min 0.001).', '{"quantity": 5.5}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Branch Products Stock Summary', 'GET', 'branch-products/summary/stock', 'Stock summary. Query: branch_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Bulk Update Branch Products', 'POST', 'branch-products/bulk-update', 'Bulk update. updates: array of { id: branch_product_id, data: { ...fields } }. X-Business-Id required.', '{
   "updates": [
@@ -691,11 +692,11 @@ $items[] = [
         req('Approve GRN', 'POST', 'goods-received-notes/{{grn_id}}/approve', 'Approve and post GRN. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Reject GRN', 'POST', 'goods-received-notes/{{grn_id}}/reject', 'Reject GRN. Body: reason. X-Business-Id required.', '{"reason": "Invoice mismatch"}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
         req('Cancel GRN', 'POST', 'goods-received-notes/{{grn_id}}/cancel', 'Cancel GRN. X-Business-Id required.', '{}', [['key' => 'X-Business-Id', 'value' => '{{business_id}}']]),
-        req('Add GRN Line', 'POST', 'goods-received-notes/{{grn_id}}/lines', 'Add GRN line. X-Business-Id required.', '{
+        req('Add GRN Line', 'POST', 'goods-received-notes/{{grn_id}}/lines', 'Add GRN line. quantity_received/accepted/rejected are numeric (min 0.001 for received). X-Business-Id required.', '{
   "product_id": 1,
   "branch_product_id": 1,
-  "quantity_received": 24,
-  "quantity_accepted": 24,
+  "quantity_received": 10.5,
+  "quantity_accepted": 10.5,
   "quantity_rejected": 0,
   "unit_cost": 500,
   "storage_location": "store"
@@ -713,7 +714,7 @@ $items[] = [
 
         req('List Purchase Orders', 'GET', 'purchase-orders', 'List purchase orders. Query: branch_id, status, supplier_id. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['branch_id', '{{branch_id}}'], ['status', 'draft']]),
         req('PO Analytics: Top Variance Items', 'GET', 'purchase-orders/analytics/top-variance-items', 'Top variance items. Query: limit. X-Business-Id required.', null, [['key' => 'X-Business-Id', 'value' => '{{business_id}}']], false, [['limit', '10']]),
-        req('Create Purchase Order', 'POST', 'purchase-orders', 'Create PO. branch_id, supplier_id and lines[] required. X-Business-Id required.', '{
+        req('Create Purchase Order', 'POST', 'purchase-orders', 'Create PO. branch_id, supplier_id and lines[] required. lines.*.quantity_ordered: numeric, min 0.001. X-Business-Id required.', '{
   "branch_id": 1,
   "supplier_id": 1,
   "expected_at": "2026-06-01",

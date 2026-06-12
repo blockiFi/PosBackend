@@ -26,6 +26,9 @@ use App\Models\SyncSession;
 use App\Services\GoodsReceivingService;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
+use App\Support\BusinessQuantityPolicy;
+use App\Support\BusinessSettings;
+use App\Support\Quantity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -212,10 +215,16 @@ class SyncController extends Controller
 
         $totalRecords = collect($data)->sum(fn ($items) => $items->count());
 
+        $business = Business::find($businessId);
+        $businessSettings = $business
+            ? BusinessSettings::syncPayload($business)
+            : ['allow_decimal_quantities' => false, 'deposit_stock_mode' => null];
+
         return response()->json([
             'session_id' => $sessionId,
             'server_timestamp' => now()->toIso8601String(),
             'data' => $data,
+            'business_settings' => $businessSettings,
             'metadata' => [
                 'total_records' => $totalRecords,
                 'checksum' => md5(json_encode($data)),
@@ -726,6 +735,18 @@ class SyncController extends Controller
             throw new \Exception('At least one payment is required for sales');
         }
 
+        foreach ($data['items'] as $item) {
+            try {
+                BusinessQuantityPolicy::assertAllowed(
+                    $businessId,
+                    (float) ($item['quantity'] ?? 0),
+                    'quantity'
+                );
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                throw new \Exception('Decimal quantities are not enabled for this business');
+            }
+        }
+
         $depositStockMode = $isDeposit ? $this->resolveDepositStockMode($businessId, $data['metadata'] ?? null) : null;
         $deferStockToCompletion = $isDeposit && $depositStockMode === 'deduct_on_complete';
 
@@ -750,7 +771,7 @@ class SyncController extends Controller
         if (! $deferStockToCompletion && isset($data['items'])) {
             foreach ($data['items'] as $item) {
                 $productId = (int) $item['product_id'];
-                $qtyForBatch = (int) round((float) $item['quantity']);
+                $qty = BusinessQuantityPolicy::normalizeForBusiness($businessId, (float) $item['quantity']);
                 $branchProduct = BranchProduct::where('branch_id', $branchId)
                     ->where('product_id', $productId)
                     ->first();
@@ -761,7 +782,7 @@ class SyncController extends Controller
                         'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
                     );
                 }
-                if ($branchProduct->stock_quantity < $qtyForBatch) {
+                if ((float) $branchProduct->stock_quantity < $qty) {
                     $product = $branchProduct->product;
 
                     throw new \Exception(
@@ -775,7 +796,7 @@ class SyncController extends Controller
                         ->where('branch_id', $branchId)
                         ->where('business_id', $businessId)
                         ->first();
-                    if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                    if (! $batch || (float) $batch->current_quantity < $qty) {
                         $product = $branchProduct->product;
 
                         throw new \Exception(
@@ -830,8 +851,7 @@ class SyncController extends Controller
             if (isset($data['items'])) {
                 foreach ($data['items'] as $item) {
                     $productId = (int) $item['product_id'];
-                    $qty = (float) $item['quantity'];
-                    $qtyForBatch = (int) round($qty);
+                    $qty = BusinessQuantityPolicy::normalizeForBusiness($businessId, (float) $item['quantity']);
 
                     $branchProduct = BranchProduct::where('branch_id', $branchId)
                         ->where('product_id', $productId)
@@ -845,7 +865,7 @@ class SyncController extends Controller
                         );
                     }
 
-                    if (! $deferStockToCompletion && $branchProduct->stock_quantity < $qtyForBatch) {
+                    if (! $deferStockToCompletion && (float) $branchProduct->stock_quantity < $qty) {
                         $product = $branchProduct->product;
 
                         throw new \Exception(
@@ -860,7 +880,7 @@ class SyncController extends Controller
                         $quickSale = QuickSale::getActiveQuickSaleForProduct($productId, $branchId);
                         if ($quickSale && $quickSale->batch_id) {
                             $batch = $quickSale->batch;
-                            if ($batch && $batch->current_quantity >= $qtyForBatch) {
+                            if ($batch && (float) $batch->current_quantity >= $qty) {
                                 $batchId = $batch->id;
                             }
                         }
@@ -871,7 +891,7 @@ class SyncController extends Controller
                                 ->where('branch_id', $branchId)
                                 ->where('business_id', $businessId)
                                 ->first();
-                            if (! $batch || $batch->current_quantity < $qtyForBatch) {
+                            if (! $batch || (float) $batch->current_quantity < $qty) {
                                 $product = $branchProduct->product;
 
                                 throw new \Exception(
@@ -929,15 +949,15 @@ class SyncController extends Controller
                     $sale->items()->save($saleItem);
 
                     if (! $deferStockToCompletion) {
-                        $deductResult = $branchProduct->deductForSale($qtyForBatch);
+                        $deductResult = $branchProduct->deductForSale($qty);
                         if (! $deductResult['stock_tracked']) {
-                            $branchProduct->decrement('stock_quantity', $qtyForBatch);
-                            $deductResult['quantity_before'] = $branchProduct->stock_quantity + $qtyForBatch;
-                            $deductResult['quantity_after'] = $branchProduct->stock_quantity;
+                            $branchProduct->decrement('stock_quantity', $qty);
+                            $deductResult['quantity_before'] = (float) $branchProduct->stock_quantity + $qty;
+                            $deductResult['quantity_after'] = (float) $branchProduct->stock_quantity;
                         }
 
                         if ($batchId !== null && $batch) {
-                            $batch->allocate($qtyForBatch);
+                            $batch->allocate($qty);
                         }
 
                         $invPayload = [
@@ -947,7 +967,7 @@ class SyncController extends Controller
                             'product_id' => $productId,
                             'user_id' => $userId,
                             'type' => 'sale',
-                            'quantity' => -$qtyForBatch,
+                            'quantity' => -$qty,
                             'quantity_before' => $deductResult['quantity_before'],
                             'quantity_after' => $deductResult['quantity_after'],
                             'unit_cost' => $branchProduct->cost_price,
@@ -968,11 +988,11 @@ class SyncController extends Controller
                         }
                         $invTransaction = InventoryTransaction::create($invPayload);
 
-                        if ($batchId === null && $qtyForBatch > 0) {
+                        if ($batchId === null && Quantity::isPositive($qty)) {
                             $this->batchService->allocateStockOut(
                                 $productId,
                                 $branchId,
-                                $qtyForBatch,
+                                $qty,
                                 $invTransaction,
                                 ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
                             );
@@ -1195,8 +1215,14 @@ class SyncController extends Controller
         foreach ($data['lines'] as $line) {
             $productId = (int) ($line['product_id'] ?? 0);
             $branchProductId = (int) ($line['branch_product_id'] ?? 0);
-            $qtyReceived = (float) ($line['quantity_received'] ?? 0);
-            $qtyAccepted = (float) ($line['quantity_accepted'] ?? 0);
+            try {
+                BusinessQuantityPolicy::assertAllowed($grn->business_id, (float) ($line['quantity_received'] ?? 0), 'quantity_received');
+                BusinessQuantityPolicy::assertAllowed($grn->business_id, (float) ($line['quantity_accepted'] ?? 0), 'quantity_accepted');
+            } catch (\Illuminate\Validation\ValidationException $e) {
+                throw new \Exception('Decimal quantities are not enabled for this business');
+            }
+            $qtyReceived = BusinessQuantityPolicy::normalizeForBusiness($grn->business_id, (float) ($line['quantity_received'] ?? 0));
+            $qtyAccepted = BusinessQuantityPolicy::normalizeForBusiness($grn->business_id, (float) ($line['quantity_accepted'] ?? 0));
 
             $bp = BranchProduct::where('id', $branchProductId)
                 ->where('branch_id', $grn->branch_id)
@@ -1225,7 +1251,10 @@ class SyncController extends Controller
                 'branch_product_id' => $branchProductId,
                 'quantity_received' => $qtyReceived,
                 'quantity_accepted' => $qtyAccepted,
-                'quantity_rejected' => (float) ($line['quantity_rejected'] ?? 0),
+                'quantity_rejected' => BusinessQuantityPolicy::normalizeForBusiness(
+                    $grn->business_id,
+                    (float) ($line['quantity_rejected'] ?? 0)
+                ),
                 'unit_cost' => $unitCost,
                 'batch_number' => $batchNumber,
                 'lot_number' => $line['lot_number'] ?? null,
