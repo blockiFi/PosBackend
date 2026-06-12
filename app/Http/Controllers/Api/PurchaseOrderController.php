@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\PurchaseOrder;
 use App\Models\PurchaseOrderLine;
+use App\Support\BusinessQuantityPolicy;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class PurchaseOrderController extends Controller
@@ -84,6 +84,8 @@ class PurchaseOrderController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
             'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
@@ -98,7 +100,7 @@ class PurchaseOrderController extends Controller
             'lines' => ['required', 'array', 'min:1'],
             'lines.*.product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
             'lines.*.branch_product_id' => ['required', 'integer', 'exists:branch_products,id,branch_id,'.$data['branch_id'] ?? 0],
-            'lines.*.quantity_ordered' => ['required', 'numeric', 'min:0.001'],
+            'lines.*.quantity_ordered' => $stockQtyRules,
             'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0'],
             'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0'],
             'lines.*.line_total' => ['nullable', 'numeric', 'min:0'],
@@ -140,7 +142,7 @@ class PurchaseOrderController extends Controller
                 'purchase_order_id' => $po->id,
                 'product_id' => (int) $line['product_id'],
                 'branch_product_id' => (int) $line['branch_product_id'],
-                'quantity_ordered' => $line['quantity_ordered'],
+                'quantity_ordered' => BusinessQuantityPolicy::normalizeForBusiness($business, (float) $line['quantity_ordered']),
                 'quantity_received' => 0,
                 'unit_cost' => $line['unit_cost'] ?? null,
                 'tax_rate' => $line['tax_rate'] ?? null,

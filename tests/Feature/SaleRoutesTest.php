@@ -223,4 +223,88 @@ class SaleRoutesTest extends TestCase
             ->where('type', 'batch_allocation')
             ->sum(DB::raw('ABS(quantity)')));
     }
+
+    public function test_can_create_sale_with_fractional_quantity(): void
+    {
+        $this->enableDecimalQuantities($this->business);
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        BranchProduct::where('branch_id', $this->branch->id)
+            ->where('product_id', $this->product->id)
+            ->update(['stock_quantity' => 20, 'shelf_quantity' => 20]);
+
+        $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10.5, 'unit_price' => 100, 'tax_rate' => 0]],
+            'payments' => [['payment_method_id' => $pm->id, 'amount' => 1050]],
+        ]);
+
+        $response->assertStatus(201);
+
+        $sale = Sale::latest()->first();
+        $this->assertNotNull($sale);
+        $this->assertEqualsWithDelta(10.5, (float) $sale->items->first()->quantity, 0.001);
+        $this->assertEqualsWithDelta(9.5, (float) BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'), 0.001);
+    }
+
+    public function test_fractional_sale_allocates_from_batch_via_fefo(): void
+    {
+        $this->enableDecimalQuantities($this->business);
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        BranchProduct::where('branch_id', $this->branch->id)
+            ->where('product_id', $this->product->id)
+            ->update(['stock_quantity' => 20, 'shelf_quantity' => 20]);
+
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $this->product->id,
+            'current_quantity' => 20,
+            'received_quantity' => 20,
+            'status' => 'active',
+            'expiry_date' => now()->addMonth(),
+        ]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10.5, 'unit_price' => 100]],
+        ]);
+
+        $response->assertStatus(201);
+        $batch->refresh();
+        $this->assertEqualsWithDelta(9.5, (float) $batch->current_quantity, 0.001);
+        $this->assertEqualsWithDelta(9.5, (float) BranchProduct::where('branch_id', $this->branch->id)->value('stock_quantity'), 0.001);
+    }
+
+    public function test_rejects_fractional_sale_when_decimal_quantities_disabled(): void
+    {
+        $this->role->givePermissionTo('create sales');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        setPermissionsTeamId($this->business->id);
+
+        $pm = PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
+
+        $response = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10.5, 'unit_price' => 100, 'tax_rate' => 0]],
+            'payments' => [['payment_method_id' => $pm->id, 'amount' => 1050]],
+        ]);
+
+        $response->assertStatus(422);
+
+        $integerResponse = $this->actingAs($this->user, 'sanctum')->postJson('/api/sales?current_business_id='.$this->business->id, [
+            'branch_id' => $this->branch->id,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 10, 'unit_price' => 100, 'tax_rate' => 0]],
+            'payments' => [['payment_method_id' => $pm->id, 'amount' => 1000]],
+        ]);
+
+        $integerResponse->assertStatus(201);
+    }
 }

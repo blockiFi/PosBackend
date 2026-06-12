@@ -9,6 +9,8 @@ use App\Models\GoodsReceivedNote;
 use App\Models\GoodsReceivedNoteLine;
 use App\Models\Supplier;
 use App\Services\GoodsReceivingService;
+use App\Support\BusinessQuantityPolicy;
+use App\Support\Quantity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
@@ -349,11 +351,13 @@ class GoodsReceivedNoteController extends Controller
             }
         }
 
+        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
+
         $data = $request->all();
         $validator = Validator::make($data, [
             'product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
             'branch_product_id' => ['required', 'integer', 'exists:branch_products,id,branch_id,'.$grn->branch_id],
-            'quantity_received' => ['required', 'numeric', 'min:0.001'],
+            'quantity_received' => $stockQtyRules,
             'quantity_accepted' => ['required', 'numeric', 'min:0'],
             'quantity_rejected' => ['nullable', 'numeric', 'min:0'],
             'rejection_reason' => ['nullable', 'string'],
@@ -373,10 +377,15 @@ class GoodsReceivedNoteController extends Controller
         }
 
         $v = $validator->validated();
-        $qtyReceived = (float) $v['quantity_received'];
-        $qtyAccepted = (float) $v['quantity_accepted'];
+        $v['quantity_received'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $v['quantity_received']);
+        $v['quantity_accepted'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $v['quantity_accepted']);
+        if (isset($v['quantity_rejected'])) {
+            $v['quantity_rejected'] = BusinessQuantityPolicy::normalizeForBusiness($business, (float) $v['quantity_rejected']);
+        }
+        $qtyReceived = $v['quantity_received'];
+        $qtyAccepted = $v['quantity_accepted'];
         $qtyRejected = (float) ($v['quantity_rejected'] ?? 0);
-        if ($qtyAccepted + $qtyRejected - $qtyReceived > 0.0001) {
+        if ($qtyAccepted + $qtyRejected - $qtyReceived > Quantity::EPSILON) {
             return response()->json(['message' => 'Accepted + rejected cannot exceed received'], 422);
         }
 

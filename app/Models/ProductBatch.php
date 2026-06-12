@@ -38,8 +38,8 @@ class ProductBatch extends Model
     protected $casts = [
         'manufacturing_date' => 'date',
         'expiry_date' => 'date',
-        'received_quantity' => 'integer',
-        'current_quantity' => 'integer',
+        'received_quantity' => 'decimal:3',
+        'current_quantity' => 'decimal:3',
         'unit_cost' => 'decimal:2',
         'meta_data' => 'array',
     ];
@@ -218,31 +218,37 @@ class ProductBatch extends Model
         return $expiryDate->diffInDays(now()->startOfDay(), true);
     }
 
-    public function canAllocate(int $quantity): bool
+    public function canAllocate(float $quantity): bool
     {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
         return $this->status === 'active'
-            && $this->current_quantity >= $quantity
+            && (float) $this->current_quantity >= $quantity - \App\Support\Quantity::EPSILON
             && ! $this->isExpired();
     }
 
-    public function allocate(int $quantity): bool
+    public function allocate(float $quantity): bool
     {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+
         if (! $this->canAllocate($quantity)) {
             return false;
         }
 
-        $this->current_quantity -= $quantity;
-        if ($this->current_quantity <= 0) {
+        $this->current_quantity = \App\Support\Quantity::normalize((float) $this->current_quantity - $quantity);
+        if (\App\Support\Quantity::remainingIsZero((float) $this->current_quantity)) {
+            $this->current_quantity = 0;
             $this->status = 'depleted';
         }
 
         return $this->save();
     }
 
-    public function increaseQuantity(int $quantity): bool
+    public function increaseQuantity(float $quantity): bool
     {
-        $this->current_quantity += $quantity;
-        if ($this->status === 'depleted' && $this->current_quantity > 0 && ! $this->isExpired()) {
+        $quantity = \App\Support\Quantity::normalize($quantity);
+        $this->current_quantity = \App\Support\Quantity::normalize((float) $this->current_quantity + $quantity);
+        if ($this->status === 'depleted' && \App\Support\Quantity::isPositive((float) $this->current_quantity) && ! $this->isExpired()) {
             $this->status = 'active';
         }
 
@@ -261,10 +267,10 @@ class ProductBatch extends Model
     /**
      * Find batches to allocate using FEFO (First Expired First Out)
      */
-    public static function findBatchesToAllocate(int $productId, int $branchId, int $quantity): array
+    public static function findBatchesToAllocate(int $productId, int $branchId, float $quantity): array
     {
         $allocations = [];
-        $remaining = $quantity;
+        $remaining = \App\Support\Quantity::normalize($quantity);
 
         $batches = static::where('product_id', $productId)
             ->where('branch_id', $branchId)
@@ -272,23 +278,24 @@ class ProductBatch extends Model
             ->get();
 
         foreach ($batches as $batch) {
-            if ($remaining <= 0) {
+            if (\App\Support\Quantity::remainingIsZero($remaining)) {
                 break;
             }
 
-            $allocateQty = min($remaining, $batch->current_quantity);
-            if ($allocateQty > 0) {
+            $allocateQty = min($remaining, (float) $batch->current_quantity);
+            if (\App\Support\Quantity::isPositive($allocateQty)) {
+                $allocateQty = \App\Support\Quantity::normalize($allocateQty);
                 $allocations[] = [
                     'batch' => $batch,
                     'quantity' => $allocateQty,
                 ];
-                $remaining -= $allocateQty;
+                $remaining = \App\Support\Quantity::normalize($remaining - $allocateQty);
             }
         }
 
         return [
             'allocations' => $allocations,
-            'fully_allocated' => $remaining <= 0,
+            'fully_allocated' => \App\Support\Quantity::remainingIsZero($remaining),
             'remaining' => $remaining,
         ];
     }

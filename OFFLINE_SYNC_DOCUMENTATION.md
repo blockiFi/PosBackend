@@ -184,6 +184,10 @@ X-Device-Id: {device_id}
 {
   "session_id": "550e8400-e29b-41d4-a716-446655440000",
   "server_timestamp": "2026-02-08T10:00:00Z",
+  "business_settings": {
+    "allow_decimal_quantities": false,
+    "deposit_stock_mode": "reserve_on_create"
+  },
   "data": {
     "products": [
       {
@@ -208,6 +212,8 @@ X-Device-Id: {device_id}
   }
 }
 ```
+
+Offline clients should cache `business_settings.allow_decimal_quantities` from bootstrap (or `GET settings/business`) and match quantity input UX to that flag. When the setting is **off**, sync push rejects fractional sale/GRN line quantities with HTTP 422.
 
 ---
 
@@ -284,6 +290,8 @@ X-Device-Id: {device_id}
 **POST** `/sync/push`
 
 Upload offline-generated data to server with conflict detection.
+
+**Fractional quantities:** Sale line `items[].quantity` accepts decimal values (minimum `0.01`, e.g. `10.5` for weight/volume products). Stock and batch deductions use the same quantity — no rounding to integers.
 
 **Headers:**
 ```

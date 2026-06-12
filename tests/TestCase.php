@@ -15,4 +15,12 @@ abstract class TestCase extends BaseTestCase
 
         $this->seedAllPermissions();
     }
+
+    protected function enableDecimalQuantities(\App\Models\Business $business): void
+    {
+        $settings = is_array($business->settings) ? $business->settings : [];
+        $settings['allow_decimal_quantities'] = true;
+        $business->update(['settings' => $settings]);
+        $business->refresh();
+    }
 }
