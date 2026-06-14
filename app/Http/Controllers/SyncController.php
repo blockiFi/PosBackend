@@ -192,8 +192,8 @@ class SyncController extends Controller
                 ->with(['product', 'product.category'])
                 ->get()
                 ->map(
-                    function ($branchProduct) {
-                        return $this->transformBranchProduct($branchProduct);
+                    function ($branchProduct) use ($businessId) {
+                        return $this->transformBranchProduct($branchProduct, (int) $businessId);
                     }
                 );
         }
@@ -642,7 +642,7 @@ class SyncController extends Controller
                     ->with(['product', 'product.category'])
                     ->limit($limit)
                     ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct));
+                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
 
                 $updated = (clone $baseQuery)
                     ->where('updated_at', '>', $since)
@@ -650,7 +650,7 @@ class SyncController extends Controller
                     ->with(['product', 'product.category'])
                     ->limit($limit)
                     ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct));
+                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
 
                 $changes['created'] = $created;
                 $changes['updated'] = $updated;
@@ -1275,7 +1275,7 @@ class SyncController extends Controller
         ];
     }
 
-    private function transformBranchProduct(BranchProduct $branchProduct): array
+    private function transformBranchProduct(BranchProduct $branchProduct, int $businessId): array
     {
         $activeQuickSale = QuickSale::getActiveQuickSale(
             $branchProduct->product_id,
@@ -1294,6 +1294,8 @@ class SyncController extends Controller
                 'status' => $activeQuickSale->status,
             ];
         }
+
+        $qty = fn (mixed $value): int|float => BusinessQuantityPolicy::serializeQuantity($businessId, $value);
 
         return [
             'id' => $branchProduct->id,
@@ -1319,13 +1321,13 @@ class SyncController extends Controller
             'profit_margin' => $branchProduct->getProfitMargin(),
             'quick_sale' => $quickSaleData,
 
-            'stock_quantity' => $branchProduct->stock_quantity,
-            'shelf_quantity' => $branchProduct->shelf_quantity,
-            'store_quantity' => $branchProduct->store_quantity,
+            'stock_quantity' => $qty($branchProduct->stock_quantity),
+            'shelf_quantity' => $qty($branchProduct->shelf_quantity),
+            'store_quantity' => $qty($branchProduct->store_quantity),
             'low_stock_threshold' => $branchProduct->low_stock_threshold,
             'allow_backorder' => $branchProduct->allow_backorder,
             'reorder_point' => $branchProduct->reorder_point,
-            'reorder_quantity' => $branchProduct->reorder_quantity,
+            'reorder_quantity' => $qty($branchProduct->reorder_quantity),
             'is_in_stock' => $branchProduct->isInStock(),
             'is_low_stock' => $branchProduct->isLowStock(),
             'is_out_of_stock' => $branchProduct->isOutOfStock(),
