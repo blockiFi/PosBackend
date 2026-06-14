@@ -168,6 +168,11 @@ class SyncControllerTest extends TestCase
         $this->assertNotEmpty($data['categories']);
         $this->assertNotEmpty($data['payment_methods']);
         $this->assertFalse($response->json('business_settings.allow_decimal_quantities'));
+
+        $firstProduct = $data['products'][0];
+        $this->assertIsInt($firstProduct['stock_quantity']);
+        $this->assertIsInt($firstProduct['shelf_quantity']);
+        $this->assertIsInt($firstProduct['store_quantity']);
     }
 
     /** @test */

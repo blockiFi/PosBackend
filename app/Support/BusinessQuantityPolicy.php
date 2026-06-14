@@ -77,4 +77,20 @@ final class BusinessQuantityPolicy
 
         return $normalized;
     }
+
+    /**
+     * JSON-safe quantity for sync/bootstrap payloads (never decimal strings).
+     *
+     * @return int|float
+     */
+    public static function serializeQuantity(Business|int $business, mixed $quantity): int|float
+    {
+        $value = Quantity::normalize((float) ($quantity ?? 0));
+
+        if (! self::allowsDecimals($business)) {
+            return (int) round($value);
+        }
+
+        return $value;
+    }
 }
