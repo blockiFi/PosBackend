@@ -284,9 +284,30 @@ class SyncController extends Controller
         $deviceId = $request->header('X-Device-Id');
         $branchId = (int) $request->branch_id;
         $sessionId = Str::uuid()->toString();
+        $afterId = is_numeric($request->input('cursor')) ? (int) $request->input('cursor') : 0;
         $changes = [];
+        $hasMore = false;
+        $nextCursor = null;
+        $productsPaged = false;
 
         foreach ($entities as $entity) {
+            if ($entity === 'products' || $entity === 'branch_products') {
+                if ($productsPaged) {
+                    continue;
+                }
+                $page = $this->pageBranchProducts($businessId, $branchId, $lastSyncAt, $limit, $afterId);
+                $changes['products'] = $page['changes'];
+                $hasMore = $page['has_more'];
+                $nextCursor = $page['next_cursor'];
+                $productsPaged = true;
+
+                continue;
+            }
+
+            if ($afterId > 0) {
+                continue;
+            }
+
             $changes[$entity] = $this->getEntityChanges($entity, $businessId, $lastSyncAt, $deviceId, $limit, $branchId);
         }
 
@@ -294,8 +315,8 @@ class SyncController extends Controller
             'session_id' => $sessionId,
             'server_timestamp' => now()->toIso8601String(),
             'changes' => $changes,
-            'has_more' => false,
-            'next_cursor' => null,
+            'has_more' => $hasMore,
+            'next_cursor' => $nextCursor,
         ]);
     }
 
@@ -583,6 +604,62 @@ class SyncController extends Controller
     }
 
     /**
+     * One stable page of branch products changed since the last sync.
+     *
+     * Includes rows whose parent product changed (barcode, name, SKU) even when
+     * the branch-product row itself did not. Callers must follow next_cursor
+     * while has_more is true; a capped unordered query was dropping the rest.
+     *
+     * @return array{changes: array{created: array<int, array<string, mixed>>, updated: array<int, array<string, mixed>>, deleted: array<int, mixed>}, has_more: bool, next_cursor: int|null}
+     */
+    private function pageBranchProducts(int $businessId, int $branchId, Carbon $since, int $limit, int $afterId): array
+    {
+        $query = BranchProduct::query()
+            ->with(['product', 'product.category'])
+            ->where('branch_id', $branchId)
+            ->whereHas('branch', function ($branch) use ($businessId) {
+                $branch->where('business_id', $businessId);
+            })
+            ->where(function ($changed) use ($since) {
+                $changed->where('branch_products.updated_at', '>', $since)
+                    ->orWhere('branch_products.created_at', '>', $since)
+                    ->orWhereHas('product', function ($product) use ($since) {
+                        $product->where('updated_at', '>', $since);
+                    });
+            })
+            ->orderBy('branch_products.id');
+
+        if ($afterId > 0) {
+            $query->where('branch_products.id', '>', $afterId);
+        }
+
+        $rows = $query->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $page = $hasMore ? $rows->take($limit) : $rows;
+
+        $created = [];
+        $updated = [];
+        foreach ($page as $branchProduct) {
+            $payload = $this->transformBranchProduct($branchProduct, $businessId);
+            if ($branchProduct->created_at && $branchProduct->created_at->gt($since)) {
+                $created[] = $payload;
+            } else {
+                $updated[] = $payload;
+            }
+        }
+
+        return [
+            'changes' => [
+                'created' => $created,
+                'updated' => $updated,
+                'deleted' => [],
+            ],
+            'has_more' => $hasMore,
+            'next_cursor' => $hasMore && $page->isNotEmpty() ? $page->last()->id : null,
+        ];
+    }
+
+    /**
      * Helper: Get entity changes since timestamp
      */
     private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit, $branchId)
@@ -627,33 +704,8 @@ class SyncController extends Controller
                 //     break;
 
             case 'products':
-                $baseQuery = BranchProduct::query()
-                    ->with(['product', 'product.category'])
-                    ->whereHas('branch', function ($query) use ($businessId) {
-                        $query->where('business_id', $businessId);
-                    });
-
-                if ($branchId !== null) {
-                    $baseQuery->where('branch_id', $branchId);
-                }
-
-                $created = (clone $baseQuery)
-                    ->where('created_at', '>', $since)
-                    ->with(['product', 'product.category'])
-                    ->limit($limit)
-                    ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
-
-                $updated = (clone $baseQuery)
-                    ->where('updated_at', '>', $since)
-                    ->where('created_at', '<=', $since)
-                    ->with(['product', 'product.category'])
-                    ->limit($limit)
-                    ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
-
-                $changes['created'] = $created;
-                $changes['updated'] = $updated;
+                $page = $this->pageBranchProducts((int) $businessId, (int) $branchId, $since, $limit, 0);
+                $changes = $page['changes'];
                 break;
         }
 
