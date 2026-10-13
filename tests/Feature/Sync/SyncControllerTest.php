@@ -1074,6 +1074,25 @@ class SyncControllerTest extends TestCase
             ->assertJsonPath('message', 'Business context is required');
     }
 
+    public function test_pull_includes_current_business_settings(): void
+    {
+        $device = $this->registerDevice();
+        $this->business->settings = ['deposit_stock_mode' => 'reserve_on_create', 'allow_decimal_quantities' => true];
+        $this->business->save();
+
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subHour()->toIso8601String(),
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('business_settings.deposit_stock_mode', 'reserve_on_create')
+            ->assertJsonPath('business_settings.allow_decimal_quantities', true);
+    }
+
     public function test_synced_sale_exceeding_stock_is_accepted_and_stock_ends_at_zero(): void
     {
         $device = $this->registerDevice();

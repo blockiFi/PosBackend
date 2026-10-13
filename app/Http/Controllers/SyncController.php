@@ -216,16 +216,11 @@ class SyncController extends Controller
 
         $totalRecords = collect($data)->sum(fn ($items) => $items->count());
 
-        $business = Business::find($businessId);
-        $businessSettings = $business
-            ? BusinessSettings::syncPayload($business)
-            : ['allow_decimal_quantities' => false, 'deposit_stock_mode' => null];
-
         return response()->json([
             'session_id' => $sessionId,
             'server_timestamp' => now()->toIso8601String(),
             'data' => $data,
-            'business_settings' => $businessSettings,
+            'business_settings' => $this->businessSettingsPayload((int) $businessId),
             'metadata' => [
                 'total_records' => $totalRecords,
                 'checksum' => md5(json_encode($data)),
@@ -318,7 +313,22 @@ class SyncController extends Controller
             'changes' => $changes,
             'has_more' => $hasMore,
             'next_cursor' => $nextCursor,
+            // Same payload as bootstrap so terminals pick up setting changes
+            // (e.g. deposit_stock_mode) without a re-bootstrap.
+            'business_settings' => $this->businessSettingsPayload((int) $businessId),
         ]);
+    }
+
+    /**
+     * @return array{allow_decimal_quantities: bool, deposit_stock_mode: string|null}
+     */
+    private function businessSettingsPayload(int $businessId): array
+    {
+        $business = Business::find($businessId);
+
+        return $business
+            ? BusinessSettings::syncPayload($business)
+            : ['allow_decimal_quantities' => false, 'deposit_stock_mode' => null];
     }
 
     /**
