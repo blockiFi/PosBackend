@@ -7,6 +7,7 @@ use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
+use App\Support\ReportingTimezone;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -106,7 +107,13 @@ class SalesShiftController extends Controller
 
         // Custom date range
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->dateRange($request->start_date, $request->end_date);
+            $query->dateRange(
+                $request->start_date,
+                $request->end_date,
+                $request->filled('branch_id')
+                    ? ReportingTimezone::forBranch($request->branch_id)
+                    : ReportingTimezone::forBusiness($businessId),
+            );
         }
 
         // Statistics over all matching shifts (same filters, no pagination)
@@ -216,7 +223,7 @@ class SalesShiftController extends Controller
         }
 
         if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
-            $query->dateRange($validated['start_date'], $validated['end_date']);
+            $query->dateRange($validated['start_date'], $validated['end_date'], ReportingTimezone::forBranch($branchId));
         }
 
         $shifts = $query->get();
