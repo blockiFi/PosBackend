@@ -705,4 +705,69 @@ class SalesShiftRoutesTest extends TestCase
             'group_id' => $group->id,
         ]);
     }
+
+    public function test_today_filter_lists_shifts_still_running_from_earlier_days()
+    {
+        $this->travelTo(\Carbon\Carbon::parse('2026-10-13 12:00:00', 'UTC'));
+
+        $make = fn (string $number, string $start, ?string $end, string $status) => SalesShift::create([
+            'shift_number' => $number,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'device_id' => 'device-'.$number,
+            'start_time' => $start,
+            'end_time' => $end,
+            'opening_balance' => 0,
+            'status' => $status,
+        ]);
+
+        $make('OLD-OPEN', '2026-06-23 18:45:00', null, 'open');
+        $make('OLD-PAUSED', '2026-10-10 08:00:00', null, 'paused');
+        $make('TODAY', '2026-10-13 09:00:00', null, 'open');
+        $make('OVERNIGHT', '2026-10-12 20:00:00', '2026-10-13 02:00:00', 'closed');
+        $make('YESTERDAY-CLOSED', '2026-10-12 08:00:00', '2026-10-12 16:00:00', 'closed');
+        $make('TOMORROW', '2026-10-14 08:00:00', null, 'open');
+
+        $response = $this->actingAs($this->user)->getJson(
+            "/api/shifts?branch_id={$this->branch->id}&start_date=2026-10-13&end_date=2026-10-14",
+            ['X-Business-Id' => $this->business->id],
+        );
+
+        $response->assertOk();
+        $numbers = collect($response->json('shifts.data'))->pluck('shift_number')->sort()->values()->all();
+        $this->assertSame(['OLD-OPEN', 'OLD-PAUSED', 'OVERNIGHT', 'TODAY'], $numbers);
+        $this->assertSame(4, $response->json('statistics.total_shifts_count'));
+    }
+
+    public function test_date_range_uses_the_branch_local_day()
+    {
+        $this->branch->update(['time_zone' => 'Africa/Lagos']);
+        $this->business->update(['time_zone' => 'Africa/Lagos']);
+
+        // 23:30 UTC on the 12th is 00:30 on the 13th in Lagos.
+        SalesShift::create([
+            'shift_number' => 'JUST-AFTER-MIDNIGHT',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'device_id' => 'device-lagos',
+            'start_time' => '2026-10-12 23:30:00',
+            'end_time' => '2026-10-13 06:00:00',
+            'opening_balance' => 0,
+            'status' => 'closed',
+        ]);
+
+        $yesterday = $this->actingAs($this->user)->getJson(
+            "/api/shifts?branch_id={$this->branch->id}&start_date=2026-10-11&end_date=2026-10-12",
+            ['X-Business-Id' => $this->business->id],
+        );
+        $this->assertSame([], $yesterday->json('shifts.data'));
+
+        $today = $this->actingAs($this->user)->getJson(
+            "/api/shifts?branch_id={$this->branch->id}&start_date=2026-10-13&end_date=2026-10-14",
+            ['X-Business-Id' => $this->business->id],
+        );
+        $this->assertSame(['JUST-AFTER-MIDNIGHT'], collect($today->json('shifts.data'))->pluck('shift_number')->all());
+    }
 }
