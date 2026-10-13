@@ -414,7 +414,7 @@ class SyncController extends Controller
                             // non-fatal: log and continue processing other records
                             // use logger if available
                             if (method_exists($this, 'warn')) {
-                                $this->warn('Failed to persist incoming sales change log: ' . $e->getMessage());
+                                $this->warn('Failed to persist incoming sales change log: '.$e->getMessage());
                             }
                         }
                     }
@@ -783,7 +783,7 @@ class SyncController extends Controller
         if (empty($data['items']) || ! is_array($data['items']) || count($data['items']) === 0) {
             throw new \Exception('At least one item is required for sales');
         }
-        if(isset($data['payments']) && count($data['payments']) === 0) {   
+        if (isset($data['payments']) && count($data['payments']) === 0) {
             throw new \Exception('At least one payment is required for sales');
         }
 
@@ -812,8 +812,7 @@ class SyncController extends Controller
             if ($shift) {
                 $shiftId = $shift->id;
             }
-        }
-        else{
+        } else {
             throw new \Exception('Shift ID is required for sales');
         }
 
@@ -834,7 +833,7 @@ class SyncController extends Controller
                         'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
                     );
                 }
-                if ((float) $branchProduct->stock_quantity < $qty) {
+                if ($branchProduct->availableForSale() < $qty) {
                     $product = $branchProduct->product;
 
                     throw new \Exception(
@@ -864,7 +863,7 @@ class SyncController extends Controller
             $saleMetadata['deposit_stock_mode'] = $depositStockMode;
         }
 
-        $defaultStatus ='pending';
+        $defaultStatus = 'pending';
 
         // Create sale (line economics are inferred server-side; totals filled after items via calculateTotals())
         // Wrap creation, items, and payments in a DB transaction so we don't leave orphaned sales when payments fail
@@ -917,7 +916,7 @@ class SyncController extends Controller
                         );
                     }
 
-                    if (! $deferStockToCompletion && (float) $branchProduct->stock_quantity < $qty) {
+                    if (! $deferStockToCompletion && $branchProduct->availableForSale() < $qty) {
                         $product = $branchProduct->product;
 
                         throw new \Exception(
@@ -1081,6 +1080,7 @@ class SyncController extends Controller
                     // Basic validation
                     if (! $methodId || $amount <= 0) {
                         $skippedPayments[] = ['reason' => 'missing_method_or_amount', 'payload' => $payment];
+
                         continue;
                     }
 
@@ -1095,6 +1095,7 @@ class SyncController extends Controller
                             $methodId = $defaultMethod->id;
                         } else {
                             $skippedPayments[] = ['reason' => 'unknown_payment_method', 'payload' => $payment];
+
                             continue;
                         }
                     }
@@ -1103,7 +1104,7 @@ class SyncController extends Controller
 
                     Payment::create([
                         'sale_id' => $sale->id,
-                        'shift_id' =>  $shiftId,
+                        'shift_id' => $shiftId,
                         'payment_method_id' => $methodId,
                         'amount' => $amount,
                         'payment_date' => $paymentDate,

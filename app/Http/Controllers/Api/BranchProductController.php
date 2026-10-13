@@ -118,6 +118,20 @@ class BranchProductController extends Controller
             });
         }
 
+        if ($request->filled('category_id')) {
+            $category = \App\Models\ProductCategory::where('id', $request->input('category_id'))
+                ->where('business_id', $businessId)
+                ->first();
+
+            $categoryIds = $category
+                ? [$category->id, ...$this->getAllDescendantCategoryIds($category)]
+                : [];
+
+            $query->whereHas('product', function ($q) use ($categoryIds) {
+                $q->whereIn('category_id', $categoryIds);
+            });
+        }
+
         $this->applyBranchProductListSort($query, $request);
 
         $branchProducts = $query->paginate($perPage);

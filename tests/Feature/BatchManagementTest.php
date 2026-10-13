@@ -123,8 +123,11 @@ class BatchManagementTest extends TestCase
             'X-Business-Id' => $this->business->id,
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors('batch_number');
+        $response->assertStatus(201);
+
+        $batch = ProductBatch::where('lot_number', 'LOT-AUTO-001')->first();
+        $this->assertNotNull($batch);
+        $this->assertNotSame('', (string) $batch->batch_number);
     }
 
     /** @test */
@@ -458,8 +461,8 @@ class BatchManagementTest extends TestCase
         $response->assertStatus(200);
         $response->assertJsonPath('batch.batch_number', 'BATCH-DETAILS');
         $response->assertJsonPath('batch.lot_number', 'LOT-123');
-        $response->assertJsonPath('batch.received_quantity', 100);
-        $response->assertJsonPath('batch.current_quantity', 75);
+        $response->assertJsonPath('batch.received_quantity', '100.000');
+        $response->assertJsonPath('batch.current_quantity', '75.000');
         $response->assertJsonPath('batch.allocated_quantity', 25);
         $response->assertJsonPath('batch.unit_cost', '15.50');
         $response->assertJsonPath('batch.supplier_name', 'Test Supplier');

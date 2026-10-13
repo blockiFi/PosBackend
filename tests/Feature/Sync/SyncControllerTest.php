@@ -487,6 +487,80 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function it_deducts_shelf_stock_when_the_ledger_total_is_behind_the_shelf(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 2,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+
+        $saleNumber = 'SALE-SHELF-'.time();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => Str::uuid()->toString(),
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
+                        'sale_type' => 'pos',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 150.00,
+                        'tax_amount' => 0,
+                        'total_amount' => 150.00,
+                        'payment_status' => 'paid',
+                        'status' => 'completed',
+                        'version' => 1,
+                        'origin' => 'offline',
+                        'items' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'product_id' => $product->id,
+                                'quantity' => 3,
+                                'unit_price' => 50.00,
+                                'subtotal' => 150.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 150.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, $response->json('results.sales.accepted'));
+
+        $branchProduct->refresh();
+        $this->assertEqualsWithDelta(7.0, (float) $branchProduct->shelf_quantity, 0.001);
+        $this->assertEqualsWithDelta(7.0, (float) $branchProduct->stock_quantity, 0.001);
+    }
+
+    /** @test */
     public function it_can_push_offline_deposit_sales_without_deducting_stock_when_configured()
     {
         $this->business->settings = ['deposit_stock_mode' => 'deduct_on_complete'];

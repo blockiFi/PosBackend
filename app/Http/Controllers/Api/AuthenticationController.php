@@ -414,17 +414,7 @@ class AuthenticationController extends Controller
 
         // If setting someone else's PIN, check for manage-pin-codes permission
         if (! $isSettingOwnPin) {
-            $hasPermission = false;
-            $businesses = $authenticatedUser->businesses;
-            foreach ($businesses as $business) {
-                setPermissionsTeamId($business->id);
-                if ($authenticatedUser->hasPermissionTo('manage-pin-codes')) {
-                    $hasPermission = true;
-                    break;
-                }
-            }
-
-            if (! $hasPermission) {
+            if (! $this->canManagePinFor($authenticatedUser, User::findOrFail($request->user_id))) {
                 return response()->json([
                     'message' => 'You do not have permission to manage PIN codes',
                 ], 403);
@@ -480,18 +470,7 @@ class AuthenticationController extends Controller
 
         $authenticatedUser = $request->user();
 
-        // Check if user has permission to manage PIN codes in ANY business
-        $hasPermission = false;
-        $businesses = $authenticatedUser->businesses;
-        foreach ($businesses as $business) {
-            setPermissionsTeamId($business->id);
-            if ($authenticatedUser->hasPermissionTo('manage-pin-codes')) {
-                $hasPermission = true;
-                break;
-            }
-        }
-
-        if (! $hasPermission) {
+        if (! $this->canManagePinFor($authenticatedUser, User::findOrFail($request->user_id))) {
             return response()->json([
                 'message' => 'You do not have permission to manage PIN codes',
             ], 403);
@@ -560,5 +539,29 @@ class AuthenticationController extends Controller
                 'profile_image_url' => $user->profile_image_url,
             ],
         ]);
+    }
+
+    /**
+     * The manager must own, or hold `manage-pin-codes` in, a business the target user belongs to.
+     */
+    private function canManagePinFor(User $manager, User $target): bool
+    {
+        $sharedBusinesses = $manager->businesses()
+            ->wherePivot('is_active', true)
+            ->whereIn('businesses.id', $target->businesses()->select('businesses.id'))
+            ->get();
+
+        foreach ($sharedBusinesses as $business) {
+            if ($business->owner_id === $manager->id) {
+                return true;
+            }
+
+            setPermissionsTeamId($business->id);
+            if ($manager->hasPermissionTo('manage-pin-codes')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

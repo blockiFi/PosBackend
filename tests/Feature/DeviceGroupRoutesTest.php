@@ -75,12 +75,37 @@ class DeviceGroupRoutesTest extends TestCase
             'X-Business-Id' => $this->business->id,
         ]);
 
-        $res->assertStatus(201)->assertJsonPath('data.code', 'BAR');
+        $res->assertStatus(201)
+            ->assertJsonPath('data.code', 'BAR')
+            ->assertJsonPath('data.devices_count', 0)
+            ->assertJsonPath('data.active_shifts_count', 0);
         $this->assertDatabaseHas('device_groups', [
             'business_id' => $this->business->id,
             'branch_id' => $this->branch->id,
             'code' => 'BAR',
         ]);
+    }
+
+    public function test_update_device_group_returns_counts(): void
+    {
+        $group = DeviceGroup::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'name' => 'Bar',
+            'code' => 'BAR',
+            'is_active' => true,
+        ]);
+
+        $res = $this->actingAs($this->user)->putJson("/api/device-groups/{$group->id}", [
+            'name' => 'Front Bar',
+        ], [
+            'X-Business-Id' => $this->business->id,
+        ]);
+
+        $res->assertOk()
+            ->assertJsonPath('data.name', 'Front Bar')
+            ->assertJsonPath('data.devices_count', 0)
+            ->assertJsonPath('data.active_shifts_count', 0);
     }
 
     public function test_can_assign_device_to_group(): void

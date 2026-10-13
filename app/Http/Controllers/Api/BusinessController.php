@@ -256,7 +256,14 @@ class BusinessController extends Controller
             ], 422);
         }
 
-        $business->update($validator->validated());
+        $validated = $validator->validated();
+        if (array_key_exists('settings', $validated)) {
+            $existing = is_array($business->settings) ? $business->settings : [];
+            $incoming = is_array($validated['settings']) ? $validated['settings'] : [];
+            $validated['settings'] = array_merge($existing, $incoming);
+        }
+
+        $business->update($validated);
 
         return response()->json([
             'message' => 'Business updated',

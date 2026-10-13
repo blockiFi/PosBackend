@@ -126,7 +126,11 @@ class ProductController extends Controller
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create products')) {
+        $canCreateProduct = $business->owner_id === $user->id
+            || $user->hasPermissionTo('create products')
+            || $user->hasPermissionTo('manage inventory')
+            || $user->hasPermissionTo('manage branch products');
+        if (! $canCreateProduct) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 

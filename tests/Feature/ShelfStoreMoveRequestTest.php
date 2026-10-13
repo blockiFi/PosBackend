@@ -162,8 +162,8 @@ class ShelfStoreMoveRequestTest extends TestCase
             ->assertJsonPath('data.status', 'approved');
 
         $this->branchProduct->refresh();
-        $this->assertSame(45, $this->branchProduct->shelf_quantity);
-        $this->assertSame(55, $this->branchProduct->store_quantity);
+        $this->assertEquals(45, (float) $this->branchProduct->shelf_quantity);
+        $this->assertEquals(55, (float) $this->branchProduct->store_quantity);
     }
 
     public function test_approver_can_approve_request_with_nullable_quantity(): void
@@ -190,8 +190,8 @@ class ShelfStoreMoveRequestTest extends TestCase
             ->assertJsonPath('data.status', 'approved');
 
         $this->branchProduct->refresh();
-        $this->assertSame(40, $this->branchProduct->shelf_quantity);
-        $this->assertSame(60, $this->branchProduct->store_quantity);
+        $this->assertEquals(40, (float) $this->branchProduct->shelf_quantity);
+        $this->assertEquals(60, (float) $this->branchProduct->store_quantity);
     }
 
     public function test_approver_can_reject_request(): void
@@ -219,8 +219,8 @@ class ShelfStoreMoveRequestTest extends TestCase
             ->assertJsonPath('data.review_notes', 'Not needed');
 
         $this->branchProduct->refresh();
-        $this->assertSame(30, $this->branchProduct->shelf_quantity);
-        $this->assertSame(70, $this->branchProduct->store_quantity);
+        $this->assertEquals(30, (float) $this->branchProduct->shelf_quantity);
+        $this->assertEquals(70, (float) $this->branchProduct->store_quantity);
     }
 
     public function test_requester_cannot_approve(): void

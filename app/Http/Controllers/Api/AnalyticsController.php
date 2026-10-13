@@ -26,11 +26,12 @@ class AnalyticsController extends Controller
     }
 
     /**
-     * File-backed cache + mutex so expensive analytics don't stampede the DB.
+     * Cache + mutex so expensive analytics don't stampede the DB.
+     * Uses the default cache store so tests stay isolated.
      */
     protected function analyticsRemember(string $cacheKey, ?int $ttlSeconds, \Closure $callback): mixed
     {
-        $store = Cache::store('file');
+        $store = Cache::store();
         $ttl = $ttlSeconds ?? $this->analyticsCacheTtl();
 
         $hit = $store->get($cacheKey);
@@ -38,7 +39,7 @@ class AnalyticsController extends Controller
             return $hit;
         }
 
-        return Cache::store('file')->lock('analytics_lock_'.$cacheKey, 120)->block(90, function () use ($store, $cacheKey, $ttl, $callback) {
+        return $store->lock('analytics_lock_'.$cacheKey, 120)->block(90, function () use ($store, $cacheKey, $ttl, $callback) {
             $hit = $store->get($cacheKey);
             if ($hit !== null) {
                 return $hit;
@@ -787,7 +788,7 @@ class AnalyticsController extends Controller
         $salesAgg = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereBetween('sale_date', [$startDate, $endDate])
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
             ->first();
@@ -807,7 +808,7 @@ class AnalyticsController extends Controller
             ->whereNull('products.deleted_at')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.created_at', [$startDate, $endDate])
+            ->whereBetween('sales.sale_date', [$startDate, $endDate])
             ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
             ->selectRaw(
                 'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'

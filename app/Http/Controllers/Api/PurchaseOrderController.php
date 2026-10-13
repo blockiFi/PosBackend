@@ -219,15 +219,49 @@ class PurchaseOrderController extends Controller
         }
 
         $validator = Validator::make($request->all(), [
+            'supplier_id' => ['sometimes', 'integer', 'exists:suppliers,id,business_id,'.$businessId],
             'expected_at' => ['nullable', 'date'],
             'currency' => ['nullable', 'string', 'size:3'],
             'notes' => ['nullable', 'string'],
+            'lines' => ['sometimes', 'array', 'min:1'],
+            'lines.*.product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
+            'lines.*.branch_product_id' => ['required', 'integer', 'exists:branch_products,id,branch_id,'.$po->branch_id],
+            'lines.*.quantity_ordered' => BusinessQuantityPolicy::stockQuantityRules($business),
+            'lines.*.unit_cost' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.tax_rate' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.line_total' => ['nullable', 'numeric', 'min:0'],
+            'lines.*.notes' => ['nullable', 'string'],
         ]);
         if ($validator->fails()) {
             return response()->json(['message' => 'Validation error', 'errors' => $validator->errors()], 422);
         }
 
-        $po->update($validator->validated());
+        $validated = $validator->validated();
+        $lines = $validated['lines'] ?? null;
+        unset($validated['lines']);
+
+        DB::transaction(function () use ($po, $validated, $lines, $business) {
+            $po->update($validated);
+
+            if ($lines === null) {
+                return;
+            }
+
+            $po->lines()->delete();
+            foreach ($lines as $line) {
+                PurchaseOrderLine::create([
+                    'purchase_order_id' => $po->id,
+                    'product_id' => (int) $line['product_id'],
+                    'branch_product_id' => (int) $line['branch_product_id'],
+                    'quantity_ordered' => BusinessQuantityPolicy::normalizeForBusiness($business, (float) $line['quantity_ordered']),
+                    'quantity_received' => 0,
+                    'unit_cost' => $line['unit_cost'] ?? null,
+                    'tax_rate' => $line['tax_rate'] ?? null,
+                    'line_total' => $line['line_total'] ?? null,
+                    'notes' => $line['notes'] ?? null,
+                ]);
+            }
+        });
 
         return response()->json(['purchase_order' => $po->fresh()->load(['supplier', 'lines'])]);
     }

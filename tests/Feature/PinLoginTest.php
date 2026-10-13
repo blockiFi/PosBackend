@@ -705,4 +705,79 @@ class PinLoginTest extends TestCase
                 'message' => 'You do not have permission to use PIN login',
             ]);
     }
+
+    public function test_manager_can_set_pin_for_staff_in_the_same_business()
+    {
+        [$manager, $business] = $this->pinManagerInNewBusiness();
+        $staff = User::factory()->create();
+        $staff->businesses()->attach($business->id, ['is_active' => true]);
+
+        $this->actingAs($manager)->postJson('/api/pin/set', [
+            'user_id' => $staff->id,
+            'pin_code' => '481516',
+        ])->assertOk();
+
+        $this->assertSame('481516', $staff->fresh()->pin_code);
+    }
+
+    public function test_manager_cannot_set_pin_for_a_user_in_another_business()
+    {
+        [$manager] = $this->pinManagerInNewBusiness();
+        $outsider = User::factory()->create(['pin_code' => '111111']);
+        $outsider->businesses()->attach(Business::factory()->create()->id, ['is_active' => true]);
+
+        $this->actingAs($manager)->postJson('/api/pin/set', [
+            'user_id' => $outsider->id,
+            'pin_code' => '481516',
+        ])->assertForbidden();
+
+        $this->assertSame('111111', $outsider->fresh()->pin_code);
+    }
+
+    public function test_manager_cannot_remove_pin_for_a_user_in_another_business()
+    {
+        [$manager] = $this->pinManagerInNewBusiness();
+        $outsider = User::factory()->create(['pin_code' => '111111']);
+        $outsider->businesses()->attach(Business::factory()->create()->id, ['is_active' => true]);
+
+        $this->actingAs($manager)->postJson('/api/pin/remove', [
+            'user_id' => $outsider->id,
+            'password' => 'password123',
+        ])->assertForbidden();
+
+        $this->assertSame('111111', $outsider->fresh()->pin_code);
+    }
+
+    public function test_business_owner_can_set_staff_pin_without_the_explicit_permission()
+    {
+        $owner = User::factory()->create();
+        $business = Business::factory()->create(['owner_id' => $owner->id]);
+        $owner->businesses()->attach($business->id, ['is_active' => true]);
+        $staff = User::factory()->create();
+        $staff->businesses()->attach($business->id, ['is_active' => true]);
+
+        $this->actingAs($owner)->postJson('/api/pin/set', [
+            'user_id' => $staff->id,
+            'pin_code' => '481516',
+        ])->assertOk();
+    }
+
+    /**
+     * @return array{0: User, 1: Business}
+     */
+    private function pinManagerInNewBusiness(): array
+    {
+        Permission::firstOrCreate(['name' => 'manage-pin-codes', 'guard_name' => 'api']);
+
+        $business = Business::factory()->create();
+        $manager = User::factory()->create(['password' => Hash::make('password123')]);
+        $manager->businesses()->attach($business->id, ['is_active' => true]);
+
+        setPermissionsTeamId($business->id);
+        $role = Role::create(['name' => 'pin manager', 'guard_name' => 'api']);
+        $role->givePermissionTo('manage-pin-codes');
+        $manager->assignRole($role);
+
+        return [$manager, $business];
+    }
 }

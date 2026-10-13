@@ -205,8 +205,16 @@ class SalesShift extends Model
     public function computeMetricsFromShiftPayments(): array
     {
         $payments = Payment::query()
-            ->where('shift_id', $this->id)
             ->where('status', 'completed')
+            ->where(function ($query) {
+                $query->where('shift_id', $this->id)
+                    ->orWhere(function ($query) {
+                        $query->whereNull('shift_id')
+                            ->whereHas('sale', function ($sale) {
+                                $sale->where('sales.shift_id', $this->id);
+                            });
+                    });
+            })
             // Exclude payments tied to cancelled (or soft-deleted) sales — those amounts are
             // not in the drawer at close time. whereHas('sale', ...) implicitly filters
             // soft-deleted sales out via the relation's default scope.

@@ -166,14 +166,12 @@ class InventoryController extends Controller
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
-        $stockQtyRules = BusinessQuantityPolicy::stockQuantityRules($business);
-
         $data = $request->all();
         $validator = Validator::make($data, [
             'branch_id' => ['required', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'product_id' => ['required', 'integer', 'exists:products,id,business_id,'.$businessId],
             'type' => ['required', 'in:purchase,sale,adjustment,transfer_out,transfer_in,return,damage,initial'],
-            'quantity' => array_merge($stockQtyRules, ['not_in:0']),
+            'quantity' => ['required', 'numeric', 'not_in:0'],
             'shelf_quantity' => ['nullable', 'numeric', 'min:0'],
             'store_quantity' => ['nullable', 'numeric', 'min:0'],
             'location' => ['nullable', 'in:shelf,store,both'],
@@ -182,11 +180,12 @@ class InventoryController extends Controller
             'related_branch_id' => ['nullable', 'integer', 'exists:branches,id,business_id,'.$businessId],
             'notes' => ['nullable', 'string'],
             'meta_data' => ['nullable', 'array'],
-            // Batch tracking fields (for purchases)
-            'batch_number' => ['required_if:type,purchase', 'string', 'max:255'],
+            // Batch dates are optional. The storekeeper receive form records quantity
+            // without a lot, and the batch row is created with a generated number.
+            'batch_number' => ['nullable', 'string', 'max:255'],
             'lot_number' => ['nullable', 'string', 'max:255'],
-            'manufacturing_date' => ['required_if:type,purchase', 'date'],
-            'expiry_date' => ['required_if:type,purchase', 'date', 'after:manufacturing_date'],
+            'manufacturing_date' => ['nullable', 'date'],
+            'expiry_date' => ['nullable', 'date', 'after:manufacturing_date'],
             'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id,business_id,'.$businessId],
             'supplier_name' => ['nullable', 'string', 'max:255'],
             'supplier_reference' => ['nullable', 'string', 'max:255'],
