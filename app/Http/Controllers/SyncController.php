@@ -32,6 +32,7 @@ use App\Support\Quantity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -818,42 +819,22 @@ class SyncController extends Controller
 
         $branchId = (int) $data['branch_id'];
 
-        // Validate inventory for all items before creating sale (so we don't persist a sale we then reject)
+        // Every item must be stocked at the branch before we persist anything. Stock levels are
+        // NOT checked: a synced sale already happened at the till (the customer has paid), so
+        // rejecting it for stock only makes the terminal retry forever while stock never moves.
+        // Shortfalls are deducted down to zero and recorded instead (see below).
         if (! $deferStockToCompletion && isset($data['items'])) {
             foreach ($data['items'] as $item) {
                 $productId = (int) $item['product_id'];
-                $qty = BusinessQuantityPolicy::normalizeForBusiness($businessId, (float) $item['quantity']);
-                $branchProduct = BranchProduct::where('branch_id', $branchId)
+                $branchProductExists = BranchProduct::where('branch_id', $branchId)
                     ->where('product_id', $productId)
-                    ->first();
-                if (! $branchProduct) {
+                    ->exists();
+                if (! $branchProductExists) {
                     $product = Product::find($productId);
 
                     throw new \Exception(
                         'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
                     );
-                }
-                if ($branchProduct->availableForSale() < $qty) {
-                    $product = $branchProduct->product;
-
-                    throw new \Exception(
-                        "Insufficient stock for product: {$product->name}"
-                    );
-                }
-                if (isset($item['batch_id']) && $item['batch_id'] !== null) {
-                    $batchId = (int) $item['batch_id'];
-                    $batch = ProductBatch::where('id', $batchId)
-                        ->where('product_id', $productId)
-                        ->where('branch_id', $branchId)
-                        ->where('business_id', $businessId)
-                        ->first();
-                    if (! $batch || (float) $batch->current_quantity < $qty) {
-                        $product = $branchProduct->product;
-
-                        throw new \Exception(
-                            "Invalid or insufficient batch quantity for product: {$product->name}"
-                        );
-                    }
                 }
             }
         }
@@ -898,6 +879,7 @@ class SyncController extends Controller
 
             // Create items and deduct inventory
             $saleNumber = $data['sale_number'];
+            $stockShortfalls = [];
 
             if (isset($data['items'])) {
                 foreach ($data['items'] as $item) {
@@ -916,14 +898,6 @@ class SyncController extends Controller
                         );
                     }
 
-                    if (! $deferStockToCompletion && $branchProduct->availableForSale() < $qty) {
-                        $product = $branchProduct->product;
-
-                        throw new \Exception(
-                            "Insufficient stock for product: {$product->name}"
-                        );
-                    }
-
                     // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
                     $batch = null;
                     $batchId = null;
@@ -936,18 +910,18 @@ class SyncController extends Controller
                             }
                         }
                         if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
-                            $batchId = (int) $item['batch_id'];
-                            $batch = ProductBatch::where('id', $batchId)
+                            $clientBatch = ProductBatch::where('id', (int) $item['batch_id'])
                                 ->where('product_id', $productId)
                                 ->where('branch_id', $branchId)
                                 ->where('business_id', $businessId)
                                 ->first();
-                            if (! $batch || (float) $batch->current_quantity < $qty) {
-                                $product = $branchProduct->product;
-
-                                throw new \Exception(
-                                    "Invalid or insufficient batch quantity for product: {$product->name}"
-                                );
+                            // An unknown or short batch falls back to FEFO allocation below
+                            // rather than rejecting a sale that already happened.
+                            if ($clientBatch && (float) $clientBatch->current_quantity >= $qty) {
+                                $batch = $clientBatch;
+                                $batchId = $clientBatch->id;
+                            } else {
+                                $batch = null;
                             }
                         }
                     }
@@ -1011,6 +985,10 @@ class SyncController extends Controller
                             $batch->allocate($qty);
                         }
 
+                        $shortfall = $deductResult['stock_tracked'] && $product->stock_tracking !== 'none'
+                            ? Quantity::normalize($qty - (float) $deductResult['from_shelf'] - (float) $deductResult['from_store'])
+                            : 0.0;
+
                         $invPayload = [
                             'uuid' => (string) Str::uuid(),
                             'business_id' => $businessId,
@@ -1026,6 +1004,18 @@ class SyncController extends Controller
                             'reference_number' => $saleNumber,
                             'notes' => "Sale: {$saleNumber}",
                         ];
+                        if (Quantity::isPositive($shortfall)) {
+                            $shortfallRecord = [
+                                'product_id' => $productId,
+                                'product_name' => $product->name,
+                                'requested_quantity' => $qty,
+                                'deducted_quantity' => Quantity::normalize($qty - $shortfall),
+                                'shortfall_quantity' => $shortfall,
+                            ];
+                            $stockShortfalls[] = $shortfallRecord;
+                            $invPayload['notes'] = "Sale: {$saleNumber} (synced with stock shortfall of {$shortfall})";
+                            $invPayload['meta_data'] = ['stock_shortfall' => $shortfallRecord];
+                        }
                         if ($deductResult['stock_tracked']) {
                             $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
                             $invPayload['store_quantity'] = -$deductResult['from_store'];
@@ -1040,12 +1030,15 @@ class SyncController extends Controller
                         $invTransaction = InventoryTransaction::create($invPayload);
 
                         if ($batchId === null && Quantity::isPositive($qty)) {
+                            // Never fail a synced sale on batch shortages: allocate what the
+                            // batches hold and leave the rest unallocated.
                             $this->batchService->allocateStockOut(
                                 $productId,
                                 $branchId,
                                 $qty,
                                 $invTransaction,
-                                ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                                ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"],
+                                false
                             );
                         }
                     }
@@ -1133,6 +1126,19 @@ class SyncController extends Controller
             // Log sale creation
             ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', $sale->version ?? 1, [], $deviceId, $userId, $businessId);
 
+            if ($stockShortfalls !== []) {
+                ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'updated', $sale->version ?? 1, [
+                    'stock_shortfalls' => $stockShortfalls,
+                ], $deviceId, $userId, $businessId);
+                Log::warning('Synced sale exceeded branch stock; deducted available stock only', [
+                    'sale_id' => $sale->id,
+                    'sale_number' => $sale->sale_number,
+                    'business_id' => $businessId,
+                    'branch_id' => $branchId,
+                    'stock_shortfalls' => $stockShortfalls,
+                ]);
+            }
+
             // If any payments were skipped or mapped, log those details against the sale for traceability
             if (! empty($skippedPayments) || ! empty($mappedPayments)) {
                 $sale->version = (($sale->version ?? 0) + 1);
@@ -1153,11 +1159,16 @@ class SyncController extends Controller
         // Log change
         ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', 1, [], $deviceId, $userId, $businessId);
 
-        return [
+        $mapping = [
             'server_id' => $sale->id,
             'sale_number' => $sale->sale_number,
             'status' => 'synced',
         ];
+        if ($stockShortfalls !== []) {
+            $mapping['stock_shortfalls'] = $stockShortfalls;
+        }
+
+        return $mapping;
     }
 
     private function resolveDepositStockMode(int $businessId, mixed $saleMetadata): string

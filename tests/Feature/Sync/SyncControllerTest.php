@@ -1074,6 +1074,129 @@ class SyncControllerTest extends TestCase
             ->assertJsonPath('message', 'Business context is required');
     }
 
+    public function test_synced_sale_exceeding_stock_is_accepted_and_stock_ends_at_zero(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'stock_tracking' => 'simple']);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 3,
+            'shelf_quantity' => 1,
+            'store_quantity' => 2,
+            'selling_price' => 50.00,
+        ]);
+        ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'current_quantity' => 2,
+            'received_quantity' => 2,
+            'status' => 'active',
+            'expiry_date' => now()->addMonths(3),
+        ]);
+
+        $response = $this->pushSale($device, $shift, $product->id, 5);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('results.sales.accepted', 1)
+            ->assertJsonPath('results.sales.rejected', 0);
+        $mapping = collect($response->json('results.sales.mappings'))->first();
+        $this->assertSame('synced', $mapping['status']);
+        $this->assertEquals(2, $mapping['stock_shortfalls'][0]['shortfall_quantity']);
+        $this->assertEquals(3, $mapping['stock_shortfalls'][0]['deducted_quantity']);
+
+        $branchProduct->refresh();
+        $this->assertEquals(0, (float) $branchProduct->stock_quantity);
+        $this->assertEquals(0, (float) $branchProduct->shelf_quantity);
+        $this->assertEquals(0, (float) $branchProduct->store_quantity);
+
+        $sale = Sale::find($mapping['server_id']);
+        $this->assertNotNull($sale);
+        $this->assertEquals(5, (float) $sale->items()->first()->quantity);
+
+        $transaction = \App\Models\InventoryTransaction::where('reference_number', $sale->sale_number)->where('type', 'sale')->first();
+        $this->assertEquals(-5, (float) $transaction->quantity);
+        $this->assertEquals(0, (float) $transaction->quantity_after);
+        $this->assertEquals(2, $transaction->meta_data['stock_shortfall']['shortfall_quantity']);
+        $this->assertDatabaseHas('change_logs', ['entity_type' => 'sales', 'entity_id' => $sale->id, 'action' => 'updated']);
+    }
+
+    public function test_synced_sale_with_short_client_batch_falls_back_to_batchless_allocation(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'stock_tracking' => 'simple']);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'shelf_quantity' => 10,
+            'selling_price' => 50.00,
+        ]);
+        $batch = ProductBatch::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'current_quantity' => 1,
+            'received_quantity' => 1,
+            'status' => 'active',
+            'expiry_date' => now()->addMonths(3),
+        ]);
+
+        $response = $this->pushSale($device, $shift, $product->id, 4, $batch->id);
+
+        $response->assertStatus(200)->assertJsonPath('results.sales.accepted', 1);
+        $this->assertEquals(6, (float) $branchProduct->fresh()->stock_quantity);
+        $this->assertEquals(0, (float) $batch->fresh()->current_quantity);
+        $sale = Sale::where('branch_id', $this->branch->id)->latest('id')->first();
+        $this->assertNull($sale->items()->first()->batch_id);
+    }
+
+    public function test_synced_sale_without_branch_product_is_still_rejected(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+
+        $response = $this->pushSale($device, $shift, $product->id, 1);
+
+        $response->assertJsonPath('results.sales.rejected', 1);
+        $this->assertStringContainsString('BranchProduct not found', $response->json('results.sales.conflicts_details.0.error'));
+    }
+
+    private function pushSale(DeviceRegistration $device, SalesShift $shift, int $productId, float $quantity, ?int $batchId = null): \Illuminate\Testing\TestResponse
+    {
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+        $item = ['product_id' => $productId, 'quantity' => $quantity];
+        if ($batchId !== null) {
+            $item['batch_id'] = $batchId;
+        }
+
+        return $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [[
+                    'client_uuid' => Str::uuid()->toString(),
+                    'sale_number' => 'SALE-'.Str::random(8),
+                    'branch_id' => $this->branch->id,
+                    'shift_id' => $shift->id,
+                    'sale_type' => 'pos',
+                    'sale_date' => now()->toIso8601String(),
+                    'items' => [$item],
+                    'payments' => [[
+                        'payment_method_id' => $paymentMethod->id,
+                        'amount' => 50 * $quantity,
+                    ]],
+                ]],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+    }
+
     // Helper Methods
 
     protected function registerDevice(): DeviceRegistration
