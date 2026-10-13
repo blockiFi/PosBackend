@@ -10,6 +10,7 @@ use App\Models\DeviceRegistration;
 use App\Models\PaymentMethod;
 use App\Models\Product;
 use App\Models\ProductCategory;
+use App\Models\SalesShift;
 use App\Models\SyncSession;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -103,11 +104,14 @@ class SyncWorkflowTest extends TestCase
         $this->assertNotNull($branchProduct);
         $branchProduct->update([
             'stock_quantity' => 10,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
             'cost_price' => 50.00,
             'selling_price' => 100.00,
         ]);
         $product = $branchProduct->product;
         $paymentMethod = PaymentMethod::first();
+        $shift = $this->openShift();
 
         $pushResponse = $this->postJson('/api/sync/push', [
             'session_id' => Str::uuid()->toString(),
@@ -117,6 +121,7 @@ class SyncWorkflowTest extends TestCase
                         'client_uuid' => $clientSaleUuid,
                         'sale_number' => 'SALE-WORKFLOW-001',
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 200.00,
@@ -333,6 +338,7 @@ class SyncWorkflowTest extends TestCase
             'stock_quantity' => 10,
         ]);
         $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+        $shift = $this->openShift();
 
         $sessionId = Str::uuid()->toString();
 
@@ -345,6 +351,7 @@ class SyncWorkflowTest extends TestCase
                         'client_uuid' => Str::uuid()->toString(),
                         'sale_number' => 'SALE-SESSION-001',
                         'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
                         'sale_type' => 'pos',
                         'sale_date' => now()->toIso8601String(),
                         'subtotal' => 100.00,
@@ -464,6 +471,19 @@ class SyncWorkflowTest extends TestCase
     }
 
     // Helper Methods
+
+    protected function openShift(): SalesShift
+    {
+        return SalesShift::create([
+            'shift_number' => 'SHIFT-'.Str::random(8),
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $this->user->id,
+            'start_time' => now(),
+            'opening_balance' => 0,
+            'status' => 'open',
+        ]);
+    }
 
     protected function registerTestDevice(?string $suffix = null): DeviceRegistration
     {

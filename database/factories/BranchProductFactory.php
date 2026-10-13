@@ -2,8 +2,8 @@
 
 namespace Database\Factories;
 
-use App\Models\BranchProduct;
 use App\Models\Branch;
+use App\Models\BranchProduct;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -23,14 +23,14 @@ class BranchProductFactory extends Factory
     {
         $shelfQty = fake()->numberBetween(0, 50);
         $storeQty = fake()->numberBetween(0, 100);
-        
+
         return [
             'branch_id' => Branch::factory(),
             'product_id' => Product::factory(),
             'shelf_quantity' => $shelfQty,
             'store_quantity' => $storeQty,
             'stock_quantity' => $shelfQty + $storeQty,
-            'reorder_level' => fake()->numberBetween(5, 20),
+            'reorder_point' => fake()->numberBetween(5, 20),
             'reorder_quantity' => fake()->numberBetween(20, 50),
             'selling_price' => fake()->randomFloat(2, 10, 200),
             'cost_price' => fake()->randomFloat(2, 5, 150),

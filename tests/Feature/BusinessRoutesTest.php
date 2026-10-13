@@ -2,20 +2,20 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
-use App\Models\User;
 use App\Models\Business;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Hash;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
 
 class BusinessRoutesTest extends TestCase
 {
     use RefreshDatabase;
 
     // ==================== Authentication Tests ====================
-    
+
     public function test_user_can_register_with_valid_credentials()
     {
         $payload = [
@@ -26,13 +26,13 @@ class BusinessRoutesTest extends TestCase
         ];
 
         $response = $this->postJson('/api/register', $payload);
-        
+
         $response->assertStatus(201)
             ->assertJsonStructure([
                 'message',
                 'token',
                 'token_type',
-                'user' => ['id', 'name', 'email']
+                'user' => ['id', 'name', 'email'],
             ])
             ->assertJsonPath('user.name', 'John Doe')
             ->assertJsonPath('user.email', 'john@example.test')
@@ -51,7 +51,7 @@ class BusinessRoutesTest extends TestCase
         ];
 
         $response = $this->postJson('/api/register', $payload);
-        
+
         $response->assertStatus(422)
             ->assertJsonStructure(['message', 'errors']);
     }
@@ -72,7 +72,7 @@ class BusinessRoutesTest extends TestCase
         ];
 
         $response = $this->postJson('/api/register', $payload);
-        
+
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['email']);
     }
@@ -95,7 +95,7 @@ class BusinessRoutesTest extends TestCase
                 'message',
                 'token',
                 'token_type',
-                'user' => ['id', 'name', 'email']
+                'user' => ['id', 'name', 'email'],
             ])
             ->assertJsonPath('user.email', 'test@example.test');
     }
@@ -254,12 +254,12 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $user->businesses()->attach($business1->id, [
-     
+
             'is_active' => true,
         ]);
 
         $user->businesses()->attach($business2->id, [
-         
+
             'is_active' => true,
         ]);
 
@@ -310,12 +310,12 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $user->businesses()->attach($activeBusiness->id, [
-          
+
             'is_active' => true,
         ]);
 
         $user->businesses()->attach($inactiveBusiness->id, [
-       
+
             'is_active' => false,
         ]);
 
@@ -354,7 +354,7 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $user->businesses()->attach($business->id, [
-        
+
             'is_active' => true,
         ]);
 
@@ -396,7 +396,7 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $owner->businesses()->attach($business->id, [
-         
+
             'is_active' => true,
         ]);
 
@@ -434,7 +434,7 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $owner->businesses()->attach($business->id, [
-          
+
             'is_active' => true,
         ]);
 
@@ -455,6 +455,53 @@ class BusinessRoutesTest extends TestCase
             'name' => 'Updated Name',
             'currency' => 'EUR',
         ]);
+    }
+
+    public function test_partial_settings_update_keeps_existing_keys(): void
+    {
+        $owner = User::create([
+            'name' => 'Owner',
+            'email' => 'owner-settings-merge@example.test',
+            'password' => Hash::make('password'),
+        ]);
+
+        $business = Business::create([
+            'uuid' => Str::uuid(),
+            'owner_id' => $owner->id,
+            'name' => 'Settings Store',
+            'currency' => 'NGN',
+            'settings' => [
+                'deposit_stock_mode' => 'deduct_on_complete',
+                'allow_decimal_quantities' => true,
+                'currency_symbol' => '₦',
+                'low_stock_threshold' => 10,
+            ],
+        ]);
+
+        $owner->businesses()->attach($business->id, [
+            'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($owner);
+
+        $response = $this->withHeaders(['X-Business-Id' => $business->id])
+            ->putJson("/api/businesses/{$business->id}", [
+                'settings' => [
+                    'low_stock_threshold' => 4,
+                    'enable_loyalty' => true,
+                ],
+            ]);
+
+        $response->assertOk();
+
+        $business->refresh();
+        $settings = $business->settings;
+
+        $this->assertSame(4, $settings['low_stock_threshold']);
+        $this->assertTrue($settings['enable_loyalty']);
+        $this->assertSame('deduct_on_complete', $settings['deposit_stock_mode']);
+        $this->assertTrue($settings['allow_decimal_quantities']);
+        $this->assertSame('₦', $settings['currency_symbol']);
     }
 
     public function test_non_owner_cannot_update_business()
@@ -486,12 +533,12 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $owner->businesses()->attach($business->id, [
-          
+
             'is_active' => true,
         ]);
 
         $staff->businesses()->attach($business->id, [
-          
+
             'is_active' => true,
         ]);
 
@@ -535,7 +582,7 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $owner->businesses()->attach($business->id, [
-          
+
             'is_active' => true,
         ]);
 
@@ -579,12 +626,12 @@ class BusinessRoutesTest extends TestCase
         ]);
 
         $owner->businesses()->attach($business->id, [
-          
+
             'is_active' => true,
         ]);
 
         $manager->businesses()->attach($business->id, [
-           
+
             'is_active' => true,
         ]);
 

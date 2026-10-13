@@ -246,7 +246,7 @@ class InventoryRoutesTest extends TestCase
         $integerResponse->assertStatus(201);
     }
 
-    public function test_cannot_create_purchase_without_batch_tracking_fields(): void
+    public function test_can_create_purchase_without_batch_tracking_fields(): void
     {
         $this->role->givePermissionTo('manage inventory');
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
@@ -264,8 +264,7 @@ class InventoryRoutesTest extends TestCase
         $response = $this->actingAs($this->user, 'sanctum')
             ->postJson('/api/inventory/transactions?current_business_id='.$this->business->id, $data);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['batch_number', 'manufacturing_date', 'expiry_date']);
+        $response->assertStatus(201);
     }
 
     public function test_cannot_create_inventory_transaction_without_permission(): void

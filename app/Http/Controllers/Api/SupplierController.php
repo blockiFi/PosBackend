@@ -103,7 +103,7 @@ class SupplierController extends Controller
             'business_id' => (int) $businessId,
         ]));
 
-        return response()->json(['supplier' => $supplier], 201);
+        return response()->json(['supplier' => $supplier->fresh()], 201);
     }
 
     public function show(Request $request, $id)

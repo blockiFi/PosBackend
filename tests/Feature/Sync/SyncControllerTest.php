@@ -222,6 +222,87 @@ class SyncControllerTest extends TestCase
         $productInUpdated = collect($updated)->contains('product_id', $productId);
         $productInCreated = collect($created)->contains('product_id', $productId);
         $this->assertTrue($productInUpdated || $productInCreated, 'Branch product should appear in pull changes (created or updated)');
+        $this->assertFalse($response->json('has_more'));
+    }
+
+    /** @test */
+    public function it_pages_product_pulls_instead_of_dropping_the_rest(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $first = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subYear()->toIso8601String(),
+            'entities' => ['products'],
+            'limit' => 2,
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $first->assertOk();
+        $this->assertTrue($first->json('has_more'));
+        $cursor = $first->json('next_cursor');
+        $this->assertNotNull($cursor);
+
+        $firstIds = collect($first->json('changes.products.created'))
+            ->merge($first->json('changes.products.updated'))
+            ->pluck('product_id');
+        $this->assertCount(2, $firstIds);
+
+        $second = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subYear()->toIso8601String(),
+            'entities' => ['products'],
+            'limit' => 2,
+            'cursor' => $cursor,
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $second->assertOk();
+        $secondIds = collect($second->json('changes.products.created'))
+            ->merge($second->json('changes.products.updated'))
+            ->pluck('product_id');
+        $this->assertCount(2, $secondIds);
+        $this->assertEmpty($firstIds->intersect($secondIds));
+    }
+
+    /** @test */
+    public function it_pulls_a_product_when_only_the_barcode_changed(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->assertNotNull($branchProduct);
+
+        \Illuminate\Support\Facades\DB::table('branch_products')->where('id', $branchProduct->id)->update([
+            'created_at' => now()->subDays(3),
+            'updated_at' => now()->subDays(3),
+        ]);
+        \Illuminate\Support\Facades\DB::table('products')->where('id', $branchProduct->product_id)->update([
+            'barcode' => '5901234123457',
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subDay()->toIso8601String(),
+            'entities' => ['products'],
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertOk();
+        $rows = collect($response->json('changes.products.updated'))
+            ->merge($response->json('changes.products.created'));
+        $match = $rows->firstWhere('product_id', $branchProduct->product_id);
+        $this->assertNotNull($match);
+        $this->assertSame('5901234123457', $match['barcode']);
     }
 
     /** @test */
@@ -403,6 +484,80 @@ class SyncControllerTest extends TestCase
 
         $branchProduct->refresh();
         $this->assertEqualsWithDelta(9.5, (float) $branchProduct->stock_quantity, 0.001, 'Stock should be decremented by 10.5');
+    }
+
+    /** @test */
+    public function it_deducts_shelf_stock_when_the_ledger_total_is_behind_the_shelf(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 2,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create([
+            'business_id' => $this->business->id,
+        ]);
+
+        $saleNumber = 'SALE-SHELF-'.time();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [
+                    [
+                        'client_uuid' => Str::uuid()->toString(),
+                        'sale_number' => $saleNumber,
+                        'branch_id' => $this->branch->id,
+                        'shift_id' => $shift->id,
+                        'sale_type' => 'pos',
+                        'sale_date' => now()->toIso8601String(),
+                        'subtotal' => 150.00,
+                        'tax_amount' => 0,
+                        'total_amount' => 150.00,
+                        'payment_status' => 'paid',
+                        'status' => 'completed',
+                        'version' => 1,
+                        'origin' => 'offline',
+                        'items' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'product_id' => $product->id,
+                                'quantity' => 3,
+                                'unit_price' => 50.00,
+                                'subtotal' => 150.00,
+                            ],
+                        ],
+                        'payments' => [
+                            [
+                                'client_uuid' => Str::uuid()->toString(),
+                                'payment_method_id' => $paymentMethod->id,
+                                'amount' => 150.00,
+                                'payment_date' => now()->toIso8601String(),
+                            ],
+                        ],
+                    ],
+                ],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $this->assertEquals(1, $response->json('results.sales.accepted'));
+
+        $branchProduct->refresh();
+        $this->assertEqualsWithDelta(7.0, (float) $branchProduct->shelf_quantity, 0.001);
+        $this->assertEqualsWithDelta(7.0, (float) $branchProduct->stock_quantity, 0.001);
     }
 
     /** @test */

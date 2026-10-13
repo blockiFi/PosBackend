@@ -347,6 +347,19 @@ class BranchProduct extends Model
     }
 
     /**
+     * Units a sale can take. Shelf and store are the physical count. stock_quantity
+     * is the ledger the manager inventory screen shows, and it can lag behind the
+     * shelf (or be the only figure set). A sale must be allowed when either covers it.
+     */
+    public function availableForSale(): float
+    {
+        $physical = (float) $this->shelf_quantity + (float) $this->store_quantity;
+        $ledger = (float) $this->stock_quantity;
+
+        return max($physical, $ledger);
+    }
+
+    /**
      * Deduct quantity for a sale from physical locations (shelf first, then store).
      * Keeps stock_quantity = shelf_quantity + store_quantity. Handles legacy data
      * where only stock_quantity was set (shelf+store 0).
