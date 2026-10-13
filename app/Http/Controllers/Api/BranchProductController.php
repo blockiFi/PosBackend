@@ -157,6 +157,107 @@ class BranchProductController extends Controller
     }
 
     /**
+     * Stock alerts for one branch: low stock, out of stock and shelves to restock from the store.
+     */
+    public function alerts(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $businessId = $request->header('X-Business-Id') ?? $request->input('business_id') ?? $request->input('current_business_id');
+        $branchId = $request->input('branch_id');
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context is required'], 400);
+        }
+
+        if (! $branchId || ! is_numeric($branchId)) {
+            return response()->json(['message' => 'Branch ID is required'], 400);
+        }
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        setPermissionsTeamId($businessId);
+        if ($business->owner_id !== $user->id
+            && ! $user->checkPermissionTo('view inventory', 'api')
+            && ! $user->checkPermissionTo('view products', 'api')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $branchExists = Branch::where('id', $branchId)->where('business_id', $businessId)->exists();
+        if (! $branchExists) {
+            return response()->json(['message' => 'Branch not found'], 404);
+        }
+
+        if (! $this->userHasBranchAccess($user, (int) $businessId, (int) $branchId)) {
+            return response()->json(['message' => 'You do not have access to this branch'], 403);
+        }
+
+        $active = BranchProduct::query()
+            ->where('branch_id', $branchId)
+            ->where('is_available', true)
+            ->whereHas('product', fn ($product) => $product->where('is_active', true))
+            ->with('product');
+
+        $lowStock = (clone $active)->lowStock()->get();
+
+        $outOfStock = (clone $active)
+            ->where('stock_quantity', '<=', 0)
+            ->whereHas('product', function ($product) {
+                $product->where(function ($tracking) {
+                    $tracking->whereNull('stock_tracking')->orWhere('stock_tracking', '!=', 'none');
+                });
+            })
+            ->get();
+
+        $shelfRestock = (clone $active)
+            ->where('store_quantity', '>', 0)
+            ->get()
+            ->filter(fn (BranchProduct $branchProduct): bool => $branchProduct->shelfNeedsRestocking());
+
+        $toItems = fn ($branchProducts): array => $branchProducts
+            ->map(fn (BranchProduct $branchProduct): array => $this->alertItem($branchProduct))
+            ->sortBy([['stock_quantity', 'asc'], ['name', 'asc']])
+            ->values()
+            ->all();
+
+        $data = [
+            'low_stock' => $toItems($lowStock),
+            'out_of_stock' => $toItems($outOfStock),
+            'shelf_restock' => $toItems($shelfRestock),
+        ];
+
+        return response()->json([
+            'data' => $data,
+            'counts' => array_map('count', $data),
+            'generated_at' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
+     * @return array{branch_product_id: int, product_id: int, name: string, sku: string|null, barcode: string|null, stock_quantity: float, shelf_quantity: float, store_quantity: float, low_stock_threshold: int}
+     */
+    private function alertItem(BranchProduct $branchProduct): array
+    {
+        return [
+            'branch_product_id' => (int) $branchProduct->id,
+            'product_id' => (int) $branchProduct->product_id,
+            'name' => $branchProduct->product->name,
+            'sku' => $branchProduct->product->sku,
+            'barcode' => $branchProduct->product->barcode,
+            'stock_quantity' => (float) $branchProduct->stock_quantity,
+            'shelf_quantity' => (float) $branchProduct->shelf_quantity,
+            'store_quantity' => (float) $branchProduct->store_quantity,
+            'low_stock_threshold' => (int) ($branchProduct->low_stock_threshold ?? $branchProduct->product->low_stock_threshold ?? 0),
+        ];
+    }
+
+    /**
      * Add or update a product in a branch
      */
     public function store(Request $request)

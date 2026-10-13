@@ -69,8 +69,7 @@ class DashboardController extends Controller
             }
 
             $lowStockCount = (int) (clone $bpQuery)
-                ->where('stock_quantity', '>', 0)
-                ->whereColumn('stock_quantity', '<=', 'low_stock_threshold')
+                ->lowStock()
                 ->count();
 
             $outOfStockCount = (int) (clone $bpQuery)
@@ -301,10 +300,13 @@ class DashboardController extends Controller
     private function trend(string $changePercentage): string
     {
         $change = (float) $changePercentage;
-        if ($change > 0) return 'up';
-        if ($change < 0) return 'down';
+        if ($change > 0) {
+            return 'up';
+        }
+        if ($change < 0) {
+            return 'down';
+        }
 
         return 'stable';
     }
 }
-
