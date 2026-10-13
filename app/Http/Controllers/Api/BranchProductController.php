@@ -11,8 +11,8 @@ use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\Product;
 use App\Models\ProductUnit;
-use App\Models\QuickSale;
 use App\Models\User;
+use App\Services\BranchProductService;
 use App\Services\TieredPricingService;
 use App\Support\BusinessQuantityPolicy;
 use Illuminate\Database\Eloquent\Builder;
@@ -24,6 +24,10 @@ use Illuminate\Support\Facades\Validator;
 class BranchProductController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected BranchProductService $branchProductService
+    ) {}
 
     /**
      * List all products for a specific branch
@@ -189,24 +193,7 @@ class BranchProductController extends Controller
         $validator = Validator::make($data, [
             'branch_id' => ['required', 'integer', 'exists:branches,id'],
             'product_id' => ['required', 'integer', 'exists:products,id'],
-            'cost_price' => ['nullable', 'numeric', 'min:0'],
-            'compare_price' => ['nullable', 'numeric', 'min:0'],
-            'discount_amount' => ['nullable', 'numeric', 'min:0'],
-            'discount_type' => ['nullable', 'in:fixed,percentage'],
-            'tax_rate' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'stock_quantity' => ['nullable', 'numeric', 'min:0'],
-            'shelf_quantity' => ['nullable', 'numeric', 'min:0'],
-            'store_quantity' => ['nullable', 'numeric', 'min:0'],
-            'low_stock_threshold' => ['nullable', 'integer', 'min:0'],
-            'allow_backorder' => ['nullable', 'boolean'],
-            'reorder_point' => ['nullable', 'integer', 'min:0'],
-            'reorder_quantity' => ['nullable', 'numeric', 'min:0'],
-            'is_available' => ['nullable', 'boolean'],
-            'is_featured' => ['nullable', 'boolean'],
-            'display_order' => ['nullable', 'integer'],
-            'bin_location' => ['nullable', 'string', 'max:255'],
-            'shelf_location' => ['nullable', 'string', 'max:255'],
-            'branch_meta_data' => ['nullable', 'array'],
+            ...BranchProductService::attributeRules(),
         ]);
 
         if ($validator->fails()) {
@@ -250,41 +237,7 @@ class BranchProductController extends Controller
             ], 422);
         }
 
-        // Calculate total stock from shelf and store quantities
-        $shelfQty = $data['shelf_quantity'] ?? 0;
-        $storeQty = $data['store_quantity'] ?? 0;
-        $totalStock = $shelfQty + $storeQty;
-
-        // If stock_quantity is provided but not shelf/store, put all on shelf
-        if (isset($data['stock_quantity']) && ! isset($data['shelf_quantity']) && ! isset($data['store_quantity'])) {
-            $shelfQty = $data['stock_quantity'];
-            $totalStock = $data['stock_quantity'];
-        }
-
-        // Create branch product
-        $branchProduct = BranchProduct::create([
-            'branch_id' => $data['branch_id'],
-            'product_id' => $data['product_id'],
-            'cost_price' => $data['cost_price'] ?? null,
-            'selling_price' => $product->base_selling_price ?? null,
-            'compare_price' => $data['compare_price'] ?? null,
-            'discount_amount' => $data['discount_amount'] ?? null,
-            'discount_type' => $data['discount_type'] ?? null,
-            'tax_rate' => $data['tax_rate'] ?? null,
-            'stock_quantity' => $totalStock,
-            'shelf_quantity' => $shelfQty,
-            'store_quantity' => $storeQty,
-            'low_stock_threshold' => $data['low_stock_threshold'] ?? null,
-            'allow_backorder' => $data['allow_backorder'] ?? false,
-            'reorder_point' => $data['reorder_point'] ?? null,
-            'reorder_quantity' => $data['reorder_quantity'] ?? null,
-            'is_available' => $data['is_available'] ?? true,
-            'is_featured' => $data['is_featured'] ?? false,
-            'display_order' => $data['display_order'] ?? 0,
-            'bin_location' => $data['bin_location'] ?? null,
-            'shelf_location' => $data['shelf_location'] ?? null,
-            'branch_meta_data' => $data['branch_meta_data'] ?? null,
-        ]);
+        $branchProduct = $this->branchProductService->createForBranch($product, (int) $data['branch_id'], $data);
 
         $branchProduct->load('product.category');
 
@@ -1925,75 +1878,6 @@ class BranchProductController extends Controller
 
     private function transformBranchProduct(BranchProduct $branchProduct): array
     {
-        $activeQuickSale = QuickSale::getActiveQuickSale(
-            $branchProduct->product_id,
-            $branchProduct->branch_id
-        );
-
-        $quickSaleData = null;
-        if ($activeQuickSale) {
-            $quickSaleData = [
-                'id' => $activeQuickSale->id,
-                'discount_type' => $activeQuickSale->discount_type,
-                'discount_value' => $activeQuickSale->discount_value,
-                'batch_id' => $activeQuickSale->batch_id,
-                'start_time' => $activeQuickSale->start_time,
-                'end_time' => $activeQuickSale->end_time,
-                'status' => $activeQuickSale->status,
-            ];
-        }
-
-        return [
-            'id' => $branchProduct->id,
-            'branch_id' => $branchProduct->branch_id,
-            'product_id' => $branchProduct->product_id,
-            'product' => [
-                'id' => $branchProduct->product->id,
-                'name' => $branchProduct->product->name,
-                'sku' => $branchProduct->product->sku,
-                'barcode' => $branchProduct->product->barcode,
-                'image' => $branchProduct->product->image,
-                'category' => $branchProduct->product->category ? [
-                    'id' => $branchProduct->product->category->id,
-                    'name' => $branchProduct->product->category->name,
-                ] : null,
-            ],
-            'pricing' => [
-                'cost_price' => $branchProduct->cost_price,
-                'selling_price' => $branchProduct->selling_price,
-                'compare_price' => $branchProduct->compare_price,
-                'discount_amount' => $branchProduct->discount_amount,
-                'discount_type' => $branchProduct->discount_type,
-                'tax_rate' => $branchProduct->tax_rate,
-                'final_price' => $branchProduct->getFinalPrice(),
-                'price_with_tax' => $branchProduct->getPriceWithTax(),
-                'profit_margin' => $branchProduct->getProfitMargin(),
-            ],
-            'quick_sale' => $quickSaleData,
-            'inventory' => [
-                'stock_quantity' => $branchProduct->stock_quantity,
-                'shelf_quantity' => $branchProduct->shelf_quantity,
-                'store_quantity' => $branchProduct->store_quantity,
-                'low_stock_threshold' => $branchProduct->low_stock_threshold,
-                'allow_backorder' => $branchProduct->allow_backorder,
-                'reorder_point' => $branchProduct->reorder_point,
-                'reorder_quantity' => $branchProduct->reorder_quantity,
-                'is_in_stock' => $branchProduct->isInStock(),
-                'is_low_stock' => $branchProduct->isLowStock(),
-                'is_out_of_stock' => $branchProduct->isOutOfStock(),
-                'needs_reorder' => $branchProduct->needsReorder(),
-                'shelf_needs_restocking' => $branchProduct->shelfNeedsRestocking(),
-                'bin_location' => $branchProduct->bin_location,
-                'shelf_location' => $branchProduct->shelf_location,
-            ],
-            'settings' => [
-                'is_available' => $branchProduct->is_available,
-                'is_featured' => $branchProduct->is_featured,
-                'display_order' => $branchProduct->display_order,
-            ],
-            'branch_meta_data' => $branchProduct->branch_meta_data,
-            'created_at' => $branchProduct->created_at,
-            'updated_at' => $branchProduct->updated_at,
-        ];
+        return $this->branchProductService->transform($branchProduct);
     }
 }
