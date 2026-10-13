@@ -17,6 +17,7 @@ use App\Models\SalesShift;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
 use App\Support\BusinessQuantityPolicy;
+use App\Support\BusinessSettings;
 use App\Support\Quantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -27,9 +28,9 @@ class SaleController extends Controller
 {
     use HasBranchAccess;
 
-    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+    private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
-    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+    private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
     public function __construct(
         protected InventoryBatchService $batchService,

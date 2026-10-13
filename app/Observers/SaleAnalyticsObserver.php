@@ -4,7 +4,6 @@ namespace App\Observers;
 
 use App\Models\Sale;
 use App\Services\AnalyticsRollupService;
-use Carbon\Carbon;
 
 class SaleAnalyticsObserver
 {
@@ -18,7 +17,7 @@ class SaleAnalyticsObserver
             return;
         }
 
-        if (! $sale->wasRecentlyCreated && ! $sale->wasChanged(['status', 'branch_id', 'total_amount', 'discount_amount', 'created_at'])) {
+        if (! $sale->wasRecentlyCreated && ! $sale->wasChanged(['status', 'branch_id', 'total_amount', 'discount_amount', 'sale_date'])) {
             return;
         }
 
@@ -27,16 +26,24 @@ class SaleAnalyticsObserver
         if ($sale->wasChanged('branch_id')) {
             $origBranch = $sale->getOriginal('branch_id');
             if ($origBranch !== null) {
-                $origCreated = $sale->getOriginal('created_at') ?? $sale->created_at;
-                $this->rollupService->rebuildDay((int) $sale->business_id, (int) $origBranch, Carbon::parse($origCreated)->format('Y-m-d'));
+                $origSaleDate = $sale->getOriginal('sale_date') ?? $sale->sale_date;
+                $this->rollupService->rebuildDay(
+                    (int) $sale->business_id,
+                    (int) $origBranch,
+                    $this->rollupService->rollupDayFor((int) $origBranch, $origSaleDate)
+                );
             }
         }
 
-        if ($sale->wasChanged('created_at')) {
-            $origCreated = $sale->getOriginal('created_at');
-            if ($origCreated !== null) {
+        if ($sale->wasChanged('sale_date')) {
+            $origSaleDate = $sale->getOriginal('sale_date');
+            if ($origSaleDate !== null) {
                 $branchForCleanup = (int) ($sale->getOriginal('branch_id') ?? $sale->branch_id);
-                $this->rollupService->rebuildDay((int) $sale->business_id, $branchForCleanup, Carbon::parse($origCreated)->format('Y-m-d'));
+                $this->rollupService->rebuildDay(
+                    (int) $sale->business_id,
+                    $branchForCleanup,
+                    $this->rollupService->rollupDayFor($branchForCleanup, $origSaleDate)
+                );
             }
         }
     }
@@ -54,9 +61,11 @@ class SaleAnalyticsObserver
     {
         $businessId = (int) $sale->business_id;
         $branchId = (int) ($useOriginalSnapshot ? ($sale->getOriginal('branch_id') ?? $sale->branch_id) : $sale->branch_id);
-        $createdAt = $useOriginalSnapshot ? ($sale->getOriginal('created_at') ?? $sale->created_at) : $sale->created_at;
-        $date = Carbon::parse($createdAt)->format('Y-m-d');
+        $saleDate = $useOriginalSnapshot ? ($sale->getOriginal('sale_date') ?? $sale->sale_date) : $sale->sale_date;
+        if ($saleDate === null) {
+            return;
+        }
 
-        $this->rollupService->rebuildDay($businessId, $branchId, $date);
+        $this->rollupService->rebuildDay($businessId, $branchId, $this->rollupService->rollupDayFor($branchId, $saleDate));
     }
 }

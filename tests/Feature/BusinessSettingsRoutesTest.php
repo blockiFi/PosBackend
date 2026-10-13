@@ -40,6 +40,16 @@ class BusinessSettingsRoutesTest extends TestCase
             ->assertJsonPath('data.allow_decimal_quantities', false);
     }
 
+    public function test_get_business_settings_defaults_deposit_stock_mode_to_deduct_on_complete(): void
+    {
+        $this->actingAs($this->owner, 'sanctum')
+            ->getJson('/api/settings/business?current_business_id='.$this->business->id, [
+                'X-Business-Id' => $this->business->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('data.deposit_stock_mode', 'deduct_on_complete');
+    }
+
     public function test_owner_can_update_allow_decimal_quantities(): void
     {
         $response = $this->actingAs($this->owner, 'sanctum')

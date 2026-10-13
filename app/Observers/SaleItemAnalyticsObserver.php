@@ -5,7 +5,6 @@ namespace App\Observers;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Services\AnalyticsRollupService;
-use Carbon\Carbon;
 
 class SaleItemAnalyticsObserver
 {
@@ -34,10 +33,13 @@ class SaleItemAnalyticsObserver
             return;
         }
 
+        if ($sale->sale_date === null) {
+            return;
+        }
+
         $businessId = (int) $sale->business_id;
         $branchId = (int) $sale->branch_id;
-        $date = Carbon::parse($sale->created_at)->format('Y-m-d');
 
-        $this->rollupService->rebuildDay($businessId, $branchId, $date);
+        $this->rollupService->rebuildDay($businessId, $branchId, $this->rollupService->rollupDayFor($branchId, $sale->sale_date));
     }
 }

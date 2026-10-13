@@ -22,11 +22,17 @@ class DepositSaleTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Business $business;
+
     protected Branch $branch;
+
     protected Product $product;
+
     protected Customer $customer;
+
     protected PaymentMethod $cashMethod;
+
     protected PaymentMethod $cardMethod;
 
     protected function setUp(): void
@@ -117,6 +123,75 @@ class DepositSaleTest extends TestCase
             ['deposit_stock_mode' => $mode],
         );
         $this->business->save();
+    }
+
+    public function test_deposit_without_business_setting_defers_stock_until_completion(): void
+    {
+        $this->openShift();
+
+        $response = $this->actingAs($this->user)->postJson('/api/sales', [
+            'branch_id' => $this->branch->id,
+            'customer_id' => $this->customer->id,
+            'sale_type' => 'deposit',
+            'items' => [[
+                'product_id' => $this->product->id,
+                'quantity' => 2,
+                'unit_price' => 1000,
+            ]],
+            'payments' => [[
+                'payment_method_id' => $this->cashMethod->id,
+                'amount' => 2000,
+            ]],
+        ], ['X-Business-Id' => $this->business->id]);
+
+        $response->assertStatus(201);
+        $this->assertSame('deduct_on_complete', $response->json('sale.metadata.deposit_stock_mode'));
+        $bp = BranchProduct::where('product_id', $this->product->id)->first();
+        $this->assertSame(10.0, (float) $bp->stock_quantity);
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$response->json('sale.id')}/complete-deposit", [],
+            ['X-Business-Id' => $this->business->id])->assertStatus(200);
+        $this->assertSame(8.0, (float) $bp->fresh()->stock_quantity);
+    }
+
+    public function test_stamped_reserve_on_create_deposit_is_not_deducted_again_under_new_default(): void
+    {
+        $this->setDepositMode('reserve_on_create');
+        $this->openShift();
+
+        $response = $this->actingAs($this->user)->postJson('/api/sales', [
+            'branch_id' => $this->branch->id,
+            'customer_id' => $this->customer->id,
+            'sale_type' => 'deposit',
+            'items' => [[
+                'product_id' => $this->product->id,
+                'quantity' => 2,
+                'unit_price' => 1000,
+            ]],
+            'payments' => [[
+                'payment_method_id' => $this->cashMethod->id,
+                'amount' => 2000,
+            ]],
+        ], ['X-Business-Id' => $this->business->id])->assertStatus(201);
+        $bp = BranchProduct::where('product_id', $this->product->id)->first();
+        $this->assertSame(8.0, (float) $bp->stock_quantity);
+
+        // Business drops its explicit setting (falls back to the deduct_on_complete default),
+        // and the deposit predates stamping (legacy row without metadata).
+        $this->business->settings = [];
+        $this->business->save();
+        Sale::whereKey($response->json('sale.id'))->update(['metadata' => null]);
+
+        $migration = require database_path('migrations/2026_10_13_100200_stamp_deposit_stock_mode_on_unstamped_deposits.php');
+        $migration->up();
+        $migration->up();
+
+        $sale = Sale::find($response->json('sale.id'));
+        $this->assertSame('reserve_on_create', $sale->metadata['deposit_stock_mode']);
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/complete-deposit", [],
+            ['X-Business-Id' => $this->business->id])->assertStatus(200);
+        $this->assertSame(8.0, (float) $bp->fresh()->stock_quantity, 'Completing must not deduct stock a second time');
     }
 
     public function test_deposit_in_reserve_on_create_mode_decrements_stock_and_uses_dep_prefix(): void
