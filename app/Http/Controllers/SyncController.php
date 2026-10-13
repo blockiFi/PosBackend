@@ -864,7 +864,10 @@ class SyncController extends Controller
                 'sale_number' => $data['sale_number'],
                 'reference_id' => $data['reference_id'] ?? null,
                 'sale_type' => $saleType,
-                'sale_date' => $data['sale_date'],
+                // Store the till's sale time as UTC. Eloquent formats a parsed ISO-8601
+                // value in its own offset, so "00:30+01:00" would otherwise be saved as a
+                // 00:30 UTC wall time and land on the wrong report day.
+                'sale_date' => isset($data['sale_date']) ? Carbon::parse($data['sale_date'])->utc() : null,
                 'subtotal' => 0,
                 'tax_amount' => 0,
                 'discount_amount' => $data['discount'] ?? $data['discount_amount'] ?? 0,

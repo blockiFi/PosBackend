@@ -1225,6 +1225,26 @@ class SyncControllerTest extends TestCase
         $this->assertNull($sale->items()->first()->batch_id);
     }
 
+    public function test_synced_sale_date_with_offset_is_stored_in_utc(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 5,
+            'shelf_quantity' => 5,
+            'selling_price' => 50.00,
+        ]);
+
+        $response = $this->pushSale($device, $shift, $product->id, 1, null, '2026-10-13T00:30:00+01:00');
+
+        $response->assertOk()->assertJsonPath('results.sales.accepted', 1);
+        $saleId = collect($response->json('results.sales.mappings'))->first()['server_id'];
+        $this->assertSame('2026-10-12 23:30:00', \Illuminate\Support\Facades\DB::table('sales')->where('id', $saleId)->value('sale_date'));
+    }
+
     public function test_synced_sale_without_branch_product_is_still_rejected(): void
     {
         $device = $this->registerDevice();
@@ -1237,7 +1257,7 @@ class SyncControllerTest extends TestCase
         $this->assertStringContainsString('BranchProduct not found', $response->json('results.sales.conflicts_details.0.error'));
     }
 
-    private function pushSale(DeviceRegistration $device, SalesShift $shift, int $productId, float $quantity, ?int $batchId = null): \Illuminate\Testing\TestResponse
+    private function pushSale(DeviceRegistration $device, SalesShift $shift, int $productId, float $quantity, ?int $batchId = null, ?string $saleDate = null): \Illuminate\Testing\TestResponse
     {
         $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
         $item = ['product_id' => $productId, 'quantity' => $quantity];
@@ -1254,7 +1274,7 @@ class SyncControllerTest extends TestCase
                     'branch_id' => $this->branch->id,
                     'shift_id' => $shift->id,
                     'sale_type' => 'pos',
-                    'sale_date' => now()->toIso8601String(),
+                    'sale_date' => $saleDate ?? now()->toIso8601String(),
                     'items' => [$item],
                     'payments' => [[
                         'payment_method_id' => $paymentMethod->id,

@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Sale;
 use App\Models\SaleItem;
+use App\Support\ReportingTimezone;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -126,7 +127,7 @@ class AnalyticsController extends Controller
             $period = 'custom';
         }
 
-        [$startDate, $endDate] = $this->getDateRange($period, $startDateInput, $endDateInput);
+        [$startDate, $endDate] = $this->getDateRange($period, $startDateInput, $endDateInput, ReportingTimezone::forBusiness($businessId));
 
         $granularityReq = $request->input('granularity', 'auto');
         $granularity = $this->resolveTrendGranularity(
@@ -265,7 +266,7 @@ class AnalyticsController extends Controller
         $period = $request->input('period', 'month');
         $comparePrevious = $request->input('compare_previous', true);
 
-        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
+        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'), ReportingTimezone::forBusiness($businessId));
 
         $granularityReq = $request->input('granularity', 'auto');
         $granularity = $this->resolveTrendGranularity(
@@ -376,7 +377,7 @@ class AnalyticsController extends Controller
         $sortBy = $request->input('sort_by', 'revenue');
         $direction = $request->input('direction', 'desc');
 
-        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
+        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'), ReportingTimezone::forBusiness($businessId));
 
         $cacheKey = "product_analytics_{$businessId}_{$branchId}_{$period}_{$startDate}_{$endDate}_{$limit}_{$sortBy}_{$direction}";
 
@@ -390,7 +391,7 @@ class AnalyticsController extends Controller
                 })
                 ->where('sales.business_id', $businessId)
                 ->where('sales.status', 'completed')
-                ->whereBetween('sales.created_at', [$startDate, $endDate]);
+                ->whereBetween('sales.sale_date', ReportingTimezone::utcBounds($startDate, $endDate));
 
             if ($branchId) {
                 $query->where('sales.branch_id', $branchId);
@@ -568,7 +569,7 @@ class AnalyticsController extends Controller
             return response()->json(['message' => 'You do not have access to this branch'], 403);
         }
 
-        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'));
+        [$startDate, $endDate] = $this->getDateRange($period, $request->input('start_date'), $request->input('end_date'), ReportingTimezone::forBusiness($businessId));
 
         $cacheKey = "pl_statement_{$businessId}_{$branchId}_{$period}_{$startDate}_{$endDate}";
 
@@ -594,7 +595,7 @@ class AnalyticsController extends Controller
                 $salesAgg = Sale::query()
                     ->where('business_id', $businessId)
                     ->where('status', 'completed')
-                    ->whereBetween('created_at', [$startDate, $endDate])
+                    ->whereBetween('sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
                     ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
                     ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue, COALESCE(SUM(discount_amount), 0) as discount')
                     ->first();
@@ -615,7 +616,7 @@ class AnalyticsController extends Controller
                     ->whereNull('products.deleted_at')
                     ->where('sales.business_id', $businessId)
                     ->where('sales.status', 'completed')
-                    ->whereBetween('sales.created_at', [$startDate, $endDate])
+                    ->whereBetween('sales.sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
                     ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
                     ->selectRaw(
                         'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
@@ -703,9 +704,10 @@ class AnalyticsController extends Controller
 
         return $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchId, $interval, $periods) {
             $trends = [];
+            $timezone = ReportingTimezone::forBusiness($businessId);
 
             for ($i = $periods - 1; $i >= 0; $i--) {
-                [$startDate, $endDate] = $this->getIntervalDates($interval, $i);
+                [$startDate, $endDate] = $this->getIntervalDates($interval, $i, $timezone);
 
                 $metrics = $this->calculatePeriodMetrics($businessId, $startDate, $endDate, $branchId);
 
@@ -788,7 +790,7 @@ class AnalyticsController extends Controller
         $salesAgg = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('sale_date', [$startDate, $endDate])
+            ->whereBetween('sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
             ->first();
@@ -808,7 +810,7 @@ class AnalyticsController extends Controller
             ->whereNull('products.deleted_at')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.sale_date', [$startDate, $endDate])
+            ->whereBetween('sales.sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->when($branchId, fn ($q) => $q->where('sales.branch_id', $branchId))
             ->selectRaw(
                 'COALESCE(SUM(sale_items.quantity * COALESCE(branch_products.cost_price, products.base_cost_price, 0)), 0) as total_cost'
@@ -898,7 +900,7 @@ class AnalyticsController extends Controller
         $revRows = Sale::query()
             ->where('business_id', $businessId)
             ->where('status', 'completed')
-            ->whereBetween('created_at', [$startDate, $endDate])
+            ->whereBetween('sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('branch_id', $permittedBranches))
             ->selectRaw('branch_id, COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
             ->groupBy('branch_id')
@@ -917,7 +919,7 @@ class AnalyticsController extends Controller
             ->whereNull('products.deleted_at')
             ->where('sales.business_id', $businessId)
             ->where('sales.status', 'completed')
-            ->whereBetween('sales.created_at', [$startDate, $endDate])
+            ->whereBetween('sales.sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->when($permittedBranches !== null && $permittedBranches->isNotEmpty(), fn ($q) => $q->whereIn('sales.branch_id', $permittedBranches))
             ->groupBy('sales.branch_id')
             ->selectRaw(
@@ -1032,10 +1034,10 @@ class AnalyticsController extends Controller
     /**
      * @return array{0:\Illuminate\Database\Query\Expression|string, 1:string}
      */
-    private function trendBucketSelectExpr(string $granularity, string $dateColumn = 'created_at'): array
+    private function trendBucketSelectExpr(string $granularity, string $dateColumn = 'sale_date'): array
     {
         if (! preg_match('/^[a-z_]+$/', $dateColumn)) {
-            $dateColumn = 'created_at';
+            $dateColumn = 'sale_date';
         }
 
         return match ($granularity) {
@@ -1054,35 +1056,69 @@ class AnalyticsController extends Controller
         };
     }
 
+    /**
+     * Revenue per local-time bucket from raw sales. Buckets are computed in PHP (one
+     * aggregate query per bucket, bounded by resolveTrendGranularity) so the grouping
+     * follows the business timezone on any database; empty buckets are omitted.
+     */
     private function getRevenueTrendLive($businessId, $startDate, $endDate, $branchId, string $granularity)
     {
-        [$bucketSelect, $groupSql] = $this->trendBucketSelectExpr($granularity, 'created_at');
+        $trend = collect();
 
-        $query = Sale::query()
-            ->where('business_id', $businessId)
-            ->where('status', 'completed')
-            ->whereBetween('created_at', [$startDate, $endDate]);
+        foreach ($this->trendBuckets($startDate, $endDate, $granularity) as [$label, $bucketStart, $bucketEnd]) {
+            $row = Sale::query()
+                ->where('business_id', $businessId)
+                ->where('status', 'completed')
+                ->whereBetween('sale_date', ReportingTimezone::utcBounds($bucketStart, $bucketEnd))
+                ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                ->selectRaw('COALESCE(SUM(total_amount), 0) as revenue, COUNT(*) as transactions')
+                ->first();
 
-        if ($branchId) {
-            $query->where('branch_id', $branchId);
+            if ((int) ($row->transactions ?? 0) === 0) {
+                continue;
+            }
+
+            $trend->push([
+                'date' => $label,
+                'revenue' => number_format((float) $row->revenue, 2, '.', ''),
+                'transactions' => (int) $row->transactions,
+            ]);
         }
 
-        return $query
-            ->select(
-                $bucketSelect,
-                DB::raw('SUM(total_amount) as revenue'),
-                DB::raw('COUNT(*) as transactions')
-            )
-            ->groupBy(DB::raw($groupSql))
-            ->orderBy('date')
-            ->get()
-            ->map(function ($item) {
-                return [
-                    'date' => $item->date,
-                    'revenue' => number_format($item->revenue, 2, '.', ''),
-                    'transactions' => $item->transactions,
-                ];
-            });
+        return $trend;
+    }
+
+    /**
+     * Local-time buckets covering [start, end]: daily (Y-m-d), weekly (ISO o-\WW) or monthly (Y-m).
+     *
+     * @return array<int, array{0: string, 1: Carbon, 2: Carbon}>
+     */
+    private function trendBuckets(Carbon $startDate, Carbon $endDate, string $granularity): array
+    {
+        $buckets = [];
+        $cursor = match ($granularity) {
+            'weekly' => $startDate->copy()->startOfWeek(Carbon::MONDAY),
+            'monthly' => $startDate->copy()->startOfMonth(),
+            default => $startDate->copy()->startOfDay(),
+        };
+
+        while ($cursor->lte($endDate)) {
+            [$label, $bucketEnd] = match ($granularity) {
+                'weekly' => [$cursor->format('o-\\WW'), $cursor->copy()->endOfWeek(Carbon::SUNDAY)],
+                'monthly' => [$cursor->format('Y-m'), $cursor->copy()->endOfMonth()],
+                default => [$cursor->format('Y-m-d'), $cursor->copy()->endOfDay()],
+            };
+
+            $buckets[] = [
+                $label,
+                $cursor->lt($startDate) ? $startDate->copy() : $cursor->copy(),
+                $bucketEnd->gt($endDate) ? $endDate->copy() : $bucketEnd,
+            ];
+
+            $cursor = $bucketEnd->copy()->addSecond()->startOfDay();
+        }
+
+        return $buckets;
     }
 
     private function getRevenueTrendFromRollup($businessId, $startDate, $endDate, $branchId, string $granularity)
@@ -1115,61 +1151,72 @@ class AnalyticsController extends Controller
             });
     }
 
-    private function getDateRange($period, $customStart = null, $customEnd = null)
+    /**
+     * Report range in the business timezone (local Carbon instances). Filter UTC columns
+     * with ReportingTimezone::utcBounds(); rollup rows are keyed by local day.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function getDateRange($period, $customStart = null, $customEnd = null, string $timezone = ReportingTimezone::DEFAULT)
     {
         if ($customStart !== null && $customStart !== '' && $customEnd !== null && $customEnd !== '') {
             return [
-                Carbon::parse($customStart)->startOfDay(),
-                Carbon::parse($customEnd)->endOfDay(),
+                Carbon::parse($customStart, $timezone)->startOfDay(),
+                Carbon::parse($customEnd, $timezone)->endOfDay(),
             ];
         }
 
-        $endDate = Carbon::now();
+        $endDate = Carbon::now($timezone);
 
         switch ($period) {
             case 'today':
-                $startDate = Carbon::today();
+                $startDate = Carbon::today($timezone);
                 break;
             case 'week':
-                $startDate = Carbon::now()->startOfWeek();
+                $startDate = Carbon::now($timezone)->startOfWeek();
                 break;
             case 'month':
-                $startDate = Carbon::now()->startOfMonth();
+                $startDate = Carbon::now($timezone)->startOfMonth();
                 break;
             case 'quarter':
-                $startDate = Carbon::now()->startOfQuarter();
+                $startDate = Carbon::now($timezone)->startOfQuarter();
                 break;
             case 'year':
-                $startDate = Carbon::now()->startOfYear();
+                $startDate = Carbon::now($timezone)->startOfYear();
                 break;
             case 'custom':
-                $startDate = Carbon::parse($customStart);
-                $endDate = Carbon::parse($customEnd);
+                $startDate = Carbon::parse($customStart, $timezone);
+                $endDate = Carbon::parse($customEnd, $timezone);
                 break;
             default:
-                $startDate = Carbon::now()->startOfMonth();
+                $startDate = Carbon::now($timezone)->startOfMonth();
         }
 
         return [$startDate, $endDate];
     }
 
-    private function getIntervalDates($interval, $periodsAgo)
+    /**
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function getIntervalDates($interval, $periodsAgo, string $timezone = ReportingTimezone::DEFAULT)
     {
+        $now = Carbon::now($timezone);
+
         switch ($interval) {
             case 'daily':
-                $start = Carbon::now()->subDays($periodsAgo)->startOfDay();
+                $start = $now->copy()->subDays($periodsAgo)->startOfDay();
                 $end = $start->copy()->endOfDay();
                 break;
             case 'weekly':
-                $start = Carbon::now()->subWeeks($periodsAgo)->startOfWeek();
+                $start = $now->copy()->subWeeks($periodsAgo)->startOfWeek();
                 $end = $start->copy()->endOfWeek();
                 break;
             case 'monthly':
-                $start = Carbon::now()->subMonths($periodsAgo)->startOfMonth();
+                $start = $now->copy()->subMonthsNoOverflow($periodsAgo)->startOfMonth();
                 $end = $start->copy()->endOfMonth();
                 break;
             default:
-                $start = Carbon::now()->subMonths($periodsAgo)->startOfMonth();
+                $start = $now->copy()->subMonthsNoOverflow($periodsAgo)->startOfMonth();
                 $end = $start->copy()->endOfMonth();
         }
 

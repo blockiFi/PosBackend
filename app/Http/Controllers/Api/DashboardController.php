@@ -9,6 +9,7 @@ use App\Models\BranchProduct;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalesShift;
+use App\Support\ReportingTimezone;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -36,7 +37,8 @@ class DashboardController extends Controller
         $canViewOwnShifts = $user->hasPermissionTo('view user shift');
 
         // v2: revenue must not be summed across sale_items join (that double-counts total_amount).
-        $cacheKey = "dashboard_summary_v2_{$businessId}_{$user->id}";
+        // v3: periods follow sales.sale_date in the business timezone.
+        $cacheKey = "dashboard_summary_v3_{$businessId}_{$user->id}";
         $cached = Cache::get($cacheKey);
 
         $branchesCount = (int) Branch::where('business_id', $businessId)->count();
@@ -79,8 +81,9 @@ class DashboardController extends Controller
 
         $analytics = null;
         if ($canViewAnalytics) {
-            $startDate = Carbon::now()->startOfMonth()->startOfDay();
-            $endDate = Carbon::now()->endOfDay();
+            $timezone = ReportingTimezone::forBusiness($businessId);
+            $startDate = Carbon::now($timezone)->startOfMonth()->startOfDay();
+            $endDate = Carbon::now($timezone)->endOfDay();
             $days = $startDate->diffInDays($endDate) + 1;
             $prevStartDate = $startDate->copy()->subDays($days);
             $prevEndDate = $endDate->copy()->subDays($days);
@@ -101,7 +104,7 @@ class DashboardController extends Controller
                     $computedAt = Carbon::parse($cached['computed_at']);
                     // Only apply incremental merge when cached snapshot belongs to the current month window.
                     if ($computedAt->greaterThanOrEqualTo($startDate) && $computedAt->lessThanOrEqualTo($endDate)) {
-                        $delta = $this->salesMetricsDelta($businessId, $computedAt, $endDate);
+                        $delta = $this->salesMetricsDelta($businessId, $computedAt, $startDate, $endDate);
                         $current = $this->mergePeriodMetrics($cached['analytics']['current'], $delta);
                         $previous = $cached['analytics']['previous'];
                         $comparison = $this->comparison($current, $previous);
@@ -177,7 +180,7 @@ class DashboardController extends Controller
         $totals = DB::table('sales as s')
             ->where('s.business_id', $businessId)
             ->where('s.status', 'completed')
-            ->whereBetween('s.sale_date', [$startDate, $endDate])
+            ->whereBetween('s.sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
             ->selectRaw('COALESCE(COUNT(s.id),0) as transaction_count')
             ->first();
@@ -191,7 +194,7 @@ class DashboardController extends Controller
             ->leftJoin('products as p', 'p.id', '=', 'si.product_id')
             ->where('s.business_id', $businessId)
             ->where('s.status', 'completed')
-            ->whereBetween('s.sale_date', [$startDate, $endDate])
+            ->whereBetween('s.sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->selectRaw('COALESCE(SUM(si.quantity * COALESCE(bp.cost_price, p.base_cost_price, 0)),0) as cost')
             ->first();
 
@@ -212,14 +215,15 @@ class DashboardController extends Controller
         ];
     }
 
-    private function salesMetricsDelta(int $businessId, Carbon $since, Carbon $endDate): array
+    private function salesMetricsDelta(int $businessId, Carbon $since, Carbon $periodStart, Carbon $endDate): array
     {
-        // Delta scan: only sales strictly after last computed_at.
+        // Delta scan: sales received after the last computed_at (created_at) whose own
+        // sale_date falls in the period, so offline sales uploaded late are still counted.
         $totals = DB::table('sales as s')
             ->where('s.business_id', $businessId)
             ->where('s.status', 'completed')
-            ->where('s.sale_date', '>', $since)
-            ->where('s.sale_date', '<=', $endDate)
+            ->where('s.created_at', '>', $since->copy()->utc()->format('Y-m-d H:i:s'))
+            ->whereBetween('s.sale_date', ReportingTimezone::utcBounds($periodStart, $endDate))
             ->selectRaw('COALESCE(SUM(s.total_amount),0) as revenue')
             ->selectRaw('COALESCE(COUNT(s.id),0) as transaction_count')
             ->first();
@@ -233,8 +237,8 @@ class DashboardController extends Controller
             ->leftJoin('products as p', 'p.id', '=', 'si.product_id')
             ->where('s.business_id', $businessId)
             ->where('s.status', 'completed')
-            ->where('s.sale_date', '>', $since)
-            ->where('s.sale_date', '<=', $endDate)
+            ->where('s.created_at', '>', $since->copy()->utc()->format('Y-m-d H:i:s'))
+            ->whereBetween('s.sale_date', ReportingTimezone::utcBounds($periodStart, $endDate))
             ->selectRaw('COALESCE(SUM(si.quantity * COALESCE(bp.cost_price, p.base_cost_price, 0)),0) as cost')
             ->first();
 
