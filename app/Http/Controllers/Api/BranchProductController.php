@@ -176,9 +176,12 @@ class BranchProductController extends Controller
             return response()->json(['message' => 'Business not found or access denied'], 404);
         }
 
-        // Set permission context and check permission
+        // Set permission context and check permission. Storekeepers (manage inventory)
+        // may also add products to their branch.
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage branch products', 'api', $businessId)) {
+        if ($business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage branch products', 'api', $businessId)
+            && ! $user->checkPermissionTo('manage inventory', 'api')) {
             return response()->json(['message' => 'Unauthorized'], 403);
         }
 
