@@ -221,8 +221,10 @@ class UserBusinessController extends Controller
         }
 
         $generatedPin = null;
-        $hasCashierRole = collect($assignedRoles)->contains('name', 'Cashier');
-        if ($hasCashierRole && ! $targetUser->pin_code) {
+        // Roles that sign in to the POS terminal by PIN
+        $hasPinLoginRole = collect($assignedRoles)
+            ->contains(fn ($role) => in_array($role['name'], ['Cashier', 'Storekeeper'], true));
+        if ($hasPinLoginRole && ! $targetUser->pin_code) {
             $generatedPin = $this->generateUniquePinCode();
             $targetUser->update(['pin_code' => $generatedPin]);
         }
