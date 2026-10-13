@@ -40,9 +40,9 @@ class SyncController extends Controller
 {
     use HasBranchAccess;
 
-    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+    private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
-    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+    private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
     public function __construct(
         protected InventoryBatchService $batchService,
@@ -320,15 +320,11 @@ class SyncController extends Controller
     }
 
     /**
-     * @return array{allow_decimal_quantities: bool, deposit_stock_mode: string|null}
+     * @return array{allow_decimal_quantities: bool, deposit_stock_mode: string}
      */
     private function businessSettingsPayload(int $businessId): array
     {
-        $business = Business::find($businessId);
-
-        return $business
-            ? BusinessSettings::syncPayload($business)
-            : ['allow_decimal_quantities' => false, 'deposit_stock_mode' => null];
+        return BusinessSettings::syncPayload(Business::find($businessId));
     }
 
     /**

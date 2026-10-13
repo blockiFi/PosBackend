@@ -3,14 +3,13 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Support\BusinessSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
 class BusinessSettingsController extends Controller
 {
-    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
-
-    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+    private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
     public function show(Request $request)
     {
@@ -122,16 +121,13 @@ class BusinessSettingsController extends Controller
 
     private function normalizeDepositStockMode(mixed $value): string
     {
-        if (is_string($value) && in_array($value, self::DEPOSIT_STOCK_MODES, true)) {
-            return $value;
-        }
-
-        return self::DEFAULT_DEPOSIT_STOCK_MODE;
+        return BusinessSettings::normalizeDepositStockMode($value);
     }
 
     private function defaultSymbol(string $currency): string
     {
         $c = strtoupper($currency);
+
         return match ($c) {
             'NGN' => '₦',
             'USD' => '$',
@@ -141,4 +137,3 @@ class BusinessSettingsController extends Controller
         };
     }
 }
-

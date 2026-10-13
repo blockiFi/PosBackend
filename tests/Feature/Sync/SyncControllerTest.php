@@ -1093,6 +1093,58 @@ class SyncControllerTest extends TestCase
             ->assertJsonPath('business_settings.allow_decimal_quantities', true);
     }
 
+    public function test_sync_settings_and_deposits_default_to_deduct_on_complete(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $customer = Customer::factory()->create(['business_id' => $this->business->id]);
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'shelf_quantity' => 10,
+            'selling_price' => 50.00,
+        ]);
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+        $headers = ['X-Business-Id' => $this->business->id, 'X-Device-Id' => $device->device_id];
+
+        $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subHour()->toIso8601String(),
+            'branch_id' => $this->branch->id,
+        ], $headers)->assertOk()->assertJsonPath('business_settings.deposit_stock_mode', 'deduct_on_complete');
+        $this->postJson('/api/sync/bootstrap', ['branch_id' => $this->branch->id], $headers)
+            ->assertOk()->assertJsonPath('business_settings.deposit_stock_mode', 'deduct_on_complete');
+
+        $deposit = fn (?array $metadata): array => array_filter([
+            'client_uuid' => Str::uuid()->toString(),
+            'sale_number' => 'DEP-'.Str::random(8),
+            'branch_id' => $this->branch->id,
+            'shift_id' => $shift->id,
+            'customer_id' => $customer->id,
+            'sale_type' => 'deposit',
+            'sale_date' => now()->toIso8601String(),
+            'metadata' => $metadata,
+            'items' => [['product_id' => $product->id, 'quantity' => 2]],
+            'payments' => [['payment_method_id' => $paymentMethod->id, 'amount' => 20]],
+        ], fn ($value) => $value !== null);
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => ['sales' => [
+                $deposit(null),
+                $deposit(['deposit_stock_mode' => 'reserve_on_create']),
+            ]],
+        ], $headers);
+
+        $response->assertOk()->assertJsonPath('results.sales.accepted', 2);
+        $modes = Sale::where('sale_type', 'deposit')->orderBy('id')->get()
+            ->map(fn (Sale $sale) => $sale->metadata['deposit_stock_mode'] ?? null)->all();
+        $this->assertSame(['deduct_on_complete', 'reserve_on_create'], $modes);
+        // Only the explicitly stamped reserve_on_create deposit took stock.
+        $this->assertEquals(8, (float) $branchProduct->fresh()->stock_quantity);
+    }
+
     public function test_synced_sale_exceeding_stock_is_accepted_and_stock_ends_at_zero(): void
     {
         $device = $this->registerDevice();
