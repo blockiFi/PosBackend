@@ -45,6 +45,7 @@ Route::post('login', [AuthenticationController::class, 'login']);
 Route::post('pin-login', [AuthenticationController::class, 'pinLogin']);
 Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
 Route::post('register-cashier-device', [AuthenticationController::class, 'registerCashierDeviceWithBranchAuthorization']);
+Route::post('device-group-with-branch-auth', [AuthenticationController::class, 'setDeviceGroupWithBranchAuthorization']);
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {

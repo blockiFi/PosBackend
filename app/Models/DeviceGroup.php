@@ -57,4 +57,20 @@ class DeviceGroup extends Model
     {
         return $query->where('is_active', true);
     }
+
+    /**
+     * Active groups a device on this branch can join: the branch's own groups and
+     * business-wide groups (no branch).
+     */
+    public function scopeAvailableForBranch($query, int|string $businessId, int|string|null $branchId)
+    {
+        return $query->forBusiness($businessId)
+            ->active()
+            ->where(function ($q) use ($branchId) {
+                $q->whereNull('branch_id');
+                if ($branchId !== null) {
+                    $q->orWhere('branch_id', $branchId);
+                }
+            });
+    }
 }
