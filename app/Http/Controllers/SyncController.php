@@ -168,7 +168,10 @@ class SyncController extends Controller
         }
 
         $branchId = $request->branch_id;
-        $entities = $request->entities ?? ['products', 'categories', 'payment_methods', 'customers', 'branch_products'];
+        // Products are left out unless asked for: a large branch (Al-Khair Head Office,
+        // ~6,000 items) times out (504) in one response. POS terminals download them
+        // in pages from /branch-products after bootstrap.
+        $entities = $request->entities ?? ['categories', 'payment_methods', 'customers'];
 
         $sessionId = Str::uuid()->toString();
         $data = [];
