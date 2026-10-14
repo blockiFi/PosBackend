@@ -380,6 +380,7 @@ class BusinessController extends Controller
                 'view analytics', 'view reports',
                 'manage shifts', 'view all shifts', 'view user shift', 'close shift',
                 'request refund', 'request quick sale', 'manage transfers', 'use-pin-login',
+                'view batches', 'write off stock',
                 'sync data',
             ],
             'Cashier' => [

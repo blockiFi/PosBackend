@@ -106,6 +106,36 @@ class DefaultRolePermissionsTest extends TestCase
         $this->assertEqualsCanonicalizing(self::STOREKEEPER_PERMISSIONS, $storekeeperB->permissions->pluck('name')->all());
     }
 
+    public function test_new_business_supervisor_role_can_view_batches_and_write_off_stock(): void
+    {
+        $this->seedAllPermissions();
+        Sanctum::actingAs(User::factory()->create());
+
+        $roles = $this->postJson('/api/businesses', ['name' => 'Corner Store'])->assertStatus(201)->json('data.roles');
+
+        $this->assertContains('view batches', $roles['Supervisor']['permissions']);
+        $this->assertContains('write off stock', $roles['Supervisor']['permissions']);
+    }
+
+    public function test_migration_grants_supervisor_write_off_permissions_idempotently(): void
+    {
+        $this->seedAllPermissions();
+        $business = Business::factory()->create();
+        $supervisor = Role::create(['name' => 'Supervisor', 'guard_name' => 'api', 'business_id' => $business->id]);
+        $supervisor->givePermissionTo('view batches');
+        $cashier = Role::create(['name' => 'Cashier', 'guard_name' => 'api', 'business_id' => $business->id]);
+
+        $migration = require database_path('migrations/2026_10_14_100000_grant_supervisor_write_off_permissions.php');
+        $migration->up();
+        $migration->up();
+
+        $supervisor = $supervisor->fresh();
+        $this->assertTrue($supervisor->hasPermissionTo('view batches'));
+        $this->assertTrue($supervisor->hasPermissionTo('write off stock'));
+        $this->assertSame(2, $supervisor->permissions->count());
+        $this->assertFalse($cashier->fresh()->hasPermissionTo('view batches'));
+    }
+
     public function test_user_with_manage_inventory_can_add_product_to_branch(): void
     {
         $this->seedAllPermissions();
