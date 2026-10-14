@@ -17,6 +17,7 @@ use App\Models\SalesShift;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
 use App\Support\BusinessQuantityPolicy;
+use App\Support\BusinessSettings;
 use App\Support\Quantity;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -27,9 +28,9 @@ class SaleController extends Controller
 {
     use HasBranchAccess;
 
-    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+    private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
-    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+    private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
     public function __construct(
         protected InventoryBatchService $batchService,
@@ -231,7 +232,7 @@ class SaleController extends Controller
                     throw new \Exception("Product not stocked at this branch: {$product->name}");
                 }
 
-                if (! $deferStockToCompletion && (float) $branchProduct->stock_quantity < $qty) {
+                if (! $deferStockToCompletion && $branchProduct->availableForSale() < $qty) {
                     throw new \Exception("Insufficient stock for product: {$product->name}");
                 }
 
@@ -417,8 +418,8 @@ class SaleController extends Controller
                 $sale->save();
             }
             $amountPaid = $sale->payments->sum('amount');
-             $sale->paid_amount = $amountPaid;
-             $sale->save();
+            $sale->paid_amount = $amountPaid;
+            $sale->save();
             DB::commit();
 
             return response()->json([
@@ -677,13 +678,13 @@ class SaleController extends Controller
                     }
 
                     $qty = Quantity::normalize((float) $item->quantity);
-                    if ((float) $branchProduct->stock_quantity < $qty) {
+                    if ($branchProduct->availableForSale() < $qty) {
                         DB::rollBack();
 
                         return response()->json([
                             'message' => "Insufficient stock for product: {$item->product_name}",
                             'product_id' => $item->product_id,
-                            'available' => (float) $branchProduct->stock_quantity,
+                            'available' => $branchProduct->availableForSale(),
                             'required' => $qty,
                         ], 409);
                     }
@@ -802,6 +803,7 @@ class SaleController extends Controller
         }
         $amountPaid = $sale->payments->sum('amount');
         $sale->paid_amount = $amountPaid;
+
         return response()->json(['sale' => $sale]);
     }
 

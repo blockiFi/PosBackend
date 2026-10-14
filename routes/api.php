@@ -45,6 +45,7 @@ Route::post('login', [AuthenticationController::class, 'login']);
 Route::post('pin-login', [AuthenticationController::class, 'pinLogin']);
 Route::post('business-details-with-branch-auth', [AuthenticationController::class, 'getBusinessDetailsWithBranchAuthorization']);
 Route::post('register-cashier-device', [AuthenticationController::class, 'registerCashierDeviceWithBranchAuthorization']);
+Route::post('device-group-with-branch-auth', [AuthenticationController::class, 'setDeviceGroupWithBranchAuthorization']);
 
 // Protected routes
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -158,6 +159,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         // Branch Product routes (require business context)
         Route::get('branch-products', [BranchProductController::class, 'index']);
         Route::get('branch-products/by-category', [BranchProductController::class, 'getByCategory']);
+        Route::get('branch-products/alerts', [BranchProductController::class, 'alerts']);
         Route::post('branch-products', [BranchProductController::class, 'store']);
         Route::post('branch-products/assign-multiple', [BranchProductController::class, 'assignMultiple']);
         Route::post('branch-products/bulk-move', [BranchProductController::class, 'bulkMove']);

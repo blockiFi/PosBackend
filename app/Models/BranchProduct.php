@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -347,6 +348,19 @@ class BranchProduct extends Model
     }
 
     /**
+     * Units a sale can take. Shelf and store are the physical count. stock_quantity
+     * is the ledger the manager inventory screen shows, and it can lag behind the
+     * shelf (or be the only figure set). A sale must be allowed when either covers it.
+     */
+    public function availableForSale(): float
+    {
+        $physical = (float) $this->shelf_quantity + (float) $this->store_quantity;
+        $ledger = (float) $this->stock_quantity;
+
+        return max($physical, $ledger);
+    }
+
+    /**
      * Deduct quantity for a sale from physical locations (shelf first, then store).
      * Keeps stock_quantity = shelf_quantity + store_quantity. Handles legacy data
      * where only stock_quantity was set (shelf+store 0).
@@ -443,12 +457,32 @@ class BranchProduct extends Model
     }
 
     /**
-     * Scope to get low stock products
+     * Scope to get low stock products. Mirrors isLowStock(): the branch threshold falls
+     * back to the product threshold (then 0), and untracked products are never low.
+     * Uses a correlated EXISTS (no join) so callers can keep chaining unqualified columns.
      */
-    public function scopeLowStock($query)
+    public function scopeLowStock(Builder $query): Builder
     {
-        return $query->whereColumn('stock_quantity', '<=', 'low_stock_threshold')
-            ->where('stock_quantity', '>', 0);
+        $stockColumn = $query->qualifyColumn('stock_quantity');
+        $thresholdColumn = $query->qualifyColumn('low_stock_threshold');
+        $productIdColumn = $query->qualifyColumn('product_id');
+
+        return $query->where($stockColumn, '>', 0)
+            ->whereExists(function ($products) use ($stockColumn, $thresholdColumn, $productIdColumn) {
+                $products->selectRaw('1')
+                    ->from('products')
+                    ->whereColumn('products.id', $productIdColumn)
+                    ->where(function ($tracking) {
+                        $tracking->whereNull('products.stock_tracking')
+                            ->orWhere('products.stock_tracking', '!=', 'none');
+                    })
+                    ->whereRaw(sprintf(
+                        '%s <= COALESCE(%s, %s, 0)',
+                        $products->getGrammar()->wrap($stockColumn),
+                        $products->getGrammar()->wrap($thresholdColumn),
+                        $products->getGrammar()->wrap('products.low_stock_threshold')
+                    ));
+            });
     }
 
     /**

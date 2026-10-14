@@ -222,6 +222,7 @@ class RealisticRoleSeeder extends Seeder
                 'permissions' => [
                     // Products & Inventory (View and basic operations)
                     'view products',
+                    'create products',
                     'view inventory',
                     'manage inventory',  // Can adjust stock levels
                     'manage branch products',

@@ -843,6 +843,33 @@ class QuickSaleTest extends TestCase
     }
 
     /** @test */
+    public function can_filter_quick_sales_by_comma_separated_statuses()
+    {
+        foreach ([QuickSale::STATUS_PENDING, QuickSale::STATUS_APPROVED, QuickSale::STATUS_ACTIVE, QuickSale::STATUS_REJECTED] as $status) {
+            QuickSale::create([
+                'product_id' => $this->product->id,
+                'business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'requested_by' => $this->requester->id,
+                'reason' => ucfirst($status),
+                'expiry_date' => now()->addDays(3),
+                'status' => $status,
+            ]);
+        }
+
+        $response = $this->actingAs($this->approver)
+            ->getJson('/api/quick-sales?status=approved,active', [
+                'X-Business-Id' => $this->business->id,
+            ]);
+
+        $response->assertStatus(200)->assertJsonCount(2, 'data');
+        $this->assertEqualsCanonicalizing(
+            [QuickSale::STATUS_APPROVED, QuickSale::STATUS_ACTIVE],
+            collect($response->json('data'))->pluck('status')->all(),
+        );
+    }
+
+    /** @test */
     public function discount_is_applied_to_branch_product_when_quick_sale_is_activated()
     {
         $quickSale = QuickSale::create([

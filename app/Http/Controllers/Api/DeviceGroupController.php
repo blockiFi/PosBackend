@@ -209,7 +209,7 @@ class DeviceGroupController extends Controller
             'is_active' => $validated['is_active'] ?? true,
         ]);
 
-        return response()->json(['data' => $group], 201);
+        return response()->json(['data' => $this->groupDetail($group)], 201);
     }
 
     /**
@@ -243,16 +243,26 @@ class DeviceGroupController extends Controller
             return response()->json(['message' => 'Unauthorized access to this branch'], 403);
         }
 
+        return response()->json(['data' => $this->groupDetail($group)]);
+    }
+
+    /**
+     * Device group with the `devices_count` and `active_shifts_count` the web detail view reads.
+     *
+     * @return array<string, mixed>
+     */
+    private function groupDetail(DeviceGroup $group): array
+    {
+        $group = $group->fresh()->loadCount('devices');
+
         $activeShiftsCount = SalesShift::query()
-            ->forBusiness($businessId)
+            ->forBusiness($group->business_id)
             ->where('group_id', $group->id)
             ->active()
             ->count();
 
-        return response()->json([
-            'data' => array_merge($group->toArray(), [
-                'active_shifts_count' => $activeShiftsCount,
-            ]),
+        return array_merge($group->toArray(), [
+            'active_shifts_count' => $activeShiftsCount,
         ]);
     }
 
@@ -294,7 +304,7 @@ class DeviceGroupController extends Controller
         $group->fill($validated);
         $group->save();
 
-        return response()->json(['data' => $group->fresh()]);
+        return response()->json(['data' => $this->groupDetail($group)]);
     }
 
     /**

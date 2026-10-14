@@ -7,7 +7,9 @@ use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
 use App\Models\Product;
+use App\Services\BranchProductService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -15,6 +17,10 @@ use Illuminate\Validation\Rule;
 class ProductController extends Controller
 {
     use HasBranchAccess;
+
+    public function __construct(
+        protected BranchProductService $branchProductService
+    ) {}
 
     /**
      * List all products for a business
@@ -126,14 +132,28 @@ class ProductController extends Controller
 
         // Set permission context and check permission
         setPermissionsTeamId($businessId);
-        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('create products')) {
+        $canCreateProduct = $business->owner_id === $user->id
+            || $user->hasPermissionTo('create products')
+            || $user->hasPermissionTo('manage inventory')
+            || $user->hasPermissionTo('manage branch products');
+        if (! $canCreateProduct) {
             return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $branchRules = [];
+        foreach (BranchProductService::attributeRules() as $field => $rules) {
+            $branchRules['branch.'.$field] = $rules;
         }
 
         $data = $request->all();
         $validator = Validator::make($data, [
             'name' => ['required', 'string', 'max:255'],
-            'sku' => ['required', 'string', 'max:255', 'unique:products,sku'],
+            'sku' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'barcode' => [
                 'nullable',
                 'string',
@@ -155,6 +175,10 @@ class ProductController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'is_available_online' => ['nullable', 'boolean'],
             'meta_data' => ['nullable', 'array'],
+            // Optional: also stock the new product in a branch, atomically.
+            'branch' => ['sometimes', 'nullable', 'array'],
+            'branch.branch_id' => ['required_with:branch', 'integer'],
+            ...$branchRules,
         ]);
 
         if ($validator->fails()) {
@@ -164,7 +188,64 @@ class ProductController extends Controller
             ], 422);
         }
 
-        $product = Product::create([
+        $branchData = is_array($data['branch'] ?? null) ? $data['branch'] : null;
+        $branchId = null;
+        if ($branchData !== null) {
+            $branchId = (int) $branchData['branch_id'];
+
+            $canStockBranch = $business->owner_id === $user->id
+                || $user->checkPermissionTo('manage branch products', 'api')
+                || $user->checkPermissionTo('manage inventory', 'api');
+            if (! $canStockBranch) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+
+            $branchExists = Branch::where('id', $branchId)
+                ->where('business_id', $businessId)
+                ->exists();
+            if (! $branchExists) {
+                return response()->json(['message' => 'Branch not found'], 404);
+            }
+
+            if (! $this->userHasBranchAccess($user, (int) $businessId, $branchId)) {
+                return response()->json(['message' => 'You do not have access to this branch'], 403);
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            $product = $this->createProduct($businessId, $data);
+
+            $branchProduct = $branchData !== null
+                ? $this->branchProductService->createForBranch($product, $branchId, $branchData)
+                : null;
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            throw $e;
+        }
+
+        $response = [
+            'message' => 'Product created successfully',
+            'data' => $this->formatProduct($product),
+        ];
+
+        if ($branchProduct !== null) {
+            $branchProduct->load('product.category');
+            $response['branch_product'] = $this->branchProductService->transform($branchProduct);
+        }
+
+        return response()->json($response, 201);
+    }
+
+    /**
+     * @param  array<string, mixed>  $data  Validated product attributes.
+     */
+    private function createProduct(int|string $businessId, array $data): Product
+    {
+        return Product::create([
             'uuid' => Str::uuid(),
             'business_id' => $businessId,
             'category_id' => $data['category_id'] ?? null,
@@ -186,11 +267,6 @@ class ProductController extends Controller
             'is_available_online' => $data['is_available_online'] ?? false,
             'meta_data' => $data['meta_data'] ?? null,
         ]);
-
-        return response()->json([
-            'message' => 'Product created successfully',
-            'data' => $this->formatProduct($product),
-        ], 201);
     }
 
     /**
@@ -283,7 +359,15 @@ class ProductController extends Controller
         $data = $request->all();
         $validator = Validator::make($data, [
             'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'sku' => ['sometimes', 'required', 'string', 'max:255', 'unique:products,sku,'.$id],
+            'sku' => [
+                'sometimes',
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('products', 'sku')
+                    ->ignore($id)
+                    ->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'barcode' => [
                 'nullable',
                 'string',

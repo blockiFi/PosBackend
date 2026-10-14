@@ -18,6 +18,9 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/e2e.sqlite
+/storage/local.sqlite
+/storage/e2e-manifest.json
 /vendor
 Homestead.json
 Homestead.yaml

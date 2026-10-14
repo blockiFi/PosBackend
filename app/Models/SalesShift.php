@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\ReportingTimezone;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -139,9 +141,24 @@ class SalesShift extends Model
         return $query->whereIn('status', ['open', 'paused']);
     }
 
-    public function scopeDateRange($query, $startDate, $endDate)
+    /**
+     * Shifts that were running at any point in the range: started before it ended, and
+     * ended after it started or are still open/paused. A shift opened yesterday and still
+     * running shows under "Today". Plain Y-m-d dates are local days in $timezone.
+     */
+    public function scopeDateRange($query, $startDate, $endDate, ?string $timezone = null)
     {
-        return $query->whereBetween('start_time', [$startDate, $endDate]);
+        $timezone = ReportingTimezone::valid($timezone) ?? ReportingTimezone::DEFAULT;
+        $start = Carbon::parse($startDate, $timezone)->utc()->format('Y-m-d H:i:s');
+        $end = Carbon::parse($endDate, $timezone)->utc()->format('Y-m-d H:i:s');
+
+        return $query
+            ->where('start_time', '<=', $end)
+            ->where(function ($q) use ($start) {
+                $q->whereIn('status', ['open', 'paused'])
+                    ->orWhereNull('end_time')
+                    ->orWhere('end_time', '>=', $start);
+            });
     }
 
     // Helper methods
@@ -205,8 +222,16 @@ class SalesShift extends Model
     public function computeMetricsFromShiftPayments(): array
     {
         $payments = Payment::query()
-            ->where('shift_id', $this->id)
             ->where('status', 'completed')
+            ->where(function ($query) {
+                $query->where('shift_id', $this->id)
+                    ->orWhere(function ($query) {
+                        $query->whereNull('shift_id')
+                            ->whereHas('sale', function ($sale) {
+                                $sale->where('sales.shift_id', $this->id);
+                            });
+                    });
+            })
             // Exclude payments tied to cancelled (or soft-deleted) sales — those amounts are
             // not in the drawer at close time. whereHas('sale', ...) implicitly filters
             // soft-deleted sales out via the relation's default scope.

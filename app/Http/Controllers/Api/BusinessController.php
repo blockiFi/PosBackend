@@ -256,7 +256,14 @@ class BusinessController extends Controller
             ], 422);
         }
 
-        $business->update($validator->validated());
+        $validated = $validator->validated();
+        if (array_key_exists('settings', $validated)) {
+            $existing = is_array($business->settings) ? $business->settings : [];
+            $incoming = is_array($validated['settings']) ? $validated['settings'] : [];
+            $validated['settings'] = array_merge($existing, $incoming);
+        }
+
+        $business->update($validated);
 
         return response()->json([
             'message' => 'Business updated',
@@ -283,7 +290,7 @@ class BusinessController extends Controller
     }
 
     /**
-     * Create the 4 default roles (Owner, Manager, Supervisor, Cashier) for a new business.
+     * Create the default roles (Owner, Manager, Supervisor, Cashier, Storekeeper) for a new business.
      *
      * @return array<string, Role>
      */
@@ -373,12 +380,22 @@ class BusinessController extends Controller
                 'view analytics', 'view reports',
                 'manage shifts', 'view all shifts', 'view user shift', 'close shift',
                 'request refund', 'request quick sale', 'manage transfers', 'use-pin-login',
+                'sync data',
             ],
             'Cashier' => [
                 'view products', 'view inventory', 'view categories',
                 'view sales', 'create sales', 'view customers', 'create customers',
                 'view user shift', 'close shift',
                 'request refund', 'request quick sale', 'use-pin-login',
+                'sync data',
+            ],
+            'Storekeeper' => [
+                'view products', 'create products', 'edit products', 'manage branch products',
+                'view inventory', 'manage inventory', 'adjust inventory',
+                'view categories', 'create categories',
+                'view batches', 'manage batches',
+                'request shelf store move', 'request stock transfer', 'accept stock transfer',
+                'write off stock', 'sync data', 'use-pin-login',
             ],
         ];
 

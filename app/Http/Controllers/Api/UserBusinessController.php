@@ -128,7 +128,7 @@ class UserBusinessController extends Controller
         // Permission: allow owners OR users with 'manage-users' permission for this business
         setPermissionsTeamId($businessId);
         if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            return response()->json(['message' => 'Only business owners can add users'], 403);
         }
 
         $data = $request->all();
@@ -221,8 +221,10 @@ class UserBusinessController extends Controller
         }
 
         $generatedPin = null;
-        $hasCashierRole = collect($assignedRoles)->contains('name', 'Cashier');
-        if ($hasCashierRole && ! $targetUser->pin_code) {
+        // Roles that sign in to the POS terminal by PIN
+        $hasPinLoginRole = collect($assignedRoles)
+            ->contains(fn ($role) => in_array($role['name'], ['Cashier', 'Storekeeper'], true));
+        if ($hasPinLoginRole && ! $targetUser->pin_code) {
             $generatedPin = $this->generateUniquePinCode();
             $targetUser->update(['pin_code' => $generatedPin]);
         }
@@ -287,9 +289,8 @@ class UserBusinessController extends Controller
         // Check if user is owner (only owners can update users)
         setPermissionsTeamId($businessId);
         if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            return response()->json(['message' => 'Only business owners can update users'], 403);
         }
-
 
         $targetUser = User::findOrFail($userId);
 
@@ -449,9 +450,8 @@ class UserBusinessController extends Controller
         // Check if user is owner (only owners can remove users)
         setPermissionsTeamId($businessId);
         if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('manage-users')) {
-            return response()->json(['message' => 'Unauthorized'], 403);
+            return response()->json(['message' => 'Only business owners can remove users'], 403);
         }
-
 
         $targetUser = User::findOrFail($userId);
 

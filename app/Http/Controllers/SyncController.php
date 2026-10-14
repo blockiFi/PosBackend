@@ -10,6 +10,7 @@ use App\Models\BranchProductUnitPrice;
 use App\Models\Business;
 use App\Models\ChangeLog;
 use App\Models\Customer;
+use App\Models\DeviceGroup;
 use App\Models\DeviceRegistration;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
@@ -32,6 +33,7 @@ use App\Support\Quantity;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -39,9 +41,9 @@ class SyncController extends Controller
 {
     use HasBranchAccess;
 
-    private const DEPOSIT_STOCK_MODES = ['reserve_on_create', 'deduct_on_complete'];
+    private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
-    private const DEFAULT_DEPOSIT_STOCK_MODE = 'reserve_on_create';
+    private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
     public function __construct(
         protected InventoryBatchService $batchService,
@@ -61,6 +63,7 @@ class SyncController extends Controller
             'app_version' => 'nullable|string|max:20',
             'branch_id' => 'nullable|exists:branches,id',
             'business_id' => 'nullable|exists:businesses,id',
+            'group_id' => 'nullable|integer',
             'capabilities' => 'nullable|array',
         ]);
 
@@ -91,10 +94,21 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
         }
 
+        // Group picked during POS setup. A group that was deleted or moved since is
+        // dropped rather than failing the registration.
+        $groupId = $request->input('group_id');
+        if ($groupId !== null && ! DeviceGroup::query()
+            ->availableForBranch($businessId, $request->branch_id)
+            ->whereKey((int) $groupId)
+            ->exists()) {
+            $groupId = null;
+        }
+
         $device = DeviceRegistration::create([
             'device_id' => $request->device_id,
             'business_id' => $businessId,
             'branch_id' => $request->branch_id,
+            'group_id' => $groupId !== null ? (int) $groupId : null,
             'user_id' => $user->id,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,
@@ -215,16 +229,11 @@ class SyncController extends Controller
 
         $totalRecords = collect($data)->sum(fn ($items) => $items->count());
 
-        $business = Business::find($businessId);
-        $businessSettings = $business
-            ? BusinessSettings::syncPayload($business)
-            : ['allow_decimal_quantities' => false, 'deposit_stock_mode' => null];
-
         return response()->json([
             'session_id' => $sessionId,
             'server_timestamp' => now()->toIso8601String(),
             'data' => $data,
-            'business_settings' => $businessSettings,
+            'business_settings' => $this->businessSettingsPayload((int) $businessId),
             'metadata' => [
                 'total_records' => $totalRecords,
                 'checksum' => md5(json_encode($data)),
@@ -284,9 +293,30 @@ class SyncController extends Controller
         $deviceId = $request->header('X-Device-Id');
         $branchId = (int) $request->branch_id;
         $sessionId = Str::uuid()->toString();
+        $afterId = is_numeric($request->input('cursor')) ? (int) $request->input('cursor') : 0;
         $changes = [];
+        $hasMore = false;
+        $nextCursor = null;
+        $productsPaged = false;
 
         foreach ($entities as $entity) {
+            if ($entity === 'products' || $entity === 'branch_products') {
+                if ($productsPaged) {
+                    continue;
+                }
+                $page = $this->pageBranchProducts($businessId, $branchId, $lastSyncAt, $limit, $afterId);
+                $changes['products'] = $page['changes'];
+                $hasMore = $page['has_more'];
+                $nextCursor = $page['next_cursor'];
+                $productsPaged = true;
+
+                continue;
+            }
+
+            if ($afterId > 0) {
+                continue;
+            }
+
             $changes[$entity] = $this->getEntityChanges($entity, $businessId, $lastSyncAt, $deviceId, $limit, $branchId);
         }
 
@@ -294,9 +324,20 @@ class SyncController extends Controller
             'session_id' => $sessionId,
             'server_timestamp' => now()->toIso8601String(),
             'changes' => $changes,
-            'has_more' => false,
-            'next_cursor' => null,
+            'has_more' => $hasMore,
+            'next_cursor' => $nextCursor,
+            // Same payload as bootstrap so terminals pick up setting changes
+            // (e.g. deposit_stock_mode) without a re-bootstrap.
+            'business_settings' => $this->businessSettingsPayload((int) $businessId),
         ]);
+    }
+
+    /**
+     * @return array{allow_decimal_quantities: bool, deposit_stock_mode: string}
+     */
+    private function businessSettingsPayload(int $businessId): array
+    {
+        return BusinessSettings::syncPayload(Business::find($businessId));
     }
 
     /**
@@ -393,7 +434,7 @@ class SyncController extends Controller
                             // non-fatal: log and continue processing other records
                             // use logger if available
                             if (method_exists($this, 'warn')) {
-                                $this->warn('Failed to persist incoming sales change log: ' . $e->getMessage());
+                                $this->warn('Failed to persist incoming sales change log: '.$e->getMessage());
                             }
                         }
                     }
@@ -583,6 +624,62 @@ class SyncController extends Controller
     }
 
     /**
+     * One stable page of branch products changed since the last sync.
+     *
+     * Includes rows whose parent product changed (barcode, name, SKU) even when
+     * the branch-product row itself did not. Callers must follow next_cursor
+     * while has_more is true; a capped unordered query was dropping the rest.
+     *
+     * @return array{changes: array{created: array<int, array<string, mixed>>, updated: array<int, array<string, mixed>>, deleted: array<int, mixed>}, has_more: bool, next_cursor: int|null}
+     */
+    private function pageBranchProducts(int $businessId, int $branchId, Carbon $since, int $limit, int $afterId): array
+    {
+        $query = BranchProduct::query()
+            ->with(['product', 'product.category'])
+            ->where('branch_id', $branchId)
+            ->whereHas('branch', function ($branch) use ($businessId) {
+                $branch->where('business_id', $businessId);
+            })
+            ->where(function ($changed) use ($since) {
+                $changed->where('branch_products.updated_at', '>', $since)
+                    ->orWhere('branch_products.created_at', '>', $since)
+                    ->orWhereHas('product', function ($product) use ($since) {
+                        $product->where('updated_at', '>', $since);
+                    });
+            })
+            ->orderBy('branch_products.id');
+
+        if ($afterId > 0) {
+            $query->where('branch_products.id', '>', $afterId);
+        }
+
+        $rows = $query->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $page = $hasMore ? $rows->take($limit) : $rows;
+
+        $created = [];
+        $updated = [];
+        foreach ($page as $branchProduct) {
+            $payload = $this->transformBranchProduct($branchProduct, $businessId);
+            if ($branchProduct->created_at && $branchProduct->created_at->gt($since)) {
+                $created[] = $payload;
+            } else {
+                $updated[] = $payload;
+            }
+        }
+
+        return [
+            'changes' => [
+                'created' => $created,
+                'updated' => $updated,
+                'deleted' => [],
+            ],
+            'has_more' => $hasMore,
+            'next_cursor' => $hasMore && $page->isNotEmpty() ? $page->last()->id : null,
+        ];
+    }
+
+    /**
      * Helper: Get entity changes since timestamp
      */
     private function getEntityChanges($entity, $businessId, $since, $excludeDevice, $limit, $branchId)
@@ -627,33 +724,8 @@ class SyncController extends Controller
                 //     break;
 
             case 'products':
-                $baseQuery = BranchProduct::query()
-                    ->with(['product', 'product.category'])
-                    ->whereHas('branch', function ($query) use ($businessId) {
-                        $query->where('business_id', $businessId);
-                    });
-
-                if ($branchId !== null) {
-                    $baseQuery->where('branch_id', $branchId);
-                }
-
-                $created = (clone $baseQuery)
-                    ->where('created_at', '>', $since)
-                    ->with(['product', 'product.category'])
-                    ->limit($limit)
-                    ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
-
-                $updated = (clone $baseQuery)
-                    ->where('updated_at', '>', $since)
-                    ->where('created_at', '<=', $since)
-                    ->with(['product', 'product.category'])
-                    ->limit($limit)
-                    ->get()
-                    ->map(fn (BranchProduct $branchProduct) => $this->transformBranchProduct($branchProduct, (int) $businessId));
-
-                $changes['created'] = $created;
-                $changes['updated'] = $updated;
+                $page = $this->pageBranchProducts((int) $businessId, (int) $branchId, $since, $limit, 0);
+                $changes = $page['changes'];
                 break;
         }
 
@@ -731,7 +803,7 @@ class SyncController extends Controller
         if (empty($data['items']) || ! is_array($data['items']) || count($data['items']) === 0) {
             throw new \Exception('At least one item is required for sales');
         }
-        if(isset($data['payments']) && count($data['payments']) === 0) {   
+        if (isset($data['payments']) && count($data['payments']) === 0) {
             throw new \Exception('At least one payment is required for sales');
         }
 
@@ -760,49 +832,28 @@ class SyncController extends Controller
             if ($shift) {
                 $shiftId = $shift->id;
             }
-        }
-        else{
+        } else {
             throw new \Exception('Shift ID is required for sales');
         }
 
         $branchId = (int) $data['branch_id'];
 
-        // Validate inventory for all items before creating sale (so we don't persist a sale we then reject)
+        // Every item must be stocked at the branch before we persist anything. Stock levels are
+        // NOT checked: a synced sale already happened at the till (the customer has paid), so
+        // rejecting it for stock only makes the terminal retry forever while stock never moves.
+        // Shortfalls are deducted down to zero and recorded instead (see below).
         if (! $deferStockToCompletion && isset($data['items'])) {
             foreach ($data['items'] as $item) {
                 $productId = (int) $item['product_id'];
-                $qty = BusinessQuantityPolicy::normalizeForBusiness($businessId, (float) $item['quantity']);
-                $branchProduct = BranchProduct::where('branch_id', $branchId)
+                $branchProductExists = BranchProduct::where('branch_id', $branchId)
                     ->where('product_id', $productId)
-                    ->first();
-                if (! $branchProduct) {
+                    ->exists();
+                if (! $branchProductExists) {
                     $product = Product::find($productId);
 
                     throw new \Exception(
                         'BranchProduct not found for product: '.($product ? $product->name : "ID {$productId}")
                     );
-                }
-                if ((float) $branchProduct->stock_quantity < $qty) {
-                    $product = $branchProduct->product;
-
-                    throw new \Exception(
-                        "Insufficient stock for product: {$product->name}"
-                    );
-                }
-                if (isset($item['batch_id']) && $item['batch_id'] !== null) {
-                    $batchId = (int) $item['batch_id'];
-                    $batch = ProductBatch::where('id', $batchId)
-                        ->where('product_id', $productId)
-                        ->where('branch_id', $branchId)
-                        ->where('business_id', $businessId)
-                        ->first();
-                    if (! $batch || (float) $batch->current_quantity < $qty) {
-                        $product = $branchProduct->product;
-
-                        throw new \Exception(
-                            "Invalid or insufficient batch quantity for product: {$product->name}"
-                        );
-                    }
                 }
             }
         }
@@ -812,7 +863,7 @@ class SyncController extends Controller
             $saleMetadata['deposit_stock_mode'] = $depositStockMode;
         }
 
-        $defaultStatus ='pending';
+        $defaultStatus = 'pending';
 
         // Create sale (line economics are inferred server-side; totals filled after items via calculateTotals())
         // Wrap creation, items, and payments in a DB transaction so we don't leave orphaned sales when payments fail
@@ -826,7 +877,10 @@ class SyncController extends Controller
                 'sale_number' => $data['sale_number'],
                 'reference_id' => $data['reference_id'] ?? null,
                 'sale_type' => $saleType,
-                'sale_date' => $data['sale_date'],
+                // Store the till's sale time as UTC. Eloquent formats a parsed ISO-8601
+                // value in its own offset, so "00:30+01:00" would otherwise be saved as a
+                // 00:30 UTC wall time and land on the wrong report day.
+                'sale_date' => isset($data['sale_date']) ? Carbon::parse($data['sale_date'])->utc() : null,
                 'subtotal' => 0,
                 'tax_amount' => 0,
                 'discount_amount' => $data['discount'] ?? $data['discount_amount'] ?? 0,
@@ -847,6 +901,7 @@ class SyncController extends Controller
 
             // Create items and deduct inventory
             $saleNumber = $data['sale_number'];
+            $stockShortfalls = [];
 
             if (isset($data['items'])) {
                 foreach ($data['items'] as $item) {
@@ -865,14 +920,6 @@ class SyncController extends Controller
                         );
                     }
 
-                    if (! $deferStockToCompletion && (float) $branchProduct->stock_quantity < $qty) {
-                        $product = $branchProduct->product;
-
-                        throw new \Exception(
-                            "Insufficient stock for product: {$product->name}"
-                        );
-                    }
-
                     // Resolve batch: prefer active quick sale batch (like online flow), else client batch_id
                     $batch = null;
                     $batchId = null;
@@ -885,18 +932,18 @@ class SyncController extends Controller
                             }
                         }
                         if ($batchId === null && isset($item['batch_id']) && $item['batch_id'] !== null) {
-                            $batchId = (int) $item['batch_id'];
-                            $batch = ProductBatch::where('id', $batchId)
+                            $clientBatch = ProductBatch::where('id', (int) $item['batch_id'])
                                 ->where('product_id', $productId)
                                 ->where('branch_id', $branchId)
                                 ->where('business_id', $businessId)
                                 ->first();
-                            if (! $batch || (float) $batch->current_quantity < $qty) {
-                                $product = $branchProduct->product;
-
-                                throw new \Exception(
-                                    "Invalid or insufficient batch quantity for product: {$product->name}"
-                                );
+                            // An unknown or short batch falls back to FEFO allocation below
+                            // rather than rejecting a sale that already happened.
+                            if ($clientBatch && (float) $clientBatch->current_quantity >= $qty) {
+                                $batch = $clientBatch;
+                                $batchId = $clientBatch->id;
+                            } else {
+                                $batch = null;
                             }
                         }
                     }
@@ -960,6 +1007,10 @@ class SyncController extends Controller
                             $batch->allocate($qty);
                         }
 
+                        $shortfall = $deductResult['stock_tracked'] && $product->stock_tracking !== 'none'
+                            ? Quantity::normalize($qty - (float) $deductResult['from_shelf'] - (float) $deductResult['from_store'])
+                            : 0.0;
+
                         $invPayload = [
                             'uuid' => (string) Str::uuid(),
                             'business_id' => $businessId,
@@ -975,6 +1026,18 @@ class SyncController extends Controller
                             'reference_number' => $saleNumber,
                             'notes' => "Sale: {$saleNumber}",
                         ];
+                        if (Quantity::isPositive($shortfall)) {
+                            $shortfallRecord = [
+                                'product_id' => $productId,
+                                'product_name' => $product->name,
+                                'requested_quantity' => $qty,
+                                'deducted_quantity' => Quantity::normalize($qty - $shortfall),
+                                'shortfall_quantity' => $shortfall,
+                            ];
+                            $stockShortfalls[] = $shortfallRecord;
+                            $invPayload['notes'] = "Sale: {$saleNumber} (synced with stock shortfall of {$shortfall})";
+                            $invPayload['meta_data'] = ['stock_shortfall' => $shortfallRecord];
+                        }
                         if ($deductResult['stock_tracked']) {
                             $invPayload['shelf_quantity'] = -$deductResult['from_shelf'];
                             $invPayload['store_quantity'] = -$deductResult['from_store'];
@@ -989,12 +1052,15 @@ class SyncController extends Controller
                         $invTransaction = InventoryTransaction::create($invPayload);
 
                         if ($batchId === null && Quantity::isPositive($qty)) {
+                            // Never fail a synced sale on batch shortages: allocate what the
+                            // batches hold and leave the rest unallocated.
                             $this->batchService->allocateStockOut(
                                 $productId,
                                 $branchId,
                                 $qty,
                                 $invTransaction,
-                                ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"]
+                                ['reference_number' => $saleNumber, 'notes' => "Sale: {$saleNumber}"],
+                                false
                             );
                         }
                     }
@@ -1029,6 +1095,7 @@ class SyncController extends Controller
                     // Basic validation
                     if (! $methodId || $amount <= 0) {
                         $skippedPayments[] = ['reason' => 'missing_method_or_amount', 'payload' => $payment];
+
                         continue;
                     }
 
@@ -1043,6 +1110,7 @@ class SyncController extends Controller
                             $methodId = $defaultMethod->id;
                         } else {
                             $skippedPayments[] = ['reason' => 'unknown_payment_method', 'payload' => $payment];
+
                             continue;
                         }
                     }
@@ -1051,7 +1119,7 @@ class SyncController extends Controller
 
                     Payment::create([
                         'sale_id' => $sale->id,
-                        'shift_id' =>  $shiftId,
+                        'shift_id' => $shiftId,
                         'payment_method_id' => $methodId,
                         'amount' => $amount,
                         'payment_date' => $paymentDate,
@@ -1080,6 +1148,19 @@ class SyncController extends Controller
             // Log sale creation
             ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', $sale->version ?? 1, [], $deviceId, $userId, $businessId);
 
+            if ($stockShortfalls !== []) {
+                ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'updated', $sale->version ?? 1, [
+                    'stock_shortfalls' => $stockShortfalls,
+                ], $deviceId, $userId, $businessId);
+                Log::warning('Synced sale exceeded branch stock; deducted available stock only', [
+                    'sale_id' => $sale->id,
+                    'sale_number' => $sale->sale_number,
+                    'business_id' => $businessId,
+                    'branch_id' => $branchId,
+                    'stock_shortfalls' => $stockShortfalls,
+                ]);
+            }
+
             // If any payments were skipped or mapped, log those details against the sale for traceability
             if (! empty($skippedPayments) || ! empty($mappedPayments)) {
                 $sale->version = (($sale->version ?? 0) + 1);
@@ -1100,11 +1181,16 @@ class SyncController extends Controller
         // Log change
         ChangeLog::logChange('sales', $sale->id, $sale->client_uuid, 'created', 1, [], $deviceId, $userId, $businessId);
 
-        return [
+        $mapping = [
             'server_id' => $sale->id,
             'sale_number' => $sale->sale_number,
             'status' => 'synced',
         ];
+        if ($stockShortfalls !== []) {
+            $mapping['stock_shortfalls'] = $stockShortfalls;
+        }
+
+        return $mapping;
     }
 
     private function resolveDepositStockMode(int $businessId, mixed $saleMetadata): string

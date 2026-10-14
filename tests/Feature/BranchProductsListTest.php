@@ -689,7 +689,7 @@ class BranchProductsListTest extends TestCase
                 ],
             ])
             ->assertJsonPath('data.0.branch_data.selling_price', '150.00')
-            ->assertJsonPath('data.0.branch_data.stock_quantity', 75);
+            ->assertJsonPath('data.0.branch_data.stock_quantity', '75.000');
     }
 
     public function test_products_can_be_sorted_by_branch_selling_price(): void
@@ -914,6 +914,78 @@ class BranchProductsListTest extends TestCase
         $desc->assertStatus(200);
         $namesDesc = collect($desc->json('data'))->pluck('product.name')->all();
         $this->assertSame(['High Cost Item', 'Mid Cost Item', 'Low Cost Item'], $namesDesc);
+    }
+
+    public function test_branch_products_index_filters_by_category_including_children(): void
+    {
+        $this->role->givePermissionTo('view products');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        $drinks = ProductCategory::create(['business_id' => $this->business->id, 'name' => 'Drinks']);
+        $sodas = ProductCategory::create([
+            'business_id' => $this->business->id,
+            'name' => 'Sodas',
+            'parent_id' => $drinks->id,
+        ]);
+        $snacks = ProductCategory::create(['business_id' => $this->business->id, 'name' => 'Snacks']);
+
+        foreach (['Water' => $drinks, 'Cola' => $sodas, 'Chips' => $snacks, 'Loose Item' => null] as $name => $category) {
+            $product = Product::factory()->create([
+                'business_id' => $this->business->id,
+                'category_id' => $category?->id,
+                'name' => $name,
+            ]);
+            BranchProduct::create([
+                'branch_id' => $this->branch->id,
+                'product_id' => $product->id,
+                'selling_price' => 10,
+                'stock_quantity' => 5,
+            ]);
+        }
+
+        $response = $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/branch-products?'.http_build_query([
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'category_id' => $drinks->id,
+            ]));
+
+        $response->assertOk()->assertJsonPath('meta.total', 2);
+        $names = collect($response->json('data'))->pluck('product.name')->sort()->values()->all();
+        $this->assertSame(['Cola', 'Water'], $names);
+    }
+
+    public function test_branch_products_index_returns_nothing_for_another_business_category(): void
+    {
+        $this->role->givePermissionTo('view products');
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        $otherBusiness = Business::create([
+            'name' => 'Other Business',
+            'email' => 'other@test.com',
+            'owner_id' => User::factory()->create()->id,
+        ]);
+        $foreignCategory = ProductCategory::create(['business_id' => $otherBusiness->id, 'name' => 'Foreign']);
+
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'category_id' => $foreignCategory->id,
+        ]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'selling_price' => 10,
+            'stock_quantity' => 5,
+        ]);
+
+        $this->actingAs($this->user, 'sanctum')
+            ->getJson('/api/branch-products?'.http_build_query([
+                'current_business_id' => $this->business->id,
+                'branch_id' => $this->branch->id,
+                'category_id' => $foreignCategory->id,
+            ]))
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
     }
 
     public function test_unauthenticated_user_cannot_access(): void

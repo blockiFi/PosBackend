@@ -102,9 +102,14 @@ class QuickSale extends Model
         return $query->where('business_id', $businessId);
     }
 
+    /**
+     * Accepts a single status or a comma-separated list (e.g. "approved,active").
+     */
     public function scopeByStatus($query, $status)
     {
-        return $query->where('status', $status);
+        $statuses = array_values(array_filter(array_map('trim', explode(',', (string) $status))));
+
+        return $query->whereIn('status', $statuses);
     }
 
     public function scopePending($query)
