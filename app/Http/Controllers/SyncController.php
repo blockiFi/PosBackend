@@ -10,6 +10,7 @@ use App\Models\BranchProductUnitPrice;
 use App\Models\Business;
 use App\Models\ChangeLog;
 use App\Models\Customer;
+use App\Models\DeviceGroup;
 use App\Models\DeviceRegistration;
 use App\Models\InventoryTransaction;
 use App\Models\Payment;
@@ -62,6 +63,7 @@ class SyncController extends Controller
             'app_version' => 'nullable|string|max:20',
             'branch_id' => 'nullable|exists:branches,id',
             'business_id' => 'nullable|exists:businesses,id',
+            'group_id' => 'nullable|integer',
             'capabilities' => 'nullable|array',
         ]);
 
@@ -92,10 +94,21 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
         }
 
+        // Group picked during POS setup. A group that was deleted or moved since is
+        // dropped rather than failing the registration.
+        $groupId = $request->input('group_id');
+        if ($groupId !== null && ! DeviceGroup::query()
+            ->availableForBranch($businessId, $request->branch_id)
+            ->whereKey((int) $groupId)
+            ->exists()) {
+            $groupId = null;
+        }
+
         $device = DeviceRegistration::create([
             'device_id' => $request->device_id,
             'business_id' => $businessId,
             'branch_id' => $request->branch_id,
+            'group_id' => $groupId !== null ? (int) $groupId : null,
             'user_id' => $user->id,
             'device_name' => $request->device_name,
             'device_type' => $request->device_type,

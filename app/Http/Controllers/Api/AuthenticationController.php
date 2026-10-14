@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BranchAuthorization;
+use App\Models\DeviceGroup;
 use App\Models\DeviceRegistration;
 use App\Models\User;
 use App\Services\ProfileImageService;
@@ -51,6 +52,75 @@ class AuthenticationController extends Controller
             'message' => 'Business details with branch authorization',
             'business' => $branchAuthorization->business,
             'branch' => $branchAuthorization->branch,
+            // Groups a POS terminal on this branch can join during setup
+            'device_groups' => DeviceGroup::query()
+                ->availableForBranch($branchAuthorization->business_id, $branchAuthorization->branch_id)
+                ->orderBy('name')
+                ->get(['id', 'name', 'code', 'branch_id']),
+        ]);
+    }
+
+    /**
+     * Put a registered POS terminal in a device group (or take it out with group_id null),
+     * authorised by a valid branch setup code. Used from the POS admin settings.
+     */
+    public function setDeviceGroupWithBranchAuthorization(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'auth_code' => ['required', 'string'],
+            'device_id' => ['required', 'string', 'max:50'],
+            'group_id' => ['nullable', 'integer'],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'message' => 'Validation error',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $branchAuthorization = BranchAuthorization::query()
+            ->where('auth_code', $request->auth_code)
+            ->where('expires_at', '>', now())
+            ->first();
+
+        if (! $branchAuthorization) {
+            return response()->json([
+                'message' => 'Invalid or expired auth code',
+            ], 401);
+        }
+
+        $device = DeviceRegistration::query()
+            ->where('business_id', $branchAuthorization->business_id)
+            ->where('device_id', $request->device_id)
+            ->first();
+
+        if (! $device) {
+            return response()->json([
+                'message' => 'This computer is not registered yet. Sign in on it once, then try again.',
+            ], 404);
+        }
+
+        $groupId = $request->input('group_id');
+        if ($groupId !== null) {
+            $group = DeviceGroup::query()
+                ->availableForBranch($branchAuthorization->business_id, $branchAuthorization->branch_id)
+                ->find((int) $groupId);
+
+            if (! $group) {
+                return response()->json([
+                    'message' => 'Validation error',
+                    'errors' => ['group_id' => ['Group not found for this branch']],
+                ], 422);
+            }
+        }
+
+        $device->group_id = $groupId !== null ? (int) $groupId : null;
+        $device->save();
+
+        return response()->json([
+            'message' => 'Device group updated',
+            'device' => $device->fresh()->load('group:id,name,code,branch_id'),
         ]);
     }
 
