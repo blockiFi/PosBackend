@@ -152,13 +152,11 @@ class SalesShift extends Model
         $start = Carbon::parse($startDate, $timezone)->utc()->format('Y-m-d H:i:s');
         $end = Carbon::parse($endDate, $timezone)->utc()->format('Y-m-d H:i:s');
 
+        // Only shifts that started inside the range, so a shift left open for days doesn't
+        // turn up in every later day's list. End dates are exclusive (the next midnight).
         return $query
-            ->where('start_time', '<=', $end)
-            ->where(function ($q) use ($start) {
-                $q->whereIn('status', ['open', 'paused'])
-                    ->orWhereNull('end_time')
-                    ->orWhere('end_time', '>=', $start);
-            });
+            ->where('start_time', '>=', $start)
+            ->where('start_time', '<', $end);
     }
 
     // Helper methods
@@ -219,10 +217,13 @@ class SalesShift extends Model
      *     transactions_count: int
      * }
      */
-    public function computeMetricsFromShiftPayments(): array
+    public function computeMetricsFromShiftPayments(?Carbon $from = null, ?Carbon $to = null): array
     {
         $payments = Payment::query()
             ->where('status', 'completed')
+            // Optional window (UTC) for reports over a date range, so a shift left open for
+            // days only counts the payments taken inside the range.
+            ->when($from && $to, fn ($query) => $query->whereBetween('payment_date', [$from, $to]))
             ->where(function ($query) {
                 $query->where('shift_id', $this->id)
                     ->orWhere(function ($query) {

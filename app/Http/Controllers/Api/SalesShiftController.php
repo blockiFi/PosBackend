@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
 use App\Support\ReportingTimezone;
+use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -106,19 +107,24 @@ class SalesShiftController extends Controller
         }
 
         // Custom date range
+        $rangeFrom = null;
+        $rangeTo = null;
         if ($request->filled('start_date') && $request->filled('end_date')) {
-            $query->dateRange(
-                $request->start_date,
-                $request->end_date,
-                $request->filled('branch_id')
-                    ? ReportingTimezone::forBranch($request->branch_id)
-                    : ReportingTimezone::forBusiness($businessId),
-            );
+            $timezone = $request->filled('branch_id')
+                ? ReportingTimezone::forBranch($request->branch_id)
+                : ReportingTimezone::forBusiness($businessId);
+            $query->dateRange($request->start_date, $request->end_date, $timezone);
+
+            // dateRange() keeps shifts that are still open from earlier days; the totals below
+            // only count their payments inside the range.
+            $timezone = ReportingTimezone::valid($timezone) ?? ReportingTimezone::DEFAULT;
+            $rangeFrom = Carbon::parse($request->start_date, $timezone)->utc();
+            $rangeTo = Carbon::parse($request->end_date, $timezone)->utc();
         }
 
         // Statistics over all matching shifts (same filters, no pagination)
         $totalShifts = (clone $query)->count();
-        $totals = $this->sumShiftMetrics($query);
+        $totals = $this->sumShiftMetrics($query, $rangeFrom, $rangeTo);
 
         $statusCounts = (clone $query)->selectRaw('status, COUNT(*) as cnt')->groupBy('status')->pluck('cnt', 'status');
         $shiftsByStatus = [
@@ -164,8 +170,8 @@ class SalesShiftController extends Controller
         $shifts = $query->orderBy('start_time', 'desc')->paginate($perPage);
 
         // Enhance each shift with statistics
-        $shifts->getCollection()->transform(function ($shift) {
-            return $this->enrichShiftWithStats($shift);
+        $shifts->getCollection()->transform(function ($shift) use ($rangeFrom, $rangeTo) {
+            return $this->enrichShiftWithStats($shift, $rangeFrom, $rangeTo);
         });
 
         return response()->json([
@@ -1158,10 +1164,10 @@ class SalesShiftController extends Controller
      *
      * @return array{cash_sales: float, card_sales: float, other_sales: float, total_sales: float, transactions_count: int}
      */
-    private function shiftMetrics(SalesShift $shift): array
+    private function shiftMetrics(SalesShift $shift, ?Carbon $from = null, ?Carbon $to = null): array
     {
         if ($shift->status !== 'closed') {
-            return $shift->computeMetricsFromShiftPayments();
+            return $shift->computeMetricsFromShiftPayments($from, $to);
         }
 
         return [
@@ -1175,11 +1181,11 @@ class SalesShiftController extends Controller
 
     /**
      * Sum shiftMetrics() over every shift matching $query: stored totals for closed shifts in
-     * one query, live totals for the (few) open or paused ones.
+     * one query, live totals for the (few) open or paused ones, limited to $from..$to when given.
      *
      * @return array{cash_sales: float, card_sales: float, other_sales: float, total_sales: float, transactions_count: int}
      */
-    private function sumShiftMetrics($query): array
+    private function sumShiftMetrics($query, ?Carbon $from = null, ?Carbon $to = null): array
     {
         $closed = (clone $query)->where('status', 'closed')->selectRaw(
             'COALESCE(SUM(total_sales),0) as total_sales, COALESCE(SUM(transactions_count),0) as transactions_count, COALESCE(SUM(cash_sales),0) as cash_sales, COALESCE(SUM(card_sales),0) as card_sales, COALESCE(SUM(other_sales),0) as other_sales'
@@ -1194,7 +1200,7 @@ class SalesShiftController extends Controller
         ];
 
         foreach ((clone $query)->where('status', '!=', 'closed')->get() as $shift) {
-            foreach ($shift->computeMetricsFromShiftPayments() as $key => $value) {
+            foreach ($shift->computeMetricsFromShiftPayments($from, $to) as $key => $value) {
                 $totals[$key] += $value;
             }
         }
@@ -1205,9 +1211,9 @@ class SalesShiftController extends Controller
     /**
      * Enrich shift with statistics
      */
-    private function enrichShiftWithStats($shift)
+    private function enrichShiftWithStats($shift, ?Carbon $from = null, ?Carbon $to = null)
     {
-        $m = $this->shiftMetrics($shift);
+        $m = $this->shiftMetrics($shift, $from, $to);
         $totalSales = $m['total_sales'];
         $cashSales = $m['cash_sales'];
         $cardSales = $m['card_sales'];
