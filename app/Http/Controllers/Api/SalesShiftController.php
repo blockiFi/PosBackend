@@ -115,8 +115,8 @@ class SalesShiftController extends Controller
                 : ReportingTimezone::forBusiness($businessId);
             $query->dateRange($request->start_date, $request->end_date, $timezone);
 
-            // dateRange() keeps shifts that are still open from earlier days; the totals below
-            // only count their payments inside the range.
+            // dateRange() also keeps older shifts that took money inside the range; the totals
+            // below only count their payments inside the range.
             $timezone = ReportingTimezone::valid($timezone) ?? ReportingTimezone::DEFAULT;
             $rangeFrom = Carbon::parse($request->start_date, $timezone)->utc();
             $rangeTo = Carbon::parse($request->end_date, $timezone)->utc();
@@ -227,13 +227,18 @@ class SalesShiftController extends Controller
             $query->where('user_id', $validated['user_id']);
         }
 
+        $rangeFrom = null;
+        $rangeTo = null;
         if (! empty($validated['start_date']) && ! empty($validated['end_date'])) {
-            $query->dateRange($validated['start_date'], $validated['end_date'], ReportingTimezone::forBranch($branchId));
+            $timezone = ReportingTimezone::forBranch($branchId);
+            $query->dateRange($validated['start_date'], $validated['end_date'], $timezone);
+            $rangeFrom = Carbon::parse($validated['start_date'], $timezone)->utc();
+            $rangeTo = Carbon::parse($validated['end_date'], $timezone)->utc();
         }
 
         $shifts = $query->get();
 
-        $metrics = $shifts->map(fn (SalesShift $shift) => $this->shiftMetrics($shift));
+        $metrics = $shifts->map(fn (SalesShift $shift) => $this->shiftMetrics($shift, $rangeFrom, $rangeTo));
         $totalGrossSales = (float) $metrics->sum('total_sales');
         $totalTransactions = (int) $metrics->sum('transactions_count');
         $totalCashSales = (float) $metrics->sum('cash_sales');
@@ -1166,7 +1171,7 @@ class SalesShiftController extends Controller
      */
     private function shiftMetrics(SalesShift $shift, ?Carbon $from = null, ?Carbon $to = null): array
     {
-        if ($shift->status !== 'closed') {
+        if ($shift->status !== 'closed' || ! $this->closedShiftInsideRange($shift, $from, $to)) {
             return $shift->computeMetricsFromShiftPayments($from, $to);
         }
 
@@ -1180,6 +1185,20 @@ class SalesShiftController extends Controller
     }
 
     /**
+     * Whether a closed shift ran wholly inside $from..$to, so its stored totals can be used.
+     */
+    private function closedShiftInsideRange(SalesShift $shift, ?Carbon $from, ?Carbon $to): bool
+    {
+        if (! $from || ! $to) {
+            return true;
+        }
+
+        return $shift->start_time && $shift->end_time
+            && $shift->start_time->gte($from)
+            && $shift->end_time->lt($to);
+    }
+
+    /**
      * Sum shiftMetrics() over every shift matching $query: stored totals for closed shifts in
      * one query, live totals for the (few) open or paused ones, limited to $from..$to when given.
      *
@@ -1187,7 +1206,12 @@ class SalesShiftController extends Controller
      */
     private function sumShiftMetrics($query, ?Carbon $from = null, ?Carbon $to = null): array
     {
-        $closed = (clone $query)->where('status', 'closed')->selectRaw(
+        // Closed shifts that ran wholly inside the range: their stored totals are all in range.
+        $inside = fn ($q) => $from && $to
+            ? $q->where('start_time', '>=', $from)->whereNotNull('end_time')->where('end_time', '<', $to)
+            : $q;
+
+        $closed = $inside((clone $query)->where('status', 'closed'))->selectRaw(
             'COALESCE(SUM(total_sales),0) as total_sales, COALESCE(SUM(transactions_count),0) as transactions_count, COALESCE(SUM(cash_sales),0) as cash_sales, COALESCE(SUM(card_sales),0) as card_sales, COALESCE(SUM(other_sales),0) as other_sales'
         )->first();
 
@@ -1199,7 +1223,14 @@ class SalesShiftController extends Controller
             'transactions_count' => (int) ($closed->transactions_count ?? 0),
         ];
 
-        foreach ((clone $query)->where('status', '!=', 'closed')->get() as $shift) {
+        // Open or paused shifts, and closed shifts that ran outside the range (opened on an
+        // earlier day): count only their payments inside the range.
+        $live = (clone $query)->where(function ($q) use ($inside) {
+            $q->where('status', '!=', 'closed')
+                ->orWhereNotIn('id', $inside(SalesShift::query()->where('status', 'closed'))->select('id'));
+        });
+
+        foreach ($live->get() as $shift) {
             foreach ($shift->computeMetricsFromShiftPayments($from, $to) as $key => $value) {
                 $totals[$key] += $value;
             }

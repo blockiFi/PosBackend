@@ -152,11 +152,32 @@ class SalesShift extends Model
         $start = Carbon::parse($startDate, $timezone)->utc()->format('Y-m-d H:i:s');
         $end = Carbon::parse($endDate, $timezone)->utc()->format('Y-m-d H:i:s');
 
-        // Only shifts that started inside the range, so a shift left open for days doesn't
-        // turn up in every later day's list. End dates are exclusive (the next midnight).
-        return $query
-            ->where('start_time', '>=', $start)
-            ->where('start_time', '<', $end);
+        // Shifts that started inside the range, plus older shifts that took money inside it (a
+        // till still selling on a shift opened on an earlier day). An idle old shift stays out.
+        // End dates are exclusive (the next midnight).
+        return $query->where(function ($q) use ($start, $end) {
+            $q->where(function ($started) use ($start, $end) {
+                $started->where('start_time', '>=', $start)
+                    ->where('start_time', '<', $end);
+            })->orWhereExists(function ($paid) use ($start, $end) {
+                $paid->selectRaw('1')
+                    ->from('payments')
+                    ->join('sales', 'sales.id', '=', 'payments.sale_id')
+                    ->whereNull('payments.deleted_at')
+                    ->whereNull('sales.deleted_at')
+                    ->where('sales.status', '!=', 'cancelled')
+                    ->where('payments.status', 'completed')
+                    ->where('payments.payment_date', '>=', $start)
+                    ->where('payments.payment_date', '<', $end)
+                    ->where(function ($own) {
+                        $own->whereColumn('payments.shift_id', 'sales_shifts.id')
+                            ->orWhere(function ($viaSale) {
+                                $viaSale->whereNull('payments.shift_id')
+                                    ->whereColumn('sales.shift_id', 'sales_shifts.id');
+                            });
+                    });
+            });
+        });
     }
 
     // Helper methods
