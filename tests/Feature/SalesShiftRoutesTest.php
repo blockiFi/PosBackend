@@ -706,7 +706,7 @@ class SalesShiftRoutesTest extends TestCase
         ]);
     }
 
-    public function test_today_filter_lists_shifts_still_running_from_earlier_days()
+    public function test_today_filter_lists_only_shifts_started_today()
     {
         $this->travelTo(\Carbon\Carbon::parse('2026-10-13 12:00:00', 'UTC'));
 
@@ -736,8 +736,8 @@ class SalesShiftRoutesTest extends TestCase
 
         $response->assertOk();
         $numbers = collect($response->json('shifts.data'))->pluck('shift_number')->sort()->values()->all();
-        $this->assertSame(['OLD-OPEN', 'OLD-PAUSED', 'OVERNIGHT', 'TODAY'], $numbers);
-        $this->assertSame(4, $response->json('statistics.total_shifts_count'));
+        $this->assertSame(['TODAY'], $numbers);
+        $this->assertSame(1, $response->json('statistics.total_shifts_count'));
     }
 
     public function test_date_range_uses_the_branch_local_day()
