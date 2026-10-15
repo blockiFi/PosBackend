@@ -117,9 +117,8 @@ class SalesShiftController extends Controller
         }
 
         // Statistics over all matching shifts (same filters, no pagination)
-        $statsRow = (clone $query)->selectRaw(
-            'COUNT(*) as total_shifts, COALESCE(SUM(total_sales),0) as total_gross_sales, COALESCE(SUM(transactions_count),0) as total_transactions, COALESCE(SUM(cash_sales),0) as total_cash_sales, COALESCE(SUM(card_sales),0) as total_card_sales, COALESCE(SUM(other_sales),0) as total_other_sales'
-        )->first();
+        $totalShifts = (clone $query)->count();
+        $totals = $this->sumShiftMetrics($query);
 
         $statusCounts = (clone $query)->selectRaw('status, COUNT(*) as cnt')->groupBy('status')->pluck('cnt', 'status');
         $shiftsByStatus = [
@@ -128,11 +127,11 @@ class SalesShiftController extends Controller
             'paused' => (int) ($statusCounts->get('paused') ?? 0),
         ];
 
-        $totalGrossSales = (float) $statsRow->total_gross_sales;
-        $totalTransactions = (int) $statsRow->total_transactions;
-        $totalCashSales = (float) $statsRow->total_cash_sales;
-        $totalCardSales = (float) $statsRow->total_card_sales;
-        $totalOtherSales = (float) $statsRow->total_other_sales;
+        $totalGrossSales = $totals['total_sales'];
+        $totalTransactions = $totals['transactions_count'];
+        $totalCashSales = $totals['cash_sales'];
+        $totalCardSales = $totals['card_sales'];
+        $totalOtherSales = $totals['other_sales'];
         $totalForPercent = $totalGrossSales > 0 ? $totalGrossSales : 1;
         $cashPercentage = round(($totalCashSales / $totalForPercent) * 100, 2);
         $cardPercentage = round(($totalCardSales / $totalForPercent) * 100, 2);
@@ -142,7 +141,7 @@ class SalesShiftController extends Controller
             : 0;
 
         $statistics = [
-            'total_shifts_count' => (int) $statsRow->total_shifts,
+            'total_shifts_count' => $totalShifts,
             'total_gross_sales' => $totalGrossSales,
             'total_transactions' => $totalTransactions,
             'shifts_by_status' => $shiftsByStatus,
@@ -228,11 +227,12 @@ class SalesShiftController extends Controller
 
         $shifts = $query->get();
 
-        $totalGrossSales = (float) $shifts->sum('total_sales');
-        $totalTransactions = (int) $shifts->sum('transactions_count');
-        $totalCashSales = (float) $shifts->sum('cash_sales');
-        $totalCardSales = (float) $shifts->sum('card_sales');
-        $totalOtherSales = (float) $shifts->sum('other_sales');
+        $metrics = $shifts->map(fn (SalesShift $shift) => $this->shiftMetrics($shift));
+        $totalGrossSales = (float) $metrics->sum('total_sales');
+        $totalTransactions = (int) $metrics->sum('transactions_count');
+        $totalCashSales = (float) $metrics->sum('cash_sales');
+        $totalCardSales = (float) $metrics->sum('card_sales');
+        $totalOtherSales = (float) $metrics->sum('other_sales');
 
         $shiftsByStatus = [
             'open' => $shifts->where('status', 'open')->count(),
@@ -1153,21 +1153,70 @@ class SalesShiftController extends Controller
     }
 
     /**
+     * Sales totals for one shift. Stored totals are only written when a shift closes, so open
+     * and paused shifts are counted live from their payments.
+     *
+     * @return array{cash_sales: float, card_sales: float, other_sales: float, total_sales: float, transactions_count: int}
+     */
+    private function shiftMetrics(SalesShift $shift): array
+    {
+        if ($shift->status !== 'closed') {
+            return $shift->computeMetricsFromShiftPayments();
+        }
+
+        return [
+            'cash_sales' => (float) ($shift->cash_sales ?? 0),
+            'card_sales' => (float) ($shift->card_sales ?? 0),
+            'other_sales' => (float) ($shift->other_sales ?? 0),
+            'total_sales' => (float) ($shift->total_sales ?? 0),
+            'transactions_count' => (int) ($shift->transactions_count ?? 0),
+        ];
+    }
+
+    /**
+     * Sum shiftMetrics() over every shift matching $query: stored totals for closed shifts in
+     * one query, live totals for the (few) open or paused ones.
+     *
+     * @return array{cash_sales: float, card_sales: float, other_sales: float, total_sales: float, transactions_count: int}
+     */
+    private function sumShiftMetrics($query): array
+    {
+        $closed = (clone $query)->where('status', 'closed')->selectRaw(
+            'COALESCE(SUM(total_sales),0) as total_sales, COALESCE(SUM(transactions_count),0) as transactions_count, COALESCE(SUM(cash_sales),0) as cash_sales, COALESCE(SUM(card_sales),0) as card_sales, COALESCE(SUM(other_sales),0) as other_sales'
+        )->first();
+
+        $totals = [
+            'cash_sales' => (float) ($closed->cash_sales ?? 0),
+            'card_sales' => (float) ($closed->card_sales ?? 0),
+            'other_sales' => (float) ($closed->other_sales ?? 0),
+            'total_sales' => (float) ($closed->total_sales ?? 0),
+            'transactions_count' => (int) ($closed->transactions_count ?? 0),
+        ];
+
+        foreach ((clone $query)->where('status', '!=', 'closed')->get() as $shift) {
+            foreach ($shift->computeMetricsFromShiftPayments() as $key => $value) {
+                $totals[$key] += $value;
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
      * Enrich shift with statistics
      */
     private function enrichShiftWithStats($shift)
     {
-        if ($shift->status === 'closed') {
-            $totalSales = $shift->total_sales ?? 0;
-            $cashSales = $shift->cash_sales ?? 0;
-            $cardSales = $shift->card_sales ?? 0;
-            $transactionsCount = $shift->transactions_count ?? 0;
-        } else {
-            $m = $shift->computeMetricsFromShiftPayments();
-            $totalSales = $m['total_sales'];
-            $cashSales = $m['cash_sales'];
-            $cardSales = $m['card_sales'];
-            $transactionsCount = $m['transactions_count'];
+        $m = $this->shiftMetrics($shift);
+        $totalSales = $m['total_sales'];
+        $cashSales = $m['cash_sales'];
+        $cardSales = $m['card_sales'];
+        $transactionsCount = $m['transactions_count'];
+
+        if ($shift->status !== 'closed') {
+            // The stored totals are only written when the shift closes. Fill them in (not saved)
+            // so lists that read total_sales / transactions_count show what the shift has sold.
+            $shift->forceFill($m);
         }
 
         // Calculate average basket value
