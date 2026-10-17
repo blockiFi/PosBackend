@@ -862,27 +862,14 @@ class DepositSaleTest extends TestCase
         ], $this->headers())->assertStatus(200)->assertJsonPath('sale.status', 'completed');
     }
 
-    public function test_cancelling_a_deposit_needs_a_supervisor_pin_and_gives_all_money_back(): void
+    public function test_cancelling_a_deposit_gives_all_money_back(): void
     {
         $earlierShift = $this->openShift();
         $sale = $this->itemlessDeposit(700, $earlierShift);
         $earlierShift->update(['status' => 'closed']);
         $shift = $this->openShift();
-        $this->staffWith(['create sales'], '111111');
-        $supervisor = $this->staffWith(['manage shifts'], '222222');
-
-        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
-            'approver_pin' => '999999',
-            'payment_method_id' => $this->cashMethod->id,
-        ], $this->headers())->assertStatus(403);
-
-        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
-            'approver_pin' => '111111',
-            'payment_method_id' => $this->cashMethod->id,
-        ], $this->headers())->assertStatus(403);
 
         $cancel = $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
-            'approver_pin' => '222222',
             'payment_method_id' => $this->cashMethod->id,
             'reason' => 'Changed mind',
         ], $this->headers());
@@ -891,14 +878,13 @@ class DepositSaleTest extends TestCase
         $this->assertEquals(700, $cancel->json('money_given_back'));
         $this->assertSame('refunded', $cancel->json('sale.status'));
         $this->assertEquals(0, (float) $cancel->json('sale.paid_amount'));
-        $this->assertSame($supervisor->id, Sale::find($sale->id)->metadata['cancelled']['approved_by']);
+        $this->assertSame($this->user->id, Sale::find($sale->id)->metadata['cancelled']['user_id']);
 
         // The money stays on the shift that took it and leaves from the current one
         $this->assertEquals(700.0, $earlierShift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
         $this->assertEquals(-700.0, $shift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
 
         $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
-            'approver_pin' => '222222',
             'payment_method_id' => $this->cashMethod->id,
         ], $this->headers())->assertStatus(422);
     }

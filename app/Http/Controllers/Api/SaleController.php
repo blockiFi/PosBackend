@@ -1000,7 +1000,7 @@ class SaleController extends Controller
 
     /**
      * Cancel a pending deposit and give the customer all their money back from the acting
-     * cashier's drawer. Needs a supervisor, manager or owner PIN. The earlier payments stay
+     * cashier's drawer. The earlier payments stay
      * on the shifts that took them; the refund is a negative payment on the current shift.
      */
     public function cancelDeposit(Request $request, $id)
@@ -1018,7 +1018,6 @@ class SaleController extends Controller
         }
 
         $validated = $request->validate([
-            'approver_pin' => ['required', 'string', 'size:6', 'regex:/^[0-9]{6}$/'],
             'payment_method_id' => 'nullable|exists:payment_methods,id',
             'reason' => 'nullable|string|max:500',
         ]);
@@ -1039,11 +1038,6 @@ class SaleController extends Controller
 
         if ($sale->sale_type !== 'deposit' || $sale->status !== 'pending') {
             return response()->json(['message' => 'Only an open deposit can be cancelled'], 422);
-        }
-
-        $approver = $this->findDepositApprover($business, $validated['approver_pin']);
-        if (! $approver) {
-            return response()->json(['message' => 'Wrong PIN. A supervisor must approve this.'], 403);
         }
 
         $sale->updatePaymentStatus();
@@ -1080,7 +1074,7 @@ class SaleController extends Controller
                     'payment_date' => now(),
                     'status' => 'completed',
                     'notes' => 'Money given back: deposit cancelled',
-                    'metadata' => ['kind' => 'deposit_refund', 'approved_by' => $approver->id],
+                    'metadata' => ['kind' => 'deposit_refund'],
                 ]);
             }
 
@@ -1089,8 +1083,6 @@ class SaleController extends Controller
                 'at' => now()->toIso8601String(),
                 'user_id' => $user->id,
                 'user_name' => $user->name,
-                'approved_by' => $approver->id,
-                'approved_by_name' => $approver->name,
                 'reason' => $validated['reason'] ?? null,
                 'money_given_back' => $paid,
             ];
@@ -1424,41 +1416,6 @@ class SaleController extends Controller
             ])->values()->all(),
             'total' => (float) $sale->items->sum('total'),
         ];
-    }
-
-    /**
-     * The owner, or a member of the business who can manage sales or shifts (supervisor or
-     * manager), identified by their 6-digit PIN.
-     */
-    private function findDepositApprover($business, string $pin): ?User
-    {
-        $approver = User::where('pin_code', $pin)->first();
-        if (! $approver) {
-            return null;
-        }
-
-        if ((int) $business->owner_id === (int) $approver->id) {
-            return $approver;
-        }
-
-        $isMember = $approver->businesses()
-            ->where('businesses.id', $business->id)
-            ->wherePivot('is_active', true)
-            ->exists();
-        if (! $isMember) {
-            return null;
-        }
-
-        setPermissionsTeamId($business->id);
-
-        // Supervisor-level permissions; a plain cashier has none of these.
-        foreach (['approve refund', 'manage sales', 'manage shifts', 'view all shifts'] as $permission) {
-            if ($approver->checkPermissionTo($permission)) {
-                return $approver;
-            }
-        }
-
-        return null;
     }
 
     /**
