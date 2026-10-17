@@ -172,6 +172,19 @@ class SalesShift extends Model
         }
     }
 
+    /**
+     * Recount a closed shift after sales reach the server late (the till was offline when the
+     * shift ended). actual_cash is the till's own cash total sent at close, so the variance only
+     * shows sales the server was missing; recounting brings it back in line.
+     */
+    public function recountAfterClose(): void
+    {
+        $this->updateSalesMetrics();
+        $this->calculateExpectedCash();
+        $this->calculateVariance();
+        $this->save();
+    }
+
     public function isOpen(): bool
     {
         return $this->status === 'open';

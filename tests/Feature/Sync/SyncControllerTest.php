@@ -1257,6 +1257,62 @@ class SyncControllerTest extends TestCase
         $this->assertStringContainsString('BranchProduct not found', $response->json('results.sales.conflicts_details.0.error'));
     }
 
+    public function test_sale_synced_after_shift_closed_is_counted_in_that_shift(): void
+    {
+        $device = $this->registerDevice();
+        $product = Product::factory()->create(['business_id' => $this->business->id, 'stock_tracking' => 'simple']);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'shelf_quantity' => 10,
+            'store_quantity' => 0,
+            'selling_price' => 50.00,
+        ]);
+        $cash = PaymentMethod::factory()->cash()->create(['business_id' => $this->business->id]);
+
+        // The till was offline: it closed with ₦100 cash, but the server had none of that sale yet.
+        $shift = $this->openShift();
+        $shift->forceFill([
+            'status' => 'closed',
+            'end_time' => now(),
+            'cash_sales' => 0,
+            'total_sales' => 0,
+            'transactions_count' => 0,
+            'expected_cash' => 0,
+            'actual_cash' => 100,
+            'variance' => 100,
+        ])->save();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [[
+                    'client_uuid' => Str::uuid()->toString(),
+                    'sale_number' => 'SALE-'.Str::random(8),
+                    'branch_id' => $this->branch->id,
+                    'shift_id' => $shift->id,
+                    'sale_type' => 'pos',
+                    'sale_date' => now()->subMinutes(5)->toIso8601String(),
+                    'items' => [['product_id' => $product->id, 'quantity' => 2]],
+                    'payments' => [['payment_method_id' => $cash->id, 'amount' => 100]],
+                ]],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertOk()->assertJsonPath('results.sales.accepted', 1);
+        $shift->refresh();
+        $this->assertSame('closed', $shift->status);
+        $this->assertEquals(100, (float) $shift->total_sales);
+        $this->assertEquals(100, (float) $shift->cash_sales);
+        $this->assertSame(1, (int) $shift->transactions_count);
+        $this->assertEquals(100, (float) $shift->expected_cash);
+        $this->assertEquals(0, (float) $shift->variance);
+    }
+
     private function pushSale(DeviceRegistration $device, SalesShift $shift, int $productId, float $quantity, ?int $batchId = null, ?string $saleDate = null): \Illuminate\Testing\TestResponse
     {
         $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);

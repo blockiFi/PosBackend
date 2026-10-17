@@ -45,6 +45,9 @@ class SyncController extends Controller
 
     private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
+    /** Closed shifts that received sales in this push; recounted once the push is processed. */
+    private array $closedShiftIdsToRecount = [];
+
     public function __construct(
         protected InventoryBatchService $batchService,
         protected TieredPricingService $tieredPricingService
@@ -403,6 +406,7 @@ class SyncController extends Controller
 
         $results = [];
         $hasConflicts = false;
+        $this->closedShiftIdsToRecount = [];
 
         DB::beginTransaction();
         try {
@@ -450,6 +454,12 @@ class SyncController extends Controller
                 }
 
                 $session->recordPush($results[$entityType]['accepted']);
+            }
+
+            // A till that was offline when its shift ended sends those sales after the close.
+            // Count them into the closed shift so its totals and cash variance stay right.
+            foreach (array_keys($this->closedShiftIdsToRecount) as $closedShiftId) {
+                SalesShift::find($closedShiftId)?->recountAfterClose();
             }
 
             $session->completeSession($hasConflicts ? 'partial' : 'completed');
@@ -1175,6 +1185,10 @@ class SyncController extends Controller
             }
 
             DB::commit();
+
+            if ($shiftId !== null && $shift->status === 'closed') {
+                $this->closedShiftIdsToRecount[$shiftId] = true;
+            }
         } catch (\Exception $e) {
             DB::rollBack();
             // Re-throw so caller can record conflict/rejection; sale won't be partially persisted
