@@ -645,4 +645,279 @@ class DepositSaleTest extends TestCase
         $res->assertJsonPath('data.expected_cash', 250);
         $res->assertJsonPath('data.gross_sales', 250);
     }
+
+    private function itemlessDeposit(float $paid, ?SalesShift $shift = null, ?User $cashier = null): Sale
+    {
+        $sale = Sale::create([
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'shift_id' => $shift?->id,
+            'customer_id' => $this->customer->id,
+            'user_id' => ($cashier ?? $this->user)->id,
+            'sale_number' => 'DEP-'.uniqid(),
+            'sale_type' => 'deposit',
+            'sale_date' => now(),
+            'subtotal' => 0,
+            'tax_amount' => 0,
+            'discount_amount' => 0,
+            'total_amount' => 0,
+            'status' => 'pending',
+            'payment_status' => 'unpaid',
+            'metadata' => ['deposit_stock_mode' => 'deduct_on_complete'],
+        ]);
+        Payment::create([
+            'sale_id' => $sale->id,
+            'shift_id' => $shift?->id,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => $paid,
+            'payment_date' => now(),
+            'status' => 'completed',
+        ]);
+        $sale->updatePaymentStatus();
+
+        return $sale->fresh();
+    }
+
+    private function staffWith(array $permissions, ?string $pin = null): User
+    {
+        foreach ($permissions as $permission) {
+            Permission::firstOrCreate(['name' => $permission, 'guard_name' => 'api']);
+        }
+        $staff = User::factory()->create(['pin_code' => $pin]);
+        $staff->businesses()->attach($this->business->id);
+        setPermissionsTeamId($this->business->id);
+        $role = Role::create(['name' => 'role-'.uniqid(), 'guard_name' => 'api']);
+        $role->givePermissionTo($permissions);
+        $staff->assignRole($role);
+
+        return $staff;
+    }
+
+    private function headers(): array
+    {
+        return ['X-Business-Id' => $this->business->id];
+    }
+
+    public function test_deposit_without_an_item_stays_partial_and_cannot_be_completed(): void
+    {
+        $this->openShift();
+        $sale = $this->itemlessDeposit(500);
+
+        $this->assertSame('partial', $sale->payment_status);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/sales/{$sale->id}/complete-deposit", [], $this->headers())
+            ->assertStatus(422)
+            ->assertJsonFragment(['message' => 'Choose an item for this deposit first']);
+    }
+
+    public function test_choosing_and_changing_the_item_uses_branch_price_and_logs_each_change(): void
+    {
+        $this->openShift();
+        $sale = $this->itemlessDeposit(500);
+
+        $first = $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 2]],
+        ], $this->headers());
+
+        $first->assertStatus(200);
+        $this->assertEquals(2000, (float) $first->json('sale.total_amount'));
+        $this->assertSame('partial', $first->json('sale.payment_status'));
+
+        $laptop = Product::create([
+            'business_id' => $this->business->id,
+            'name' => 'Laptop',
+            'sku' => 'LAP-001',
+            'selling_price' => 400,
+            'base_selling_price' => 400,
+            'is_active' => true,
+        ]);
+        BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $laptop->id,
+            'stock_quantity' => 3,
+            'selling_price' => 400,
+        ]);
+
+        $second = $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $laptop->id, 'quantity' => 1]],
+        ], $this->headers());
+
+        $second->assertStatus(200);
+        $this->assertEquals(400, (float) $second->json('sale.total_amount'));
+        $this->assertSame('overpaid', $second->json('sale.payment_status'));
+        $this->assertCount(1, $second->json('sale.items'));
+
+        $changes = Sale::find($sale->id)->metadata['item_changes'];
+        $this->assertCount(2, $changes);
+        $this->assertSame([], $changes[0]['from']);
+        $this->assertSame('Phone', $changes[0]['to'][0]['name']);
+        $this->assertSame('Phone', $changes[1]['from'][0]['name']);
+        $this->assertSame('Laptop', $changes[1]['to'][0]['name']);
+        $this->assertSame($this->user->id, $changes[1]['user_id']);
+
+        // Nothing leaves the shelf until the deposit is completed
+        $this->assertSame(10.0, (float) BranchProduct::where('product_id', $this->product->id)->first()->stock_quantity);
+    }
+
+    public function test_choosing_an_item_not_sold_at_the_branch_is_refused(): void
+    {
+        $sale = $this->itemlessDeposit(500);
+        $elsewhere = Product::create([
+            'business_id' => $this->business->id,
+            'name' => 'TV',
+            'sku' => 'TV-001',
+            'selling_price' => 900,
+            'base_selling_price' => 900,
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $elsewhere->id, 'quantity' => 1]],
+        ], $this->headers())->assertStatus(422);
+
+        $this->assertSame(0, Sale::find($sale->id)->items()->count());
+    }
+
+    public function test_item_cannot_be_changed_on_a_deposit_holding_its_stock(): void
+    {
+        $this->setDepositMode('reserve_on_create');
+        $this->openShift();
+        $saleId = $this->actingAs($this->user)->postJson('/api/sales', [
+            'branch_id' => $this->branch->id,
+            'customer_id' => $this->customer->id,
+            'sale_type' => 'deposit',
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1, 'unit_price' => 1000]],
+            'payments' => [['payment_method_id' => $this->cashMethod->id, 'amount' => 200]],
+        ], $this->headers())->json('sale.id');
+
+        $this->actingAs($this->user)->putJson("/api/sales/{$saleId}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 2]],
+        ], $this->headers())->assertStatus(422);
+    }
+
+    public function test_completing_a_deposit_for_a_cheaper_item_gives_the_change_back_from_this_shift(): void
+    {
+        $earlierShift = $this->openShift();
+        $sale = $this->itemlessDeposit(1500, $earlierShift);
+        $earlierShift->update(['status' => 'closed']);
+        $shift = $this->openShift();
+
+        $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ], $this->headers())->assertStatus(200);
+
+        $this->actingAs($this->user)
+            ->postJson("/api/sales/{$sale->id}/complete-deposit", [], $this->headers())
+            ->assertStatus(422)
+            ->assertJsonPath('change_due', 500);
+
+        $complete = $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/complete-deposit", [
+            'change_payment_method_id' => $this->cashMethod->id,
+        ], $this->headers());
+
+        $complete->assertStatus(200);
+        $this->assertEquals(500, $complete->json('change_given'));
+        $this->assertSame('completed', $complete->json('sale.status'));
+        $this->assertSame('paid', $complete->json('sale.payment_status'));
+        $this->assertEquals(1000, (float) $complete->json('sale.paid_amount'));
+
+        $this->assertDatabaseHas('payments', [
+            'sale_id' => $sale->id,
+            'shift_id' => $shift->id,
+            'amount' => '-500.00',
+            'notes' => 'Change given back',
+        ]);
+        $this->assertEquals(1500.0, $earlierShift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+        $this->assertEquals(-500.0, $shift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+        $this->assertSame(9.0, (float) BranchProduct::where('product_id', $this->product->id)->first()->stock_quantity);
+    }
+
+    public function test_another_cashier_can_top_up_and_finish_a_deposit(): void
+    {
+        $this->openShift();
+        $sale = $this->itemlessDeposit(400);
+        $cashier = $this->staffWith(['create sales', 'view sales']);
+        SalesShift::create([
+            'shift_number' => 'SHIFT-'.uniqid(),
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $cashier->id,
+            'start_time' => now(),
+            'opening_balance' => 0,
+            'status' => 'open',
+        ]);
+
+        $this->actingAs($cashier)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ], $this->headers())->assertStatus(200);
+
+        $this->actingAs($cashier)->postJson("/api/sales/{$sale->id}/payments", [
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => 100,
+        ], $this->headers())->assertStatus(200);
+
+        $this->actingAs($cashier)->postJson("/api/sales/{$sale->id}/complete-deposit", [
+            'payments' => [['payment_method_id' => $this->cashMethod->id, 'amount' => 500]],
+        ], $this->headers())->assertStatus(200)->assertJsonPath('sale.status', 'completed');
+    }
+
+    public function test_cancelling_a_deposit_needs_a_supervisor_pin_and_gives_all_money_back(): void
+    {
+        $earlierShift = $this->openShift();
+        $sale = $this->itemlessDeposit(700, $earlierShift);
+        $earlierShift->update(['status' => 'closed']);
+        $shift = $this->openShift();
+        $this->staffWith(['create sales'], '111111');
+        $supervisor = $this->staffWith(['manage shifts'], '222222');
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
+            'approver_pin' => '999999',
+            'payment_method_id' => $this->cashMethod->id,
+        ], $this->headers())->assertStatus(403);
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
+            'approver_pin' => '111111',
+            'payment_method_id' => $this->cashMethod->id,
+        ], $this->headers())->assertStatus(403);
+
+        $cancel = $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
+            'approver_pin' => '222222',
+            'payment_method_id' => $this->cashMethod->id,
+            'reason' => 'Changed mind',
+        ], $this->headers());
+
+        $cancel->assertStatus(200);
+        $this->assertEquals(700, $cancel->json('money_given_back'));
+        $this->assertSame('refunded', $cancel->json('sale.status'));
+        $this->assertEquals(0, (float) $cancel->json('sale.paid_amount'));
+        $this->assertSame($supervisor->id, Sale::find($sale->id)->metadata['cancelled']['approved_by']);
+
+        // The money stays on the shift that took it and leaves from the current one
+        $this->assertEquals(700.0, $earlierShift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+        $this->assertEquals(-700.0, $shift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/cancel-deposit", [
+            'approver_pin' => '222222',
+            'payment_method_id' => $this->cashMethod->id,
+        ], $this->headers())->assertStatus(422);
+    }
+
+    public function test_search_finds_open_deposits_by_reference_phone_or_name(): void
+    {
+        $this->customer->update(['phone' => '+234 803 123 4567']);
+        $open = $this->itemlessDeposit(500);
+        $finished = $this->itemlessDeposit(500);
+        $finished->update(['status' => 'completed']);
+
+        foreach (['08031234567', 'john', $open->sale_number] as $term) {
+            $res = $this->actingAs($this->user)->getJson('/api/sales/deposits/search?q='.urlencode($term), $this->headers());
+            $res->assertStatus(200);
+            $this->assertSame([$open->id], array_column($res->json('deposits'), 'id'), "search: {$term}");
+        }
+
+        $this->actingAs($this->user)->getJson('/api/sales/deposits/search?q=nobody', $this->headers())
+            ->assertStatus(200)
+            ->assertJsonCount(0, 'deposits');
+    }
 }
