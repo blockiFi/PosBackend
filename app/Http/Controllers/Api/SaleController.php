@@ -14,6 +14,7 @@ use App\Models\QuickSale;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Models\SalesShift;
+use App\Models\User;
 use App\Services\InventoryBatchService;
 use App\Services\TieredPricingService;
 use App\Support\BusinessQuantityPolicy;
@@ -506,9 +507,11 @@ class SaleController extends Controller
         $isOwnSale = (int) $sale->user_id === (int) $user->id;
 
         // Managers/owners can add payments to any sale in accessible branches.
-        // Cashiers (create sales permission) can only add payments to their own pending sales.
+        // Cashiers (create sales permission) can only add payments to their own pending sales,
+        // or to any pending deposit: customers often come back on another cashier's shift.
+        $isDepositSale = $sale->sale_type === 'deposit';
         if (! $isOwner && ! $canManageSales) {
-            if (! $canCreateSales || ! $isOwnSale || $sale->status !== 'pending') {
+            if (! $canCreateSales || $sale->status !== 'pending' || (! $isOwnSale && ! $isDepositSale)) {
                 return response()->json(['message' => 'Unauthorized'], 403);
             }
         }
@@ -585,6 +588,8 @@ class SaleController extends Controller
             'payments.*.reference_number' => 'nullable|string',
             'payments.*.notes' => 'nullable|string',
             'closing_notes' => 'nullable|string',
+            // Method the change is given back with when the customer paid more than the price
+            'change_payment_method_id' => 'nullable|exists:payment_methods,id',
         ]);
 
         $sale = Sale::with(['items.product'])
@@ -598,12 +603,10 @@ class SaleController extends Controller
         $isOwner = $business->owner_id === $user->id;
         $canManageSales = $user->hasPermissionTo('manage sales');
         $canCreateSales = $user->hasPermissionTo('create sales');
-        $isOwnSale = (int) $sale->user_id === (int) $user->id;
 
-        if (! $isOwner && ! $canManageSales) {
-            if (! $canCreateSales || ! $isOwnSale) {
-                return response()->json(['message' => 'Unauthorized'], 403);
-            }
+        // Any cashier on the branch may finish a deposit, not only the one who took it
+        if (! $isOwner && ! $canManageSales && ! $canCreateSales) {
+            return response()->json(['message' => 'Unauthorized'], 403);
         }
 
         if ($sale->sale_type !== 'deposit') {
@@ -614,8 +617,12 @@ class SaleController extends Controller
             return response()->json(['message' => 'Deposit is not pending; cannot complete'], 422);
         }
 
+        if ($sale->items->isEmpty()) {
+            return response()->json(['message' => 'Choose an item for this deposit first'], 422);
+        }
+
         $paymentShiftId = null;
-        if (! empty($validated['payments'])) {
+        if (! empty($validated['payments']) || ! empty($validated['change_payment_method_id'])) {
             $paymentShiftId = $this->resolveCurrentShiftIdForPayment($user, $businessId, $sale->branch_id);
             if ($paymentShiftId === null) {
                 return response()->json([
@@ -648,6 +655,36 @@ class SaleController extends Controller
                 $amountPaid = $sale->payments->sum('amount');
                 $sale->paid_amount = $amountPaid;
                 $sale->save();
+            }
+
+            // The item may cost less than the customer has paid: give the difference back
+            // from this shift's drawer so the sale settles at the item's price.
+            $sale->updatePaymentStatus();
+            $changeDue = round((float) $sale->paid_amount - (float) $sale->total_amount, 2);
+            $changeGiven = 0.0;
+            if ($changeDue > 0) {
+                if (empty($validated['change_payment_method_id']) || $paymentShiftId === null) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' => 'The customer paid more than the price. Give back the difference.',
+                        'change_due' => $changeDue,
+                    ], 422);
+                }
+
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'shift_id' => $paymentShiftId,
+                    'payment_method_id' => $validated['change_payment_method_id'],
+                    'amount' => -$changeDue,
+                    'reference_number' => $sale->sale_number,
+                    'payment_date' => now(),
+                    'status' => 'completed',
+                    'notes' => 'Change given back',
+                    'metadata' => ['kind' => 'change_given'],
+                ]);
+                $sale->updatePaymentStatus();
+                $changeGiven = $changeDue;
             }
 
             if (! $sale->isFullyPaid()) {
@@ -748,11 +785,328 @@ class SaleController extends Controller
             return response()->json([
                 'message' => 'Deposit completed successfully',
                 'sale' => $sale->fresh(['items.product', 'payments.paymentMethod', 'customer', 'branch', 'user']),
+                'change_given' => $changeGiven,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
 
             return response()->json(['message' => 'Failed to complete deposit', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Find open deposits by reference, customer phone or customer name.
+     * Used by the POS "Find Deposit" screen so a customer who lost the reference can be found.
+     */
+    public function searchDeposits(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        if ($business->owner_id !== $user->id && ! $user->hasPermissionTo('view sales') && ! $user->hasPermissionTo('create sales')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        $validated = $request->validate([
+            'q' => 'required|string|min:2|max:100',
+            'branch_id' => 'nullable|integer',
+        ]);
+
+        $term = trim($validated['q']);
+        $digits = preg_replace('/\D+/', '', $term);
+        // Match the end of the number so "0803..." and "+234803..." find the same customer
+        $phoneTail = strlen($digits) >= 7 ? substr($digits, -10) : null;
+
+        $query = Sale::with(['items.product', 'payments.paymentMethod', 'customer', 'branch', 'user'])
+            ->forBusiness($businessId)
+            ->where('sale_type', 'deposit')
+            ->where('status', 'pending')
+            ->where(function ($q) use ($term, $phoneTail) {
+                $q->where('sale_number', $term)
+                    ->orWhere('reference_id', $term)
+                    // The last digits printed on the deposit slip are enough
+                    ->when(strlen($term) >= 4, fn ($q) => $q->orWhere('sale_number', 'like', '%'.addcslashes($term, '%_')))
+                    ->orWhereHas('customer', function ($customer) use ($term, $phoneTail) {
+                        $customer->where('name', 'like', '%'.$term.'%');
+                        if ($phoneTail !== null) {
+                            // Ignore spaces, dashes and "+" people type into phone numbers
+                            $customer->orWhereRaw(
+                                "REPLACE(REPLACE(REPLACE(phone, ' ', ''), '-', ''), '+', '') LIKE ?",
+                                ['%'.$phoneTail.'%']
+                            );
+                        }
+                    });
+            });
+
+        if (! empty($validated['branch_id'])) {
+            $query->where('branch_id', $validated['branch_id']);
+        }
+
+        $deposits = $query->orderByDesc('id')
+            ->limit(20)
+            ->get()
+            ->filter(fn (Sale $sale) => $this->userHasBranchAccess($user, (int) $businessId, (int) $sale->branch_id))
+            ->values();
+
+        return response()->json(['deposits' => $deposits]);
+    }
+
+    /**
+     * Choose (or change) the item(s) on a pending deposit. Prices come from the branch's
+     * current price, so the price is fixed when the item is chosen. Every change is logged
+     * on the sale's metadata.
+     */
+    public function setDepositItems(Request $request, $id)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $validated = $request->validate([
+            'items' => 'required|array|min:1',
+            'items.*.product_id' => 'required|integer|exists:products,id',
+            'items.*.quantity' => BusinessQuantityPolicy::saleQuantityRules($business),
+            'items.*.description' => 'nullable|string',
+        ]);
+
+        $sale = Sale::with(['items'])
+            ->forBusiness($businessId)
+            ->findOrFail($id);
+
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        if ($business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage sales')
+            && ! $user->hasPermissionTo('create sales')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($sale->sale_type !== 'deposit') {
+            return response()->json(['message' => 'Only deposits can have their item chosen later'], 422);
+        }
+
+        if ($sale->status !== 'pending') {
+            return response()->json(['message' => 'This deposit is already finished'], 422);
+        }
+
+        // A deposit that reserved stock when it was taken would need that stock moved
+        // between items; only deposits that take stock on completion can change items.
+        if ($this->resolveDepositStockMode($business, $sale) !== 'deduct_on_complete') {
+            return response()->json(['message' => 'This deposit is holding its stock, so its item cannot be changed'], 422);
+        }
+
+        $branchId = (int) $sale->branch_id;
+
+        DB::beginTransaction();
+        try {
+            $before = $this->depositItemsSummary($sale);
+
+            $sale->items()->delete();
+
+            foreach ($validated['items'] as $itemData) {
+                $productId = (int) $itemData['product_id'];
+                $qty = BusinessQuantityPolicy::normalizeForBusiness((int) $businessId, (float) $itemData['quantity']);
+
+                $branchProduct = BranchProduct::with('product')
+                    ->where('branch_id', $branchId)
+                    ->where('product_id', $productId)
+                    ->first();
+                $product = $branchProduct?->product;
+
+                if (! $branchProduct || ! $product || (int) $product->business_id !== (int) $businessId) {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'message' => 'This item is not sold at this branch',
+                        'product_id' => $productId,
+                    ], 422);
+                }
+
+                $tierResult = $this->tieredPricingService->getUnitPrice($branchProduct, $qty);
+                $metadata = ['tier_type' => $tierResult['tier_type']];
+                if ($tierResult['product_unit_id'] !== null) {
+                    $metadata['product_unit_id'] = $tierResult['product_unit_id'];
+                }
+                if ($tierResult['quantity_tier_id'] !== null) {
+                    $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                }
+
+                $saleItem = new SaleItem([
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'product_sku' => $product->sku,
+                    'description' => $itemData['description'] ?? null,
+                    'quantity' => $qty,
+                    'unit_price' => $tierResult['unit_price'],
+                    'discount_percentage' => 0,
+                    'tax_rate' => 0,
+                    'metadata' => $metadata,
+                ]);
+                $saleItem->calculateTotals();
+                $sale->items()->save($saleItem);
+            }
+
+            $sale->load('items');
+            // A discount given on the earlier item does not carry over to the new one
+            $sale->discount_amount = 0;
+            $sale->calculateTotals();
+
+            $after = $this->depositItemsSummary($sale);
+            $metadata = is_array($sale->metadata) ? $sale->metadata : [];
+            $metadata['item_changes'] = array_values(array_merge($metadata['item_changes'] ?? [], [[
+                'at' => now()->toIso8601String(),
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'from' => $before['items'],
+                'from_total' => $before['total'],
+                'to' => $after['items'],
+                'to_total' => $after['total'],
+            ]]));
+            $sale->metadata = $metadata;
+            $sale->save();
+            $sale->updatePaymentStatus();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Deposit item saved',
+                'sale' => $sale->fresh(['items.product', 'payments.paymentMethod', 'customer', 'branch', 'user']),
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json(['message' => 'Failed to save the deposit item', 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Cancel a pending deposit and give the customer all their money back from the acting
+     * cashier's drawer. The earlier payments stay
+     * on the shifts that took them; the refund is a negative payment on the current shift.
+     */
+    public function cancelDeposit(Request $request, $id)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        $business = $user->businesses()
+            ->where('businesses.id', $businessId)
+            ->wherePivot('is_active', true)
+            ->first();
+
+        if (! $business) {
+            return response()->json(['message' => 'Business not found or access denied'], 404);
+        }
+
+        $validated = $request->validate([
+            'payment_method_id' => 'nullable|exists:payment_methods,id',
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $sale = Sale::with(['items'])
+            ->forBusiness($businessId)
+            ->findOrFail($id);
+
+        if (! $this->userHasBranchAccess($user, $businessId, $sale->branch_id)) {
+            return response()->json(['message' => 'Unauthorized access to this branch'], 403);
+        }
+
+        if ($business->owner_id !== $user->id
+            && ! $user->hasPermissionTo('manage sales')
+            && ! $user->hasPermissionTo('create sales')) {
+            return response()->json(['message' => 'Unauthorized'], 403);
+        }
+
+        if ($sale->sale_type !== 'deposit' || $sale->status !== 'pending') {
+            return response()->json(['message' => 'Only an open deposit can be cancelled'], 422);
+        }
+
+        $sale->updatePaymentStatus();
+        $paid = round((float) $sale->paid_amount, 2);
+
+        $shiftId = null;
+        if ($paid > 0) {
+            if (empty($validated['payment_method_id'])) {
+                return response()->json(['message' => 'Choose how the money is given back'], 422);
+            }
+            $shiftId = $this->resolveCurrentShiftIdForPayment($user, $businessId, $sale->branch_id);
+            if ($shiftId === null) {
+                return response()->json([
+                    'message' => 'No open shift for this cashier on the sale\'s branch. Open a shift before giving money back.',
+                ], 400);
+            }
+        }
+
+        $depositMode = $this->resolveDepositStockMode($business, $sale);
+
+        DB::beginTransaction();
+        try {
+            if ($depositMode !== 'deduct_on_complete' && $sale->items->isNotEmpty()) {
+                $this->restoreSaleStock($sale, (int) $businessId, $user->id, "Deposit cancelled: {$sale->sale_number}");
+            }
+
+            if ($paid > 0) {
+                Payment::create([
+                    'sale_id' => $sale->id,
+                    'shift_id' => $shiftId,
+                    'payment_method_id' => $validated['payment_method_id'],
+                    'amount' => -$paid,
+                    'reference_number' => $sale->sale_number,
+                    'payment_date' => now(),
+                    'status' => 'completed',
+                    'notes' => 'Money given back: deposit cancelled',
+                    'metadata' => ['kind' => 'deposit_refund'],
+                ]);
+            }
+
+            $metadata = is_array($sale->metadata) ? $sale->metadata : [];
+            $metadata['cancelled'] = [
+                'at' => now()->toIso8601String(),
+                'user_id' => $user->id,
+                'user_name' => $user->name,
+                'reason' => $validated['reason'] ?? null,
+                'money_given_back' => $paid,
+            ];
+            $sale->metadata = $metadata;
+            // "refunded" (not "cancelled") keeps the earlier payments on the shifts that took
+            // them; the negative payment above takes the money out of this shift.
+            $sale->status = $paid > 0 ? 'refunded' : 'cancelled';
+            $sale->is_refunded = $paid > 0;
+            $sale->refunded_amount = $paid;
+            $sale->refunded_at = $paid > 0 ? now() : null;
+            $sale->save();
+            $sale->updatePaymentStatus();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Deposit cancelled',
+                'sale' => $sale->fresh(['items.product', 'payments.paymentMethod', 'customer', 'branch', 'user']),
+                'money_given_back' => $paid,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return response()->json(['message' => 'Failed to cancel deposit', 'error' => $e->getMessage()], 500);
         }
     }
 
@@ -872,42 +1226,7 @@ class SaleController extends Controller
                 ]);
             }
 
-            // Restore stock for each item
-            foreach ($sale->items as $item) {
-                $branchProduct = BranchProduct::where('branch_id', $sale->branch_id)
-                    ->where('product_id', $item->product_id)
-                    ->first();
-
-                if ($branchProduct) {
-                    $branchProduct->increment('stock_quantity', $item->quantity);
-
-                    $adjTransaction = InventoryTransaction::create([
-                        'uuid' => Str::uuid(),
-                        'business_id' => $businessId,
-                        'branch_id' => $sale->branch_id,
-                        'product_id' => $item->product_id,
-                        'user_id' => $user->id,
-                        'type' => 'adjustment',
-                        'quantity' => $item->quantity,
-                        'quantity_before' => $branchProduct->stock_quantity - $item->quantity,
-                        'quantity_after' => $branchProduct->stock_quantity,
-                        'unit_cost' => $branchProduct->cost_price,
-                        'total_cost' => $branchProduct->cost_price * $item->quantity,
-                        'reference_number' => $sale->sale_number,
-                        'notes' => "Sale cancelled: {$sale->sale_number}",
-                    ]);
-
-                    $this->batchService->addStockIn(
-                        $item->product_id,
-                        $sale->branch_id,
-                        $businessId,
-                        $item->quantity,
-                        $adjTransaction,
-                        $item->batch_id,
-                        []
-                    );
-                }
-            }
+            $this->restoreSaleStock($sale, $businessId, $user->id, "Sale cancelled: {$sale->sale_number}");
 
             $sale->status = 'cancelled';
             $sale->save();
@@ -972,7 +1291,8 @@ class SaleController extends Controller
         }
 
         if ($request->filled('status')) {
-            $query->where('status', $request->status);
+            // Accepts a comma-separated list, e.g. "cancelled,refunded"
+            $query->whereIn('status', array_filter(explode(',', (string) $request->status)));
         }
 
         if ($request->filled('payment_status')) {
@@ -1040,6 +1360,62 @@ class SaleController extends Controller
         }
 
         return self::DEFAULT_DEPOSIT_STOCK_MODE;
+    }
+
+    /**
+     * Put a sale's items back into branch stock (used when a sale that took stock is cancelled).
+     */
+    private function restoreSaleStock(Sale $sale, int $businessId, int $userId, string $note): void
+    {
+        foreach ($sale->items as $item) {
+            $branchProduct = BranchProduct::where('branch_id', $sale->branch_id)
+                ->where('product_id', $item->product_id)
+                ->first();
+
+            if ($branchProduct) {
+                $branchProduct->increment('stock_quantity', $item->quantity);
+
+                $adjTransaction = InventoryTransaction::create([
+                    'uuid' => Str::uuid(),
+                    'business_id' => $businessId,
+                    'branch_id' => $sale->branch_id,
+                    'product_id' => $item->product_id,
+                    'user_id' => $userId,
+                    'type' => 'adjustment',
+                    'quantity' => $item->quantity,
+                    'quantity_before' => $branchProduct->stock_quantity - $item->quantity,
+                    'quantity_after' => $branchProduct->stock_quantity,
+                    'unit_cost' => $branchProduct->cost_price,
+                    'total_cost' => $branchProduct->cost_price * $item->quantity,
+                    'reference_number' => $sale->sale_number,
+                    'notes' => $note,
+                ]);
+
+                $this->batchService->addStockIn(
+                    $item->product_id,
+                    $sale->branch_id,
+                    $businessId,
+                    $item->quantity,
+                    $adjTransaction,
+                    $item->batch_id,
+                    []
+                );
+            }
+        }
+    }
+
+    /**
+     * @return array{items: list<array{name: string, quantity: float}>, total: float}
+     */
+    private function depositItemsSummary(Sale $sale): array
+    {
+        return [
+            'items' => $sale->items->map(fn (SaleItem $item) => [
+                'name' => $item->product_name,
+                'quantity' => (float) $item->quantity,
+            ])->values()->all(),
+            'total' => (float) $sale->items->sum('total'),
+        ];
     }
 
     /**
