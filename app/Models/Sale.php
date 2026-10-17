@@ -79,7 +79,6 @@ class Sale extends Model
         return $this->belongsTo(SalesShift::class, 'shift_id');
     }
 
-
     public function items(): HasMany
     {
         return $this->hasMany(SaleItem::class);
@@ -105,7 +104,6 @@ class Sale extends Model
     {
         return $query->where('branch_id', $branchId);
     }
-
 
     public function scopeForCustomer($query, $customerId)
     {
@@ -150,6 +148,9 @@ class Sale extends Model
 
         if ($totalPaid == 0) {
             $this->payment_status = 'unpaid';
+        } elseif ($this->isDepositWithoutItems()) {
+            // The customer has not chosen an item yet, so nothing is settled
+            $this->payment_status = 'partial';
         } elseif ($totalPaid < $this->total_amount) {
             $this->payment_status = 'partial';
         } elseif ($totalPaid == $this->total_amount) {
@@ -159,6 +160,14 @@ class Sale extends Model
         }
 
         $this->save();
+    }
+
+    /**
+     * A deposit taken before the customer chose an item (items are added later).
+     */
+    public function isDepositWithoutItems(): bool
+    {
+        return $this->sale_type === 'deposit' && ! $this->items()->exists();
     }
 
     public function getBalanceAttribute(): float

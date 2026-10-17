@@ -813,8 +813,13 @@ class SyncController extends Controller
         if ($isDeposit && empty($data['customer_id'])) {
             throw new \Exception('A customer is required for deposit sales');
         }
-        if (empty($data['items']) || ! is_array($data['items']) || count($data['items']) === 0) {
+        // A deposit may be taken before the customer chooses an item
+        $hasItems = ! empty($data['items']) && is_array($data['items']);
+        if (! $hasItems && ! $isDeposit) {
             throw new \Exception('At least one item is required for sales');
+        }
+        if (! $hasItems) {
+            $data['items'] = [];
         }
         if (isset($data['payments']) && count($data['payments']) === 0) {
             throw new \Exception('At least one payment is required for sales');
@@ -833,6 +838,10 @@ class SyncController extends Controller
         }
 
         $depositStockMode = $isDeposit ? $this->resolveDepositStockMode($businessId, $data['metadata'] ?? null) : null;
+        // Items chosen later are only taken off the shelf when the deposit is completed
+        if ($isDeposit && ! $hasItems) {
+            $depositStockMode = 'deduct_on_complete';
+        }
         $deferStockToCompletion = $isDeposit && $depositStockMode === 'deduct_on_complete';
 
         // Resolve shift_id: client sends local id; use only if that shift exists on server for this business/branch

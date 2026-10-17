@@ -662,6 +662,54 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function it_accepts_an_offline_deposit_with_no_item_chosen_yet()
+    {
+        // Even a business that reserves stock takes an item-less deposit as deduct_on_complete
+        $this->business->settings = ['deposit_stock_mode' => 'reserve_on_create'];
+        $this->business->save();
+
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $customer = Customer::factory()->create(['business_id' => $this->business->id]);
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+        $clientUuid = Str::uuid()->toString();
+
+        $response = $this->postJson('/api/sync/push', [
+            'session_id' => Str::uuid()->toString(),
+            'changes' => [
+                'sales' => [[
+                    'client_uuid' => $clientUuid,
+                    'sale_number' => 'DEP-NOITEM-'.time(),
+                    'branch_id' => $this->branch->id,
+                    'shift_id' => $shift->id,
+                    'customer_id' => $customer->id,
+                    'sale_type' => 'deposit',
+                    'sale_date' => now()->toIso8601String(),
+                    'origin' => 'offline',
+                    'items' => [],
+                    'payments' => [[
+                        'client_uuid' => Str::uuid()->toString(),
+                        'payment_method_id' => $paymentMethod->id,
+                        'amount' => 50000,
+                        'payment_date' => now()->toIso8601String(),
+                    ]],
+                ]],
+            ],
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertStatus(200);
+        $sale = Sale::findOrFail($response->json("results.sales.mappings.$clientUuid.server_id"));
+        $this->assertSame('pending', $sale->status);
+        $this->assertSame('partial', $sale->payment_status);
+        $this->assertEquals(0.0, (float) $sale->total_amount);
+        $this->assertEquals(50000.0, (float) $sale->paid_amount);
+        $this->assertSame('deduct_on_complete', $sale->metadata['deposit_stock_mode']);
+    }
+
+    /** @test */
     public function it_rejects_push_sale_when_product_has_no_branch_product()
     {
         $device = $this->registerDevice();
