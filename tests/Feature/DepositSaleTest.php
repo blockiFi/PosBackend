@@ -910,7 +910,7 @@ class DepositSaleTest extends TestCase
         $finished = $this->itemlessDeposit(500);
         $finished->update(['status' => 'completed']);
 
-        foreach (['08031234567', 'john', $open->sale_number] as $term) {
+        foreach (['08031234567', 'john', $open->sale_number, substr($open->sale_number, -6)] as $term) {
             $res = $this->actingAs($this->user)->getJson('/api/sales/deposits/search?q='.urlencode($term), $this->headers());
             $res->assertStatus(200);
             $this->assertSame([$open->id], array_column($res->json('deposits'), 'id'), "search: {$term}");

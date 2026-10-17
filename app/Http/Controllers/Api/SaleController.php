@@ -833,6 +833,8 @@ class SaleController extends Controller
             ->where(function ($q) use ($term, $phoneTail) {
                 $q->where('sale_number', $term)
                     ->orWhere('reference_id', $term)
+                    // The last digits printed on the deposit slip are enough
+                    ->when(strlen($term) >= 4, fn ($q) => $q->orWhere('sale_number', 'like', '%'.addcslashes($term, '%_')))
                     ->orWhereHas('customer', function ($customer) use ($term, $phoneTail) {
                         $customer->where('name', 'like', '%'.$term.'%');
                         if ($phoneTail !== null) {
@@ -1449,9 +1451,14 @@ class SaleController extends Controller
 
         setPermissionsTeamId($business->id);
 
-        return $approver->hasPermissionTo('manage sales') || $approver->hasPermissionTo('manage shifts')
-            ? $approver
-            : null;
+        // Supervisor-level permissions; a plain cashier has none of these.
+        foreach (['approve refund', 'manage sales', 'manage shifts', 'view all shifts'] as $permission) {
+            if ($approver->checkPermissionTo($permission)) {
+                return $approver;
+            }
+        }
+
+        return null;
     }
 
     /**
