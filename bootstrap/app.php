@@ -14,6 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'business.context' => \App\Http\Middleware\SetBusinessContext::class,
+            'manager.activity' => \App\Http\Middleware\RecordManagerActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
@@ -21,7 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Always return JSON for API requests
             if ($request->is('api/*') || $request->expectsJson()) {
                 $statusCode = 500;
-                
+
                 // Determine status code from exception
                 if (method_exists($e, 'getStatusCode')) {
                     $statusCode = $e->getStatusCode();
@@ -51,7 +52,7 @@ return Application::configure(basePath: dirname(__DIR__))
                         'exception' => get_class($e),
                         'file' => $e->getFile(),
                         'line' => $e->getLine(),
-                        'trace' => collect($e->getTrace())->map(fn($trace) => [
+                        'trace' => collect($e->getTrace())->map(fn ($trace) => [
                             'file' => $trace['file'] ?? 'unknown',
                             'line' => $trace['line'] ?? 'unknown',
                             'function' => $trace['function'] ?? 'unknown',
