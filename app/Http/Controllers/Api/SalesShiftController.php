@@ -9,6 +9,7 @@ use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
 use App\Support\ReportingTimezone;
 use App\Support\SalesProfit;
+use App\Support\ShiftMoney;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -596,6 +597,7 @@ class SalesShiftController extends Controller
         $shift = $this->enrichShiftWithStats($shift);
         $shift->statistics = array_merge($shift->statistics, [
             'profit' => SalesProfit::total(fn ($sales) => $sales->where('sales.shift_id', $shift->id)),
+            'money' => ShiftMoney::summary($shift),
         ]);
         $shift = $this->enrichShiftWithSalesDetails($shift);
 
@@ -986,10 +988,9 @@ class SalesShiftController extends Controller
             return response()->json(['message' => 'You can only view your own shifts'], 403);
         }
 
-        // Get sales with detailed information
-        $query = $shift->sales()
-            ->with(['payments.paymentMethod', 'customer', 'items.product'])
-            ->withTrashed();
+        // Sales rung up on this shift, plus older deposits that had a balance paid on it
+        $query = ShiftMoney::salesQuery($shift)
+            ->with(['customer', 'items.product']);
 
         // Filter by status if provided
         if ($request->filled('status')) {
@@ -1010,7 +1011,7 @@ class SalesShiftController extends Controller
         $sales = $query->orderBy('created_at', 'desc')->paginate(20);
 
         // Enhance each sale with payment info
-        $sales->getCollection()->transform(function ($sale) {
+        $sales->getCollection()->transform(function ($sale) use ($shift) {
             $paymentMethods = $sale->payments->map(function ($payment) {
                 return [
                     'method' => $payment->paymentMethod->name ?? 'Unknown',
@@ -1037,7 +1038,7 @@ class SalesShiftController extends Controller
                 'items_count' => $sale->items->count(),
                 'created_at' => $sale->created_at->toIso8601String(),
                 'voided_at' => $sale->deleted_at ? $sale->deleted_at->toIso8601String() : null,
-            ];
+            ] + ShiftMoney::row($sale, $shift);
         });
 
         return response()->json($sales);
