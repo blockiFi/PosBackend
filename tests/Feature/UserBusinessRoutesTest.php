@@ -70,6 +70,20 @@ class UserBusinessRoutesTest extends TestCase
             ]);
     }
 
+    public function test_user_list_marks_the_owner()
+    {
+        // The dashboard used to drop the first user as "the owner"; it now uses this flag.
+        $this->business->users()->attach($this->otherUser->id, ['is_active' => true]);
+
+        $response = $this->actingAs($this->owner)
+            ->getJson('/api/business-users', ['X-Business-Id' => $this->business->id])
+            ->assertOk();
+
+        $flags = collect($response->json('data'))->pluck('is_owner', 'id');
+        $this->assertTrue($flags[$this->owner->id]);
+        $this->assertFalse($flags[$this->otherUser->id]);
+    }
+
     public function test_owner_can_add_user_to_business()
     {
         $response = $this->actingAs($this->owner)

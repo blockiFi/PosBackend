@@ -73,7 +73,7 @@ class UserBusinessController extends Controller
         }
 
         // Get all users in this business with their pivot data
-        $users = $query->get()->map(function (User $user) use ($businessId) {
+        $users = $query->get()->map(function (User $user) use ($businessId, $business) {
             // Get user's roles in this business
             $roleIds = DB::table('model_has_roles')
                 ->where('model_type', User::class)
@@ -95,6 +95,7 @@ class UserBusinessController extends Controller
                 'is_active' => $user->pivot->is_active,
                 'joined_at' => $user->pivot->created_at,
                 'roles' => $roles,
+                'is_owner' => $user->id === $business->owner_id,
             ];
         });
 
