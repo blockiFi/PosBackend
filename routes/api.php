@@ -276,6 +276,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('analytics/products', [AnalyticsController::class, 'productAnalytics']);
         Route::get('analytics/profit-loss', [AnalyticsController::class, 'profitLoss']);
         Route::get('analytics/growth-trends', [AnalyticsController::class, 'growthTrends']);
+        Route::get('analytics/sections', [AnalyticsController::class, 'sectionAnalytics']);
 
         // Stock Transfer Request routes (workflow system)
         Route::get('stock-transfer-requests', [StockTransferRequestController::class, 'index']);
