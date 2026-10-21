@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\DeviceRegistration;
 use App\Models\SalesShift;
 use App\Support\ReportingTimezone;
+use App\Support\SalesProfit;
 use Carbon\Carbon;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -146,9 +147,15 @@ class SalesShiftController extends Controller
             ? round($totalGrossSales / $totalTransactions, 2)
             : 0;
 
+        // Profit on the completed sales rung up in these shifts (unfinished deposits have none yet).
+        $profit = SalesProfit::total(function ($sales) use ($query) {
+            $sales->whereIn('sales.shift_id', (clone $query)->select('sales_shifts.id'));
+        });
+
         $statistics = [
             'total_shifts_count' => $totalShifts,
             'total_gross_sales' => $totalGrossSales,
+            'profit' => $profit,
             'total_transactions' => $totalTransactions,
             'shifts_by_status' => $shiftsByStatus,
             'average_basket_value' => $averageBasketValue,
@@ -169,9 +176,21 @@ class SalesShiftController extends Controller
 
         $shifts = $query->orderBy('start_time', 'desc')->paginate($perPage);
 
+        $shiftIds = $shifts->getCollection()->pluck('id')->all();
+        $profits = $shiftIds === [] ? collect() : SalesProfit::grouped('sales.shift_id', function ($sales) use ($shiftIds) {
+            $sales->whereIn('sales.shift_id', $shiftIds);
+        });
+
         // Enhance each shift with statistics
-        $shifts->getCollection()->transform(function ($shift) use ($rangeFrom, $rangeTo) {
-            return $this->enrichShiftWithStats($shift, $rangeFrom, $rangeTo);
+        $shifts->getCollection()->transform(function ($shift) use ($rangeFrom, $rangeTo, $profits) {
+            $shift = $this->enrichShiftWithStats($shift, $rangeFrom, $rangeTo);
+            $shift->statistics = array_merge($shift->statistics, [
+                'profit' => $profits->get((string) $shift->id, [
+                    'sales_count' => 0, 'revenue' => 0.0, 'cost' => 0.0, 'profit' => 0.0, 'items_without_cost' => 0,
+                ]),
+            ]);
+
+            return $shift;
         });
 
         return response()->json([
@@ -575,6 +594,9 @@ class SalesShiftController extends Controller
 
         // Enrich with statistics and sales details
         $shift = $this->enrichShiftWithStats($shift);
+        $shift->statistics = array_merge($shift->statistics, [
+            'profit' => SalesProfit::total(fn ($sales) => $sales->where('sales.shift_id', $shift->id)),
+        ]);
         $shift = $this->enrichShiftWithSalesDetails($shift);
 
         return response()->json($shift);

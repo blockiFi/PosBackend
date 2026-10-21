@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
+use App\Models\DeviceGroup;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Support\ReportingTimezone;
+use App\Support\SalesProfit;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -741,6 +743,95 @@ class AnalyticsController extends Controller
                 'interval' => $interval,
                 'periods' => $periods,
                 'trends' => $trendsWithGrowth,
+            ]);
+        });
+    }
+
+    /**
+     * Sales and profit per section (till device group) for completed sales in the range.
+     * Dates are inclusive local days, like the other analytics endpoints. Sales from tills
+     * that are not in a section come back as one row with section_id null.
+     */
+    public function sectionAnalytics(Request $request)
+    {
+        $user = $request->user();
+        $businessId = $request->current_business_id;
+
+        if (! $businessId) {
+            return response()->json(['message' => 'Business context required'], 400);
+        }
+
+        setPermissionsTeamId($businessId);
+
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'branch_id' => 'sometimes|integer|exists:branches,id',
+        ]);
+
+        $branchId = $request->input('branch_id');
+        if ($branchId) {
+            if (! $this->userHasBranchAccess($user, $businessId, $branchId)) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+            $branchIds = [(int) $branchId];
+        } else {
+            if (! $user->hasPermissionTo('view analytics')) {
+                return response()->json(['message' => 'Unauthorized'], 403);
+            }
+            $permitted = $this->getPermittedBranches($user, $businessId);
+            // Empty means the user can see every branch.
+            $branchIds = $permitted->isEmpty()
+                ? null
+                : $permitted->map(fn ($branch) => is_object($branch) ? $branch->id : $branch)->all();
+        }
+
+        $timezone = $branchId ? ReportingTimezone::forBranch($branchId) : ReportingTimezone::forBusiness($businessId);
+        [$startDate, $endDate] = $this->getDateRange('custom', $request->input('start_date'), $request->input('end_date'), $timezone);
+        $bounds = ReportingTimezone::utcBounds($startDate, $endDate);
+
+        $branchKey = $branchIds === null ? 'all' : implode('-', $branchIds);
+        $cacheKey = "section_analytics_{$businessId}_user_{$user->id}_{$branchKey}_{$startDate}_{$endDate}";
+
+        return $this->analyticsRemember($cacheKey, null, function () use ($businessId, $branchIds, $bounds, $startDate, $endDate) {
+            $rows = SalesProfit::grouped('shifts.group_id', function ($sales) use ($businessId, $branchIds, $bounds) {
+                $sales->where('sales.business_id', $businessId)
+                    ->whereBetween('sales.sale_date', $bounds)
+                    ->when($branchIds !== null, fn ($q) => $q->whereIn('sales.branch_id', $branchIds));
+            });
+
+            $groups = DeviceGroup::withTrashed()
+                ->where('business_id', $businessId)
+                ->whereIn('id', $rows->keys()->filter(fn ($id) => $id !== '')->map(fn ($id) => (int) $id)->all())
+                ->with('branch:id,name')
+                ->get()
+                ->keyBy('id');
+
+            $totalRevenue = $rows->sum('revenue');
+
+            $sections = $rows->map(function (array $row, string $groupId) use ($groups, $totalRevenue) {
+                $group = $groupId === '' ? null : $groups->get((int) $groupId);
+
+                return [
+                    'section_id' => $group?->id,
+                    'section_name' => $group?->name,
+                    'branch_id' => $group?->branch_id,
+                    'branch_name' => $group?->branch?->name,
+                    'sales_count' => $row['sales_count'],
+                    'revenue' => $row['revenue'],
+                    'cost' => $row['cost'],
+                    'profit' => $row['profit'],
+                    'items_without_cost' => $row['items_without_cost'],
+                    'share_percentage' => $totalRevenue > 0 ? round($row['revenue'] / $totalRevenue * 100, 2) : 0,
+                ];
+            })->sortByDesc('revenue')->values();
+
+            return response()->json([
+                'period' => [
+                    'start_date' => $startDate->format('Y-m-d'),
+                    'end_date' => $endDate->format('Y-m-d'),
+                ],
+                'sections' => $sections,
             ]);
         });
     }
