@@ -2,12 +2,11 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\BranchAuthorization;
 use App\Models\BranchProduct;
-use App\Models\Business;
 use App\Models\ManagerActivity;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
+use App\Support\StaffStockChange;
 use Closure;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
@@ -16,25 +15,12 @@ use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
- * Records stock and product changes made by managers so the owner can see
- * them on the Manager Activity page. The web dashboard sends the owner's
- * auth code in the X-Owner-Code header; we record whether it was valid.
+ * Records stock and product changes made by managers and storekeepers so the
+ * owner can see them on the Manager Activity page, with whether the person
+ * confirmed it with their own PIN (X-Staff-Pin header).
  */
 class RecordManagerActivity
 {
-    /** Route prefixes (after api/) whose writes are recorded. */
-    private const PREFIXES = [
-        'products',
-        'branch-products',
-        'inventory',
-        'batches',
-        'stock-writeoffs',
-        'stock-transfer-requests',
-        'shelf-store-move-requests',
-        'purchase-orders',
-        'goods-received-notes',
-    ];
-
     /** Fields compared before and after a change, per model. */
     private const TRACKED_FIELDS = [
         BranchProduct::class => [
@@ -62,7 +48,9 @@ class RecordManagerActivity
         'POST branch-products/bulk-selling-price' => ['changed_price', 'Changed selling prices'],
         'POST branch-products/bulk-move' => ['moved_stock', 'Moved stock'],
         'POST branch-products/bulk-update' => ['edited_stock', 'Edited several items'],
-        'POST stock-writeoffs' => ['wrote_off', 'Wrote off stock'],
+        'POST stock-writeoffs' => ['wrote_off', 'Wrote off'],
+        'POST inventory/transactions' => ['added_stock', 'Stock change:'],
+        'POST shelf-store-move-requests' => ['moved_stock', 'Moved stock:'],
         'POST purchase-orders' => ['purchase_order', 'Created purchase order'],
         'PUT purchase-orders/{id}' => ['purchase_order', 'Edited purchase order'],
         'POST purchase-orders/{id}/submit' => ['purchase_order', 'Submitted purchase order'],
@@ -94,39 +82,12 @@ class RecordManagerActivity
 
     private function shouldRecord(Request $request): bool
     {
-        if (in_array($request->method(), ['GET', 'HEAD', 'OPTIONS'], true)) {
-            return false;
-        }
-
-        $path = $this->relativePath($request);
-        $matchesPrefix = collect(self::PREFIXES)->contains(
-            fn (string $prefix) => $path === $prefix || str_starts_with($path, $prefix.'/')
-        );
-        if (! $matchesPrefix) {
-            return false;
-        }
-
-        $user = $request->user();
-        $businessId = $this->businessId($request);
-        if (! $user || ! $businessId) {
-            return false;
-        }
-
-        if ($request->hasHeader('X-Owner-Code')) {
-            return true;
-        }
-
-        $business = Business::find($businessId);
-        if ($business && (int) $business->owner_id === (int) $user->id) {
-            return false;
-        }
-
-        return $user->hasRole('Manager');
+        return StaffStockChange::isStockWrite($request) && StaffStockChange::staffRole($request) !== null;
     }
 
     private function relativePath(Request $request): string
     {
-        return preg_replace('#^api/#', '', trim($request->path(), '/'));
+        return StaffStockChange::relativePath($request);
     }
 
     private function routeKey(Request $request): string
@@ -138,9 +99,7 @@ class RecordManagerActivity
 
     private function businessId(Request $request): ?int
     {
-        $id = app()->bound('current_business_id') ? app('current_business_id') : $request->header('X-Business-Id');
-
-        return $id ? (int) $id : null;
+        return StaffStockChange::businessId($request);
     }
 
     private function findSubject(Request $request): ?Model
@@ -175,6 +134,11 @@ class RecordManagerActivity
     {
         $businessId = $this->businessId($request);
         [$action, $label] = self::LABELS[$this->routeKey($request)] ?? ['other', $request->method().' '.$this->relativePath($request)];
+        if ($action === 'added_stock' && $request->input('type') !== 'purchase') {
+            $action = 'adjusted_stock';
+        } elseif ($action === 'added_stock') {
+            $label = 'Added stock:';
+        }
 
         $changes = [];
         if ($subject && $before !== null) {
@@ -197,12 +161,13 @@ class RecordManagerActivity
             'business_id' => $businessId,
             'branch_id' => $this->branchId($request, $subject),
             'user_id' => $request->user()->id,
+            'role' => StaffStockChange::staffRole($request),
             'action' => $action,
             'description' => trim($label.' '.$this->subjectName($request, $subject)),
             'subject_type' => $subject ? class_basename($subject) : null,
             'subject_id' => $subject?->getKey(),
             'changes' => $changes ?: null,
-            'owner_code_ok' => $this->ownerCodeIsValid($request, $businessId),
+            'pin_ok' => StaffStockChange::pinMatches($request),
             'method' => $request->method(),
             'path' => mb_substr($this->relativePath($request), 0, 255),
         ]);
@@ -248,6 +213,9 @@ class RecordManagerActivity
         if ($request->filled('branch_product_id')) {
             return (string) (BranchProduct::find($request->input('branch_product_id'))?->product?->name ?? '');
         }
+        if ($request->filled('product_id')) {
+            return (string) (Product::find($request->input('product_id'))?->name ?? '');
+        }
 
         return '';
     }
@@ -257,23 +225,5 @@ class RecordManagerActivity
         $id = $subject?->getAttribute('branch_id') ?? $request->input('branch_id');
 
         return is_numeric($id) ? (int) $id : null;
-    }
-
-    private function ownerCodeIsValid(Request $request, ?int $businessId): bool
-    {
-        $code = trim((string) $request->header('X-Owner-Code', ''));
-        if ($code === '' || ! $businessId) {
-            return false;
-        }
-
-        $ownerId = Business::whereKey($businessId)->value('owner_id');
-
-        // Only the owner's own codes count. A code typed just before it expired
-        // still counts for the next couple of minutes.
-        return BranchAuthorization::where('auth_code', $code)
-            ->where('business_id', $businessId)
-            ->where('user_id', $ownerId)
-            ->where('expires_at', '>', now()->subMinutes(2))
-            ->exists();
     }
 }

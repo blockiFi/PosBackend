@@ -6,8 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * A stock or product change made by a manager on the web dashboard,
- * shown to the owner on the Manager Activity page.
+ * A stock or product change made by a manager or storekeeper, shown to
+ * the owner on the Manager Activity page.
  */
 class ManagerActivity extends Model
 {
@@ -17,19 +17,20 @@ class ManagerActivity extends Model
         'business_id',
         'branch_id',
         'user_id',
+        'role',
         'action',
         'description',
         'subject_type',
         'subject_id',
         'changes',
-        'owner_code_ok',
+        'pin_ok',
         'method',
         'path',
     ];
 
     protected $casts = [
         'changes' => 'array',
-        'owner_code_ok' => 'boolean',
+        'pin_ok' => 'boolean',
         'created_at' => 'datetime',
     ];
 

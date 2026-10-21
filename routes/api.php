@@ -25,6 +25,7 @@ use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SalesShiftController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
+use App\Http\Controllers\Api\StaffPinController;
 use App\Http\Controllers\Api\StockTransferRequestController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SyncDashboardController;
@@ -62,7 +63,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('permissions', [RolePermissionController::class, 'listPermissions']);
 
     // Business-specific actions require business context (header/query or pivot membership)
-    Route::middleware(['business.context', 'manager.activity'])->group(function () {
+    Route::middleware(['business.context', 'staff.pin', 'manager.activity'])->group(function () {
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
         Route::get('businesses/{id}', [BusinessController::class, 'show']);
@@ -78,6 +79,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('branches', [BranchController::class, 'store']);
         Route::post('branches/generate-auth-codes', [BranchController::class, 'generateAuthCode']);
         Route::get('manager-activities', [ManagerActivityController::class, 'index']);
+        Route::post('staff-pin/check', [StaffPinController::class, 'check']);
         Route::get('branches/{id}', [BranchController::class, 'show']);
         Route::put('branches/{id}', [BranchController::class, 'update']);
         Route::delete('branches/{id}', [BranchController::class, 'destroy']);

@@ -13,12 +13,13 @@ return new class extends Migration
             $table->foreignId('business_id')->constrained()->cascadeOnDelete();
             $table->foreignId('branch_id')->nullable()->constrained()->nullOnDelete();
             $table->foreignId('user_id')->nullable()->constrained()->nullOnDelete();
+            $table->string('role', 32)->nullable();
             $table->string('action', 64);
             $table->string('description');
             $table->string('subject_type', 64)->nullable();
             $table->unsignedBigInteger('subject_id')->nullable();
             $table->json('changes')->nullable();
-            $table->boolean('owner_code_ok')->default(false);
+            $table->boolean('pin_ok')->default(false);
             $table->string('method', 10);
             $table->string('path');
             $table->timestamp('created_at')->useCurrent();

@@ -13,7 +13,7 @@ use Illuminate\Support\Carbon;
 class ManagerActivityController extends Controller
 {
     /**
-     * List manager stock and product changes for the business owner.
+     * List manager and storekeeper stock and product changes for the business owner.
      */
     public function index(Request $request): JsonResponse
     {
@@ -27,6 +27,7 @@ class ManagerActivityController extends Controller
         $request->validate([
             'branch_id' => ['nullable', 'integer'],
             'user_id' => ['nullable', 'integer'],
+            'role' => ['nullable', 'string', 'in:Manager,Storekeeper'],
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -39,6 +40,7 @@ class ManagerActivityController extends Controller
             ->where('business_id', $businessId)
             ->when($request->filled('branch_id'), fn ($q) => $q->where('branch_id', $request->integer('branch_id')))
             ->when($request->filled('user_id'), fn ($q) => $q->where('user_id', $request->integer('user_id')))
+            ->when($request->filled('role'), fn ($q) => $q->where('role', $request->input('role')))
             ->when($request->filled('start_date'), fn ($q) => $q->where(
                 'created_at', '>=', Carbon::parse($request->input('start_date'), $timezone)->startOfDay()->utc()
             ))
@@ -59,7 +61,8 @@ class ManagerActivityController extends Controller
                 'action' => $a->action,
                 'description' => $a->description,
                 'changes' => $a->changes,
-                'owner_code_ok' => $a->owner_code_ok,
+                'role' => $a->role,
+                'pin_ok' => $a->pin_ok,
             ]),
             'meta' => [
                 'current_page' => $page->currentPage(),

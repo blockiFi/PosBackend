@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
-use App\Models\BranchAuthorization;
 use App\Models\BranchProduct;
 use App\Models\Business;
 use App\Models\ManagerActivity;
@@ -25,6 +24,8 @@ class ManagerActivityTest extends TestCase
     private User $owner;
 
     private User $manager;
+
+    private User $storekeeper;
 
     private Business $business;
 
@@ -61,7 +62,7 @@ class ManagerActivityTest extends TestCase
             'is_available' => true,
         ]);
 
-        $this->manager = User::factory()->create(['name' => 'Bola Manager']);
+        $this->manager = User::factory()->create(['name' => 'Bola Manager', 'pin_code' => '481516']);
         $this->manager->businesses()->attach($this->business->id, ['is_active' => true]);
         setPermissionsTeamId($this->business->id);
         $role = Role::create(['name' => 'Manager', 'guard_name' => 'api', 'business_id' => $this->business->id]);
@@ -72,81 +73,125 @@ class ManagerActivityTest extends TestCase
             'model_id' => $this->manager->id,
             'business_id' => $this->business->id,
         ]);
+
+        $this->storekeeper = User::factory()->create(['name' => 'Sade Store', 'pin_code' => '271828']);
+        $this->storekeeper->businesses()->attach($this->business->id, ['is_active' => true]);
+        $skRole = Role::create(['name' => 'Storekeeper', 'guard_name' => 'api', 'business_id' => $this->business->id]);
+        $skRole->givePermissionTo(['manage branch products', 'manage inventory']);
+        DB::table('model_has_roles')->insert([
+            'role_id' => $skRole->id,
+            'model_type' => User::class,
+            'model_id' => $this->storekeeper->id,
+            'business_id' => $this->business->id,
+        ]);
         app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
     }
 
-    private function ownerCode(): string
+    private function headers(array $extra = []): array
     {
-        BranchAuthorization::create([
-            'user_id' => $this->owner->id,
-            'business_id' => $this->business->id,
-            'branch_id' => $this->branch->id,
-            'auth_code' => '123456',
-            'expires_at' => now()->addMinutes(15),
-        ]);
-
-        return '123456';
+        return ['X-Business-Id' => $this->business->id] + $extra;
     }
 
-    public function test_manager_change_with_owner_code_is_recorded_with_before_and_after(): void
+    public function test_manager_change_with_own_pin_is_recorded_with_before_and_after(): void
     {
         Sanctum::actingAs($this->manager);
 
         $this->putJson("/api/branch-products/{$this->bp->id}", [
             'selling_price' => 15,
             'store_quantity' => 8,
-        ], ['X-Business-Id' => $this->business->id, 'X-Owner-Code' => $this->ownerCode()])->assertSuccessful();
+        ], $this->headers(['X-Staff-Pin' => '481516']))->assertSuccessful();
 
         $activity = ManagerActivity::sole();
         $this->assertSame($this->manager->id, $activity->user_id);
+        $this->assertSame('Manager', $activity->role);
         $this->assertSame($this->branch->id, $activity->branch_id);
         $this->assertSame('Edited Peak Milk 400g', $activity->description);
-        $this->assertTrue($activity->owner_code_ok);
+        $this->assertTrue($activity->pin_ok);
         $this->assertEquals(10, $activity->changes['selling_price']['from']);
         $this->assertEquals(15, $activity->changes['selling_price']['to']);
         $this->assertEquals(8, $activity->changes['store_quantity']['to']);
     }
 
-    public function test_manager_change_without_code_is_still_recorded_and_flagged(): void
+    public function test_manager_change_without_pin_is_refused(): void
     {
         Sanctum::actingAs($this->manager);
 
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], [
-            'X-Business-Id' => $this->business->id,
-        ])->assertSuccessful();
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers())
+            ->assertStatus(428)
+            ->assertJsonPath('code', 'pin_required');
 
-        $this->assertFalse(ManagerActivity::sole()->owner_code_ok);
+        $this->assertEquals(10, (float) $this->bp->fresh()->selling_price);
+        $this->assertSame(0, ManagerActivity::count());
     }
 
-    public function test_code_made_by_someone_other_than_the_owner_does_not_count(): void
+    public function test_manager_change_with_someone_elses_pin_is_refused(): void
     {
-        BranchAuthorization::create([
-            'user_id' => $this->manager->id,
-            'business_id' => $this->business->id,
-            'branch_id' => $this->branch->id,
-            'auth_code' => '654321',
-            'expires_at' => now()->addMinutes(15),
-        ]);
         Sanctum::actingAs($this->manager);
 
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], [
-            'X-Business-Id' => $this->business->id,
-            'X-Owner-Code' => '654321',
-        ])->assertSuccessful();
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers(['X-Staff-Pin' => '271828']))
+            ->assertStatus(428)
+            ->assertJsonPath('code', 'pin_wrong');
 
-        $this->assertFalse(ManagerActivity::sole()->owner_code_ok);
+        $this->assertEquals(10, (float) $this->bp->fresh()->selling_price);
     }
 
-    public function test_owner_changes_and_reads_are_not_recorded(): void
+    public function test_manager_without_a_pin_is_told_to_ask_the_owner(): void
+    {
+        $this->manager->update(['pin_code' => null]);
+        Sanctum::actingAs($this->manager);
+
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers(['X-Staff-Pin' => '000000']))
+            ->assertStatus(428)
+            ->assertJsonPath('code', 'pin_not_set');
+    }
+
+    public function test_storekeeper_change_is_recorded_and_pin_only_required_when_turned_on(): void
+    {
+        Sanctum::actingAs($this->storekeeper);
+
+        // Default: storekeepers are recorded but not yet required to send a PIN (older tills).
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 11], $this->headers())
+            ->assertSuccessful();
+        $activity = ManagerActivity::sole();
+        $this->assertSame('Storekeeper', $activity->role);
+        $this->assertFalse($activity->pin_ok);
+
+        config(['staff_pin.roles' => ['Manager', 'Storekeeper']]);
+
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], $this->headers())
+            ->assertStatus(428);
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], $this->headers(['X-Staff-Pin' => '271828']))
+            ->assertSuccessful();
+        $this->assertTrue(ManagerActivity::latest('id')->first()->pin_ok);
+    }
+
+    public function test_too_many_wrong_pins_locks_for_a_minute(): void
+    {
+        Sanctum::actingAs($this->manager);
+
+        foreach (range(1, 5) as $i) {
+            $this->postJson('/api/staff-pin/check', ['pin' => '000000'], $this->headers())->assertStatus(422);
+        }
+
+        $this->postJson('/api/staff-pin/check', ['pin' => '481516'], $this->headers())
+            ->assertStatus(429)
+            ->assertJsonPath('code', 'pin_locked');
+    }
+
+    public function test_pin_check_endpoint(): void
+    {
+        Sanctum::actingAs($this->manager);
+
+        $this->postJson('/api/staff-pin/check', ['pin' => '481516'], $this->headers())->assertOk()->assertJsonPath('ok', true);
+        $this->postJson('/api/staff-pin/check', ['pin' => '123123'], $this->headers())->assertStatus(422)->assertJsonPath('code', 'pin_wrong');
+    }
+
+    public function test_owner_changes_and_reads_are_not_recorded_or_blocked(): void
     {
         Sanctum::actingAs($this->owner);
 
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], [
-            'X-Business-Id' => $this->business->id,
-        ])->assertSuccessful();
-        $this->getJson('/api/branch-products?branch_id='.$this->branch->id, [
-            'X-Business-Id' => $this->business->id,
-        ])->assertSuccessful();
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], $this->headers())->assertSuccessful();
+        $this->getJson('/api/branch-products?branch_id='.$this->branch->id, $this->headers())->assertSuccessful();
 
         $this->assertSame(0, ManagerActivity::count());
     }
@@ -154,19 +199,21 @@ class ManagerActivityTest extends TestCase
     public function test_owner_can_list_activity_and_manager_cannot(): void
     {
         Sanctum::actingAs($this->manager);
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 15], [
-            'X-Business-Id' => $this->business->id,
-            'X-Owner-Code' => $this->ownerCode(),
-        ])->assertSuccessful();
+        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 15], $this->headers(['X-Staff-Pin' => '481516']))
+            ->assertSuccessful();
 
-        $this->getJson('/api/manager-activities', ['X-Business-Id' => $this->business->id])->assertForbidden();
+        $this->getJson('/api/manager-activities', $this->headers())->assertForbidden();
 
         Sanctum::actingAs($this->owner);
-        $this->getJson('/api/manager-activities', ['X-Business-Id' => $this->business->id])
+        $this->getJson('/api/manager-activities?role=Manager', $this->headers())
             ->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.user.name', 'Bola Manager')
+            ->assertJsonPath('data.0.role', 'Manager')
             ->assertJsonPath('data.0.description', 'Edited Peak Milk 400g')
-            ->assertJsonPath('data.0.owner_code_ok', true);
+            ->assertJsonPath('data.0.pin_ok', true);
+        $this->getJson('/api/manager-activities?role=Storekeeper', $this->headers())
+            ->assertOk()
+            ->assertJsonPath('meta.total', 0);
     }
 }
