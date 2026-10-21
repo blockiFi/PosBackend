@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\DeviceController;
 use App\Http\Controllers\Api\DeviceGroupController;
 use App\Http\Controllers\Api\GoodsReceivedNoteController;
 use App\Http\Controllers\Api\InventoryController;
+use App\Http\Controllers\Api\ManagerActivityController;
 use App\Http\Controllers\Api\PaymentMethodController;
 use App\Http\Controllers\Api\ProductCategoryController;
 use App\Http\Controllers\Api\ProductController;
@@ -24,6 +25,7 @@ use App\Http\Controllers\Api\SaleController;
 use App\Http\Controllers\Api\SalesShiftController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
+use App\Http\Controllers\Api\StaffPinController;
 use App\Http\Controllers\Api\StockTransferRequestController;
 use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\SyncDashboardController;
@@ -61,7 +63,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('permissions', [RolePermissionController::class, 'listPermissions']);
 
     // Business-specific actions require business context (header/query or pivot membership)
-    Route::middleware(['business.context'])->group(function () {
+    Route::middleware(['business.context', 'staff.pin', 'manager.activity'])->group(function () {
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
         Route::get('businesses/{id}', [BusinessController::class, 'show']);
@@ -76,6 +78,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('branches', [BranchController::class, 'index']);
         Route::post('branches', [BranchController::class, 'store']);
         Route::post('branches/generate-auth-codes', [BranchController::class, 'generateAuthCode']);
+        Route::get('manager-activities', [ManagerActivityController::class, 'index']);
+        Route::post('staff-pin/check', [StaffPinController::class, 'check']);
         Route::get('branches/{id}', [BranchController::class, 'show']);
         Route::put('branches/{id}', [BranchController::class, 'update']);
         Route::delete('branches/{id}', [BranchController::class, 'destroy']);
