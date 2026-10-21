@@ -678,6 +678,15 @@ class SalesShiftController extends Controller
 
         DB::beginTransaction();
         try {
+            // Wait for any sales push still writing to this shift (the till sends its waiting
+            // sales right before closing), so the totals below include them.
+            $shift = SalesShift::lockForUpdate()->findOrFail($shift->id);
+            if ($shift->status === 'closed') {
+                DB::rollBack();
+
+                return response()->json(['message' => 'Shift is already closed'], 400);
+            }
+
             // Update sales metrics from actual sales
             $shift->updateSalesMetrics();
 

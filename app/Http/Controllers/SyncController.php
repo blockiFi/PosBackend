@@ -847,9 +847,12 @@ class SyncController extends Controller
         // Resolve shift_id: client sends local id; use only if that shift exists on server for this business/branch
         $shiftId = null;
         if (! empty($data['shift_id'])) {
+            // Lock the shift until this push commits, so a close that comes in meanwhile waits
+            // and then counts these sales (or, if it closed first, we recount it below).
             $shift = SalesShift::where('id', $data['shift_id'])
                 ->where('business_id', $businessId)
                 ->where('branch_id', $data['branch_id'])
+                ->lockForUpdate()
                 ->first();
             if ($shift) {
                 $shiftId = $shift->id;
