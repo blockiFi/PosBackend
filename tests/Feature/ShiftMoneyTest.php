@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Branch;
 use App\Models\Business;
+use App\Models\DeviceGroup;
 use App\Models\Payment;
 use App\Models\PaymentMethod;
 use App\Models\Sale;
@@ -149,6 +150,54 @@ class ShiftMoneyTest extends TestCase
         $this->assertTrue($rowsB['DEP-1']['from_other_shift']);
         $this->assertEquals(230000, $rowsB->sum('received_on_shift'));
         $this->assertEquals(0, $rowsB->sum('item_value'));
+    }
+
+    public function test_ledger_splits_sales_by_section_and_keeps_deposits_on_their_own_line(): void
+    {
+        [$shiftA, $shiftB] = $this->depositScenario();
+        $electronics = DeviceGroup::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->branch->id, 'name' => 'ELECTRONICS', 'code' => 'ELE', 'is_active' => true,
+        ]);
+        $shiftA->update(['group_id' => $electronics->id]);
+        // A normal cash sale on shift B, which has no section
+        $this->sale('SALE-2', 60, 'completed', $shiftB, [[$this->cashMethod, 60, $shiftB]]);
+
+        // Per shift: every naira of a deposit, even the balance, sits under deposits
+        $a = ShiftMoney::summary($shiftA);
+        $this->assertEquals(260000, $a['sales_total']);
+        $this->assertEquals(260000, $a['sales_transfer_card']);
+        $this->assertEquals(0, $a['sales_cash']);
+        $this->assertEquals(280000, $a['deposits_total']);
+        $this->assertEquals(-50, $a['deposits_cash']);
+        $this->assertEquals(280050, $a['deposits_transfer_card']);
+        $this->assertEquals($a['money_received'], $a['sales_total'] + $a['deposits_total']);
+        $b = ShiftMoney::summary($shiftB);
+        $this->assertEquals(60, $b['sales_total']);
+        $this->assertEquals(230000, $b['deposits_total']);
+        $this->assertEquals(2, $b['deposits_count']);
+
+        $ledger = ShiftMoney::ledger(SalesShift::whereIn('id', [$shiftA->id, $shiftB->id]));
+        $sections = collect($ledger['sections'])->keyBy(fn ($row) => $row['section_name'] ?? 'none');
+        $this->assertEquals(['ELECTRONICS', 'none'], $sections->keys()->all());
+        $this->assertEquals(260000, $sections['ELECTRONICS']['transfer_card']);
+        $this->assertEquals(1, $sections['ELECTRONICS']['sales_count']);
+        $this->assertEquals(60, $sections['none']['cash']);
+        $this->assertEquals(260060, $ledger['sales']['total']);
+
+        $deposits = collect($ledger['deposits']['rows'])->keyBy('sale_number');
+        $this->assertEquals(230000, $deposits['DEP-1']['total']);
+        $this->assertEquals(280000, $deposits['DEP-2']['total']);
+        $this->assertEquals(0, $deposits['DEP-3']['total']);
+        $this->assertEquals('ELECTRONICS', $deposits['DEP-1']['section_name']);
+        $this->assertEquals(510000, $ledger['deposits']['total']);
+        $this->assertArrayNotHasKey('SALE-VOID', $deposits->all());
+        $this->assertEquals($a['money_received'] + $b['money_received'], $ledger['money_received']);
+
+        // Shifts & Sales list carries the same ledger
+        $this->actingAs($this->user)->getJson('/api/shifts?branch_id='.$this->branch->id, ['X-Business-Id' => $this->business->id])
+            ->assertOk()
+            ->assertJsonPath('statistics.ledger.deposits.total', 510000)
+            ->assertJsonPath('statistics.ledger.sales.total', 260060);
     }
 
     /** @return array{0: SalesShift, 1: SalesShift} */

@@ -157,6 +157,8 @@ class SalesShiftController extends Controller
             'total_shifts_count' => $totalShifts,
             'total_gross_sales' => $totalGrossSales,
             'profit' => $profit,
+            // Per Section cash / transfer+card like the store's book, deposits on their own line
+            'ledger' => ShiftMoney::ledger($query),
             'total_transactions' => $totalTransactions,
             'shifts_by_status' => $shiftsByStatus,
             'average_basket_value' => $averageBasketValue,
