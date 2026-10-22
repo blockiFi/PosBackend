@@ -63,7 +63,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('permissions', [RolePermissionController::class, 'listPermissions']);
 
     // Business-specific actions require business context (header/query or pivot membership)
-    Route::middleware(['business.context', 'staff.pin', 'manager.activity'])->group(function () {
+    Route::middleware(['business.context', 'manager.activity'])->group(function () {
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);
 
         Route::get('businesses/{id}', [BusinessController::class, 'show']);
