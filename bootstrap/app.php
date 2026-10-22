@@ -14,7 +14,6 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->alias([
             'business.context' => \App\Http\Middleware\SetBusinessContext::class,
-            'staff.pin' => \App\Http\Middleware\RequireStaffPin::class,
             'manager.activity' => \App\Http\Middleware\RecordManagerActivity::class,
         ]);
     })

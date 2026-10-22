@@ -112,57 +112,48 @@ class ManagerActivityTest extends TestCase
         $this->assertEquals(8, $activity->changes['store_quantity']['to']);
     }
 
-    public function test_manager_change_without_pin_is_refused(): void
+    public function test_manager_change_without_pin_is_saved_and_shows_no_pin(): void
     {
+        // The PIN is checked by the dashboard and till before saving; the server only records it.
         Sanctum::actingAs($this->manager);
 
         $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers())
-            ->assertStatus(428)
-            ->assertJsonPath('code', 'pin_required');
+            ->assertSuccessful();
 
-        $this->assertEquals(10, (float) $this->bp->fresh()->selling_price);
-        $this->assertSame(0, ManagerActivity::count());
+        $this->assertEquals(20, (float) $this->bp->fresh()->selling_price);
+        $this->assertFalse(ManagerActivity::sole()->pin_ok);
     }
 
-    public function test_manager_change_with_someone_elses_pin_is_refused(): void
+    public function test_someone_elses_pin_is_recorded_as_no_pin(): void
     {
         Sanctum::actingAs($this->manager);
 
         $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers(['X-Staff-Pin' => '271828']))
-            ->assertStatus(428)
-            ->assertJsonPath('code', 'pin_wrong');
+            ->assertSuccessful();
 
-        $this->assertEquals(10, (float) $this->bp->fresh()->selling_price);
+        $this->assertFalse(ManagerActivity::sole()->pin_ok);
     }
 
-    public function test_manager_without_a_pin_is_told_to_ask_the_owner(): void
+    public function test_pin_check_tells_a_manager_without_a_pin_to_ask_the_owner(): void
     {
         $this->manager->update(['pin_code' => null]);
         Sanctum::actingAs($this->manager);
 
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 20], $this->headers(['X-Staff-Pin' => '000000']))
-            ->assertStatus(428)
+        $this->postJson('/api/staff-pin/check', ['pin' => '000000'], $this->headers())
+            ->assertStatus(422)
             ->assertJsonPath('code', 'pin_not_set');
     }
 
-    public function test_storekeeper_change_is_recorded_and_pin_only_required_when_turned_on(): void
+    public function test_storekeeper_change_is_recorded_with_pin(): void
     {
         Sanctum::actingAs($this->storekeeper);
 
-        // Default: storekeepers are recorded but not yet required to send a PIN (older tills).
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 11], $this->headers())
-            ->assertSuccessful();
-        $activity = ManagerActivity::sole();
-        $this->assertSame('Storekeeper', $activity->role);
-        $this->assertFalse($activity->pin_ok);
-
-        config(['staff_pin.roles' => ['Manager', 'Storekeeper']]);
-
-        $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], $this->headers())
-            ->assertStatus(428);
         $this->putJson("/api/branch-products/{$this->bp->id}", ['selling_price' => 12], $this->headers(['X-Staff-Pin' => '271828']))
             ->assertSuccessful();
-        $this->assertTrue(ManagerActivity::latest('id')->first()->pin_ok);
+
+        $activity = ManagerActivity::sole();
+        $this->assertSame('Storekeeper', $activity->role);
+        $this->assertTrue($activity->pin_ok);
     }
 
     public function test_too_many_wrong_pins_locks_for_a_minute(): void
