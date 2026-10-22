@@ -192,6 +192,8 @@ class ShiftMoneyTest extends TestCase
         $this->assertEquals(510000, $ledger['deposits']['total']);
         $this->assertArrayNotHasKey('SALE-VOID', $deposits->all());
         $this->assertEquals($a['money_received'] + $b['money_received'], $ledger['money_received']);
+        $this->assertEquals(['sales' => 260000, 'deposits' => 280000], $ledger['shifts'][$shiftA->id]);
+        $this->assertEquals(['sales' => 60, 'deposits' => 230000], $ledger['shifts'][$shiftB->id]);
 
         // Shifts & Sales list carries the same ledger
         $this->actingAs($this->user)->getJson('/api/shifts?branch_id='.$this->branch->id, ['X-Business-Id' => $this->business->id])

@@ -169,13 +169,18 @@ final class ShiftMoney
                 'sales.id as sale_id', 'sales.sale_number', 'sales.sale_type', 'sales.status as sale_status',
                 'customers.name as customer_name', 'sales_shifts.group_id', 'device_groups.name as group_name',
                 'sale_shift.group_id as sale_group_id', 'sale_group.name as sale_group_name',
+                'sales_shifts.id as paid_on_shift_id',
             ]);
 
         $sections = [];
         $deposits = [];
+        $byShift = [];
         foreach ($payments as $payment) {
             $amount = (float) $payment->amount;
             $column = $payment->method_type === 'cash' ? 'cash' : 'transfer_card';
+            $line = $payment->sale_type === 'deposit' ? 'deposits' : 'sales';
+            $byShift[$payment->paid_on_shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0];
+            $byShift[$payment->paid_on_shift_id][$line] += $amount;
 
             if ($payment->sale_type === 'deposit') {
                 $deposits[$payment->sale_id] ??= [
@@ -231,6 +236,11 @@ final class ShiftMoney
                 'rows' => $deposits->all(),
             ],
             'money_received' => round($sum($sections, 'total') + $sum($deposits, 'total'), 2),
+            // Sales vs deposits for each shift, keyed by shift id, for the Shifts & Sales rows
+            'shifts' => collect($byShift)->map(fn (array $row) => [
+                'sales' => round($row['sales'], 2),
+                'deposits' => round($row['deposits'], 2),
+            ])->all(),
         ];
     }
 
