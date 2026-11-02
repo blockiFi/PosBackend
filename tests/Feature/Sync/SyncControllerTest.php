@@ -280,11 +280,7 @@ class SyncControllerTest extends TestCase
         $this->createTestData();
 
         $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
-        \Illuminate\Support\Facades\DB::table('branch_products')->update([
-            'created_at' => now()->subDays(3),
-            'updated_at' => now()->subDays(3),
-        ]);
-        \Illuminate\Support\Facades\DB::table('products')->update(['updated_at' => now()->subDays(3)]);
+        $this->ageCatalog();
         \Illuminate\Support\Facades\DB::table('branch_products')->where('id', $branchProduct->id)->update([
             'shelf_quantity' => 42,
             'updated_at' => now()->subSeconds(20),
@@ -303,6 +299,58 @@ class SyncControllerTest extends TestCase
         $rows = collect($response->json('changes.products.updated'))
             ->merge($response->json('changes.products.created'));
         $this->assertSame([$branchProduct->product_id], $rows->pluck('product_id')->all());
+    }
+
+    /** @test */
+    public function it_pulls_items_whose_category_was_renamed(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $category = ProductCategory::where('business_id', $this->business->id)->first();
+        $this->ageCatalog();
+        \Illuminate\Support\Facades\DB::table('products')->update(['category_id' => null]);
+        \Illuminate\Support\Facades\DB::table('products')->where('id', $branchProduct->product_id)->update([
+            'category_id' => $category->id,
+        ]);
+        \Illuminate\Support\Facades\DB::table('product_categories')->where('id', $category->id)->update([
+            'name' => 'Drinks',
+            'updated_at' => now(),
+        ]);
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $this->assertSame([$branchProduct->product_id], $rows['changed']->pluck('product_id')->all());
+        $this->assertSame('Drinks', $rows['changed']->first()['category']['name']);
+    }
+
+    /** @test */
+    public function it_tells_tills_about_deleted_items_but_not_restored_ones(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        [$removedFromBranch, $productDeleted, $restored] = BranchProduct::where('branch_id', $this->branch->id)
+            ->orderBy('id')->take(3)->get()->all();
+        $this->ageCatalog();
+
+        $removedFromBranch->delete();
+        Product::find($productDeleted->product_id)->delete();
+        $restored->delete();
+        $restored->restore();
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $this->assertEqualsCanonicalizing(
+            [$removedFromBranch->product_id, $productDeleted->product_id],
+            $rows['deleted']->pluck('product_id')->all()
+        );
+        $this->assertContains($restored->product_id, $rows['changed']->pluck('product_id')->all());
+
+        // Old removals are not sent again
+        $later = $this->pullProductsSince(now()->addHour(), $device);
+        $this->assertEmpty($later['deleted']);
     }
 
     /** @test */
@@ -1496,6 +1544,37 @@ class SyncControllerTest extends TestCase
             'opening_balance' => 0,
             'status' => 'open',
         ]);
+    }
+
+    /** Make every item look unchanged for days, so only a test's own edits are pulled. */
+    protected function ageCatalog(): void
+    {
+        $old = now()->subDays(3);
+        \Illuminate\Support\Facades\DB::table('branch_products')->update(['created_at' => $old, 'updated_at' => $old]);
+        \Illuminate\Support\Facades\DB::table('products')->update(['updated_at' => $old]);
+        \Illuminate\Support\Facades\DB::table('product_categories')->update(['updated_at' => $old]);
+    }
+
+    /**
+     * @return array{changed: \Illuminate\Support\Collection, deleted: \Illuminate\Support\Collection}
+     */
+    protected function pullProductsSince($since, $device): array
+    {
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => $since->toIso8601String(),
+            'entities' => ['products'],
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+        $response->assertOk();
+
+        return [
+            'changed' => collect($response->json('changes.products.updated'))
+                ->merge($response->json('changes.products.created')),
+            'deleted' => collect($response->json('changes.products.deleted')),
+        ];
     }
 
     protected function createTestData(): void

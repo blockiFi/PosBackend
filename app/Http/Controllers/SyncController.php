@@ -692,6 +692,11 @@ class SyncController extends Controller
                     ->orWhere('branch_products.created_at', '>', $since)
                     ->orWhereHas('product', function ($product) use ($since) {
                         $product->where('updated_at', '>', $since);
+                    })
+                    // A renamed category changes only the category row, but
+                    // every till shows the name on its items
+                    ->orWhereHas('product.category', function ($category) use ($since) {
+                        $category->where('updated_at', '>', $since);
                     });
             })
             ->orderBy('branch_products.id');
@@ -719,11 +724,52 @@ class SyncController extends Controller
             'changes' => [
                 'created' => $created,
                 'updated' => $updated,
-                'deleted' => [],
+                // Removals are sent once, with the first page
+                'deleted' => $afterId === 0 ? $this->removedBranchProducts($branchId, $since) : [],
             ],
             'has_more' => $hasMore,
             'next_cursor' => $hasMore && $page->isNotEmpty() ? $page->last()->id : null,
         ];
+    }
+
+    /**
+     * Items taken off this branch since the till's last pull: the branch item
+     * or the product itself was deleted. Without this a till kept selling a
+     * deleted item for good (the daily full download only adds and updates).
+     * Items that are live again (restored or re-added) are left out.
+     *
+     * @return list<array{product_id: int}>
+     */
+    private function removedBranchProducts(int $branchId, Carbon $since): array
+    {
+        $productIds = BranchProduct::onlyTrashed()
+            ->where('branch_id', $branchId)
+            ->where('deleted_at', '>', $since)
+            ->pluck('product_id')
+            ->merge(
+                BranchProduct::query()
+                    ->where('branch_id', $branchId)
+                    ->whereHas('product', function ($product) use ($since) {
+                        $product->onlyTrashed()->where('deleted_at', '>', $since);
+                    })
+                    ->pluck('product_id')
+            )
+            ->unique();
+
+        if ($productIds->isEmpty()) {
+            return [];
+        }
+
+        $stillSold = BranchProduct::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('product_id', $productIds)
+            ->whereHas('product')
+            ->pluck('product_id');
+
+        return $productIds->diff($stillSold)
+            ->map(fn ($productId) => ['product_id' => (int) $productId])
+            ->values()
+            ->all();
     }
 
     /**
