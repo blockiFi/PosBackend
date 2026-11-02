@@ -271,6 +271,82 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function it_pulls_a_change_saved_just_before_the_last_sync_time(): void
+    {
+        // A stock change saved inside a transaction that was still open when
+        // the previous pull ran has an updated_at a little before that pull's
+        // timestamp. It must still reach the till on the next pull.
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        \Illuminate\Support\Facades\DB::table('branch_products')->update([
+            'created_at' => now()->subDays(3),
+            'updated_at' => now()->subDays(3),
+        ]);
+        \Illuminate\Support\Facades\DB::table('products')->update(['updated_at' => now()->subDays(3)]);
+        \Illuminate\Support\Facades\DB::table('branch_products')->where('id', $branchProduct->id)->update([
+            'shelf_quantity' => 42,
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->toIso8601String(),
+            'entities' => ['products'],
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertOk();
+        $rows = collect($response->json('changes.products.updated'))
+            ->merge($response->json('changes.products.created'));
+        $this->assertSame([$branchProduct->product_id], $rows->pluck('product_id')->all());
+    }
+
+    /** @test */
+    public function paged_pulls_return_the_time_the_first_page_started(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $start = now()->startOfSecond();
+        \Illuminate\Support\Carbon::setTestNow($start);
+        $first = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subYear()->toIso8601String(),
+            'entities' => ['products'],
+            'limit' => 2,
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+        $first->assertOk();
+        $this->assertTrue($first->json('has_more'));
+
+        // Later pages run minutes after the first one started
+        $page = $first;
+        \Illuminate\Support\Carbon::setTestNow($start->copy()->addMinutes(5));
+        while ($page->json('has_more')) {
+            $page = $this->postJson('/api/sync/pull', [
+                'last_sync_at' => $start->copy()->subYear()->toIso8601String(),
+                'entities' => ['products'],
+                'limit' => 2,
+                'cursor' => $page->json('next_cursor'),
+                'branch_id' => $this->branch->id,
+            ], [
+                'X-Business-Id' => $this->business->id,
+                'X-Device-Id' => $device->device_id,
+            ]);
+            $page->assertOk();
+        }
+        \Illuminate\Support\Carbon::setTestNow();
+
+        $this->assertSame($start->toIso8601String(), $page->json('server_timestamp'));
+    }
+
+    /** @test */
     public function it_pulls_a_product_when_only_the_barcode_changed(): void
     {
         $device = $this->registerDevice();

@@ -43,6 +43,9 @@ class SyncController extends Controller
 
     private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
 
+    /** How far /sync/pull looks back before the till's last sync time. */
+    private const PULL_OVERLAP_SECONDS = 120;
+
     private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
     /** Closed shifts that received sales in this push; recounted once the push is processed. */
@@ -293,13 +296,24 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
         }
 
-        $lastSyncAt = Carbon::parse($request->last_sync_at);
+        // Look back a little before the till's last sync. A change saved inside
+        // a transaction that was still open during the previous pull (a sale
+        // batch, a stock adjustment) carries an updated_at older than that
+        // pull's timestamp, so a strict "> last_sync_at" skipped it for good and
+        // the till only saw it at its daily full download. Re-sending a few
+        // recent rows is harmless: the till just overwrites them.
+        $lastSyncAt = Carbon::parse($request->last_sync_at)->subSeconds(self::PULL_OVERLAP_SECONDS);
         $entities = $request->entities ?? ['products', 'customers', 'branch_products'];
         $limit = $request->limit ?? 500;
         $deviceId = $request->header('X-Device-Id');
         $branchId = (int) $request->branch_id;
         $sessionId = Str::uuid()->toString();
-        $afterId = is_numeric($request->input('cursor')) ? (int) $request->input('cursor') : 0;
+        [$afterId, $pullStartedAt] = $this->parsePullCursor($request->input('cursor'));
+        // The timestamp the till saves must be taken before reading anything,
+        // never after: changes made while this pull was being built would
+        // otherwise fall between the read and the saved time. Paged pulls keep
+        // the first page's start time (carried in the cursor).
+        $pullStartedAt ??= now();
         $changes = [];
         $hasMore = false;
         $nextCursor = null;
@@ -313,7 +327,9 @@ class SyncController extends Controller
                 $page = $this->pageBranchProducts($businessId, $branchId, $lastSyncAt, $limit, $afterId);
                 $changes['products'] = $page['changes'];
                 $hasMore = $page['has_more'];
-                $nextCursor = $page['next_cursor'];
+                $nextCursor = $page['next_cursor'] !== null
+                    ? $page['next_cursor'].'@'.$pullStartedAt->getTimestamp()
+                    : null;
                 $productsPaged = true;
 
                 continue;
@@ -328,7 +344,7 @@ class SyncController extends Controller
 
         return response()->json([
             'session_id' => $sessionId,
-            'server_timestamp' => now()->toIso8601String(),
+            'server_timestamp' => $pullStartedAt->toIso8601String(),
             'changes' => $changes,
             'has_more' => $hasMore,
             'next_cursor' => $nextCursor,
@@ -336,6 +352,24 @@ class SyncController extends Controller
             // (e.g. deposit_stock_mode) without a re-bootstrap.
             'business_settings' => $this->businessSettingsPayload((int) $businessId),
         ]);
+    }
+
+    /**
+     * Read a pull cursor: "<last branch product id>@<unix time the pull
+     * started>", or a bare id from older responses.
+     *
+     * @return array{0: int, 1: Carbon|null}
+     */
+    private function parsePullCursor(mixed $cursor): array
+    {
+        if (is_numeric($cursor)) {
+            return [(int) $cursor, null];
+        }
+        if (is_string($cursor) && preg_match('/^(\d+)@(\d+)$/', $cursor, $parts)) {
+            return [(int) $parts[1], Carbon::createFromTimestamp((int) $parts[2])];
+        }
+
+        return [0, null];
     }
 
     /**
