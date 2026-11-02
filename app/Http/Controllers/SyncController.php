@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
+use App\Models\BranchProductPriceChange;
 use App\Models\BranchProductQuantityTier;
 use App\Models\BranchProductUnitPrice;
 use App\Models\Business;
@@ -1071,6 +1072,23 @@ class SyncController extends Controller
                     }
                     if ($tierResult['quantity_tier_id'] !== null) {
                         $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                    }
+
+                    // A sale made while the till was offline uploads later, maybe
+                    // after a price change. Keep the till's price when the item
+                    // really had it shortly before the sale, so the sale shows what
+                    // the customer paid; otherwise use today's price as before.
+                    $tillPrice = isset($item['unit_price']) && is_numeric($item['unit_price'])
+                        ? round((float) $item['unit_price'], 2)
+                        : null;
+                    if ($batchId === null
+                        && $tierResult['tier_type'] === 'single'
+                        && $tillPrice !== null
+                        && abs($tillPrice - (float) $unitPrice) >= 0.005
+                        && $sale->sale_date
+                        && BranchProductPriceChange::wasPriceBefore($branchProduct, $tillPrice, $sale->sale_date)) {
+                        $unitPrice = $tillPrice;
+                        $metadata['priced_at_sale_time'] = true;
                     }
 
                     if ($batchId !== null) {

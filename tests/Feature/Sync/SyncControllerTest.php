@@ -447,6 +447,109 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function an_offline_sale_uploaded_after_a_price_change_keeps_the_till_price(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+
+        // Item added yesterday at 50; the price went up to 60 an hour ago
+        \Illuminate\Support\Carbon::setTestNow(now()->subDay());
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        \Illuminate\Support\Carbon::setTestNow(now()->addDay()->subHour());
+        $branchProduct->update(['selling_price' => 60.00]);
+        \Illuminate\Support\Carbon::setTestNow();
+
+        $push = function (float $tillPrice, string $soldAt) use ($device, $shift, $product, $paymentMethod) {
+            $saleNumber = 'SALE-OFFLINE-'.Str::random(6);
+            $this->postJson('/api/sync/push', [
+                'session_id' => Str::uuid()->toString(),
+                'changes' => ['sales' => [[
+                    'client_uuid' => Str::uuid()->toString(),
+                    'sale_number' => $saleNumber,
+                    'branch_id' => $this->branch->id,
+                    'shift_id' => $shift->id,
+                    'sale_type' => 'pos',
+                    'sale_date' => $soldAt,
+                    'status' => 'completed',
+                    'version' => 1,
+                    'items' => [[
+                        'client_uuid' => Str::uuid()->toString(),
+                        'product_id' => $product->id,
+                        'quantity' => 2,
+                        'unit_price' => $tillPrice,
+                    ]],
+                    'payments' => [[
+                        'client_uuid' => Str::uuid()->toString(),
+                        'payment_method_id' => $paymentMethod->id,
+                        'amount' => $tillPrice * 2,
+                        'payment_date' => $soldAt,
+                    ]],
+                ]]],
+            ], [
+                'X-Business-Id' => $this->business->id,
+                'X-Device-Id' => $device->device_id,
+            ])->assertOk();
+
+            return \App\Models\Sale::where('sale_number', $saleNumber)->firstOrFail()->items()->first();
+        };
+
+        // Sold offline 2 hours ago at the old price: recorded at what the customer paid
+        $offline = $push(50.00, now()->subHours(2)->toIso8601String());
+        $this->assertEquals(50, (float) $offline->unit_price);
+        $this->assertTrue($offline->metadata['priced_at_sale_time'] ?? false);
+
+        // A price the item never had falls back to today's price
+        $unknown = $push(41.00, now()->subHours(2)->toIso8601String());
+        $this->assertEquals(60, (float) $unknown->unit_price);
+        $this->assertArrayNotHasKey('priced_at_sale_time', $unknown->metadata ?? []);
+
+        // An old price from long before the sale is not accepted either
+        \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->where('price', 50)
+            ->update(['effective_from' => now()->subDays(10)]);
+        \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->where('price', 60)
+            ->update(['effective_from' => now()->subDays(5)]);
+        $tooOld = $push(50.00, now()->subMinutes(10)->toIso8601String());
+        $this->assertEquals(60, (float) $tooOld->unit_price);
+    }
+
+    /** @test */
+    public function price_changes_are_recorded_for_items_using_the_product_price(): void
+    {
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'base_selling_price' => 30,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'selling_price' => null,
+        ]);
+
+        $branchProduct->update(['stock_quantity' => 8]);
+        $product->update(['base_selling_price' => 35]);
+        $branchProduct->fresh()->update(['discount_type' => 'fixed', 'discount_amount' => 5]);
+
+        $prices = \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($row) => [(float) $row->price, (float) $row->full_price])
+            ->all();
+
+        $this->assertSame([[30.0, 30.0], [35.0, 35.0], [30.0, 35.0]], $prices);
+    }
+
+    /** @test */
     public function it_can_push_offline_sales()
     {
         $device = $this->registerDevice();
