@@ -923,6 +923,25 @@ class DepositSaleTest extends TestCase
         $this->assertSame('deposit_finished_later', ShiftMoney::row($sale->fresh('payments.paymentMethod'), $startShift)['kind']);
     }
 
+    public function test_balance_goes_to_the_cashiers_latest_open_shift_when_an_old_one_was_left_open(): void
+    {
+        $forgotten = $this->openShift('SHIFT-FORGOTTEN');
+        $forgotten->update(['start_time' => now()->subDays(3)]);
+        $sale = $this->itemlessDeposit(500, $forgotten);
+        $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ], $this->headers())->assertStatus(200);
+        $today = $this->openShift('SHIFT-TODAY');
+
+        $this->actingAs($this->user)->postJson("/api/sales/{$sale->id}/complete-deposit", [
+            'payments' => [['payment_method_id' => $this->cashMethod->id, 'amount' => 500]],
+        ], $this->headers())->assertStatus(200);
+
+        $this->assertSame($today->id, (int) $sale->fresh()->shift_id);
+        $this->assertEquals(500.0, $today->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+        $this->assertEquals(500.0, $forgotten->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+    }
+
     public function test_cancelling_a_deposit_gives_all_money_back(): void
     {
         $earlierShift = $this->openShift();

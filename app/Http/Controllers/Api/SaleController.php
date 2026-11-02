@@ -1465,6 +1465,9 @@ class SaleController extends Controller
             ->where('user_id', $user->id)
             ->where('branch_id', $branchId)
             ->where('status', 'open')
+            // A cashier who left an old shift open on another till: use the one started last
+            ->orderByDesc('start_time')
+            ->orderByDesc('id')
             ->first();
 
         return $shift?->id;
