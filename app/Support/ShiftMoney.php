@@ -17,7 +17,11 @@ use Illuminate\Support\Facades\DB;
  *   SalesProfit, so the shifts of a day add up to the overview.
  *
  * The two differ only by deposits: money for deposits not finished yet, balances paid here for
- * deposits from older shifts, and the part of a finished deposit that was paid on another shift.
+ * deposits from older shifts, money taken here for deposits handed over on a later shift, and the
+ * part of a finished deposit that was paid on another shift.
+ *
+ * A finished deposit counts as sold on the shift (and day) that handed the item over: complete-
+ * deposit moves the sale there and keeps where it began in metadata.deposit_started_shift_id.
  *
  * - Ledger: money received split the way the store's handwritten book is kept. Normal sales go
  *   under their Section as cash / transfer+card; every naira paid on a deposit (first payment,
@@ -62,6 +66,9 @@ final class ShiftMoney
             $kind = 'cancelled';
         } elseif ($sale->status === 'refunded') {
             $kind = 'refunded';
+        } elseif (! $ownShift && self::startedOn($sale, $shift)) {
+            // Deposit taken here, item handed over (and sold) on a later shift
+            $kind = 'deposit_finished_later';
         } elseif (! $ownShift) {
             $kind = 'older_deposit';
         } elseif (! $isDone) {
@@ -86,8 +93,8 @@ final class ShiftMoney
     }
 
     /**
-     * Totals over every row of the shift. money_received - items_sold
-     * = unfinished_deposits + older_deposit_balances - paid_on_other_shifts + other.
+     * Totals over every row of the shift. money_received - items_sold = unfinished_deposits
+     * + older_deposit_balances + deposits_finished_later - paid_on_other_shifts + other.
      *
      * @return array<string, float|int>
      */
@@ -97,6 +104,7 @@ final class ShiftMoney
             'money_received' => 0.0, 'cash' => 0.0, 'card' => 0.0, 'other' => 0.0,
             'items_sold' => 0.0, 'items_sold_count' => 0, 'rows_count' => 0,
             'unfinished_deposits' => 0.0, 'older_deposit_balances' => 0.0, 'paid_on_other_shifts' => 0.0,
+            'deposits_finished_later' => 0.0,
             'sales_cash' => 0.0, 'sales_transfer_card' => 0.0, 'sales_total' => 0.0,
             'deposits_cash' => 0.0, 'deposits_transfer_card' => 0.0, 'deposits_total' => 0.0, 'deposits_count' => 0,
         ];
@@ -125,13 +133,17 @@ final class ShiftMoney
             if ($row['kind'] === 'older_deposit') {
                 $totals['older_deposit_balances'] += $row['received_on_shift'];
             }
+            if ($row['kind'] === 'deposit_finished_later') {
+                $totals['deposits_finished_later'] += $row['received_on_shift'];
+            }
         }
 
         $totals = array_map(fn ($value) => is_float($value) ? round($value, 2) : $value, $totals);
         // Anything left over (e.g. a cancelled deposit with part of the money given back)
         $totals['other_difference'] = round(
             $totals['money_received'] - $totals['items_sold']
-            - $totals['unfinished_deposits'] - $totals['older_deposit_balances'] + $totals['paid_on_other_shifts'],
+            - $totals['unfinished_deposits'] - $totals['older_deposit_balances'] - $totals['deposits_finished_later']
+            + $totals['paid_on_other_shifts'],
             2
         );
 
@@ -155,7 +167,7 @@ final class ShiftMoney
             ->leftJoin('device_groups', 'device_groups.id', '=', 'sales_shifts.group_id')
             ->leftJoin('payment_methods', 'payment_methods.id', '=', 'payments.payment_method_id')
             ->leftJoin('customers', 'customers.id', '=', 'sales.customer_id')
-            // A deposit is listed under the Section of the till where it was started
+            // A deposit is listed under the Section of its sale's till (where it was finished, once it is)
             ->leftJoin('sales_shifts as sale_shift', 'sale_shift.id', '=', 'sales.shift_id')
             ->leftJoin('device_groups as sale_group', 'sale_group.id', '=', 'sale_shift.group_id')
             ->where('payments.status', 'completed')
@@ -242,6 +254,14 @@ final class ShiftMoney
                 'deposits' => round($row['deposits'], 2),
             ])->all(),
         ];
+    }
+
+    /** A finished deposit moves to the shift that handed the item over; this is where it began. */
+    private static function startedOn(Sale $sale, SalesShift $shift): bool
+    {
+        $started = ($sale->metadata ?? [])['deposit_started_shift_id'] ?? null;
+
+        return $sale->sale_type === 'deposit' && $started !== null && (int) $started === (int) $shift->id;
     }
 
     private static function isDeposit(Sale $sale): bool
