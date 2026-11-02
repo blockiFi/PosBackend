@@ -12,6 +12,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Staging and production share one database and can deploy at the
+        // same time: whichever runs second finds the table already there
+        if (Schema::hasTable('branch_product_price_changes')) {
+            return;
+        }
+
         Schema::create('branch_product_price_changes', function (Blueprint $table) {
             $table->id();
             $table->foreignId('branch_product_id')->constrained('branch_products')->cascadeOnDelete();
