@@ -271,6 +271,147 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function it_pulls_a_change_saved_just_before_the_last_sync_time(): void
+    {
+        // A stock change saved inside a transaction that was still open when
+        // the previous pull ran has an updated_at a little before that pull's
+        // timestamp. It must still reach the till on the next pull.
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->ageCatalog();
+        \Illuminate\Support\Facades\DB::table('branch_products')->where('id', $branchProduct->id)->update([
+            'shelf_quantity' => 42,
+            'updated_at' => now()->subSeconds(20),
+        ]);
+
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->toIso8601String(),
+            'entities' => ['products'],
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+
+        $response->assertOk();
+        $rows = collect($response->json('changes.products.updated'))
+            ->merge($response->json('changes.products.created'));
+        $this->assertSame([$branchProduct->product_id], $rows->pluck('product_id')->all());
+    }
+
+    /** @test */
+    public function it_pulls_items_whose_category_was_renamed(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $category = ProductCategory::where('business_id', $this->business->id)->first();
+        $this->ageCatalog();
+        \Illuminate\Support\Facades\DB::table('products')->update(['category_id' => null]);
+        \Illuminate\Support\Facades\DB::table('products')->where('id', $branchProduct->product_id)->update([
+            'category_id' => $category->id,
+        ]);
+        \Illuminate\Support\Facades\DB::table('product_categories')->where('id', $category->id)->update([
+            'name' => 'Drinks',
+            'updated_at' => now(),
+        ]);
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $this->assertSame([$branchProduct->product_id], $rows['changed']->pluck('product_id')->all());
+        $this->assertSame('Drinks', $rows['changed']->first()['category']['name']);
+    }
+
+    /** @test */
+    public function it_tells_tills_about_deleted_items_but_not_restored_ones(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        [$removedFromBranch, $productDeleted, $restored] = BranchProduct::where('branch_id', $this->branch->id)
+            ->orderBy('id')->take(3)->get()->all();
+        $this->ageCatalog();
+
+        $removedFromBranch->delete();
+        Product::find($productDeleted->product_id)->delete();
+        $restored->delete();
+        $restored->restore();
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $this->assertEqualsCanonicalizing(
+            [$removedFromBranch->product_id, $productDeleted->product_id],
+            $rows['deleted']->pluck('product_id')->all()
+        );
+        $this->assertContains($restored->product_id, $rows['changed']->pluck('product_id')->all());
+
+        // Old removals are not sent again
+        $later = $this->pullProductsSince(now()->addHour(), $device);
+        $this->assertEmpty($later['deleted']);
+    }
+
+    /** @test */
+    public function pulled_items_carry_the_promotion_price(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->ageCatalog();
+        $branchProduct->update(['discount_type' => 'percentage', 'discount_amount' => 20]);
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $row = $rows['changed']->firstWhere('product_id', $branchProduct->product_id);
+        $this->assertEquals(40, $row['pricing']['final_price']);
+        $this->assertEquals(50, $row['pricing']['selling_price']);
+    }
+
+    /** @test */
+    public function paged_pulls_return_the_time_the_first_page_started(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $start = now()->startOfSecond();
+        \Illuminate\Support\Carbon::setTestNow($start);
+        $first = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => now()->subYear()->toIso8601String(),
+            'entities' => ['products'],
+            'limit' => 2,
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+        $first->assertOk();
+        $this->assertTrue($first->json('has_more'));
+
+        // Later pages run minutes after the first one started
+        $page = $first;
+        \Illuminate\Support\Carbon::setTestNow($start->copy()->addMinutes(5));
+        while ($page->json('has_more')) {
+            $page = $this->postJson('/api/sync/pull', [
+                'last_sync_at' => $start->copy()->subYear()->toIso8601String(),
+                'entities' => ['products'],
+                'limit' => 2,
+                'cursor' => $page->json('next_cursor'),
+                'branch_id' => $this->branch->id,
+            ], [
+                'X-Business-Id' => $this->business->id,
+                'X-Device-Id' => $device->device_id,
+            ]);
+            $page->assertOk();
+        }
+        \Illuminate\Support\Carbon::setTestNow();
+
+        $this->assertSame($start->toIso8601String(), $page->json('server_timestamp'));
+    }
+
+    /** @test */
     public function it_pulls_a_product_when_only_the_barcode_changed(): void
     {
         $device = $this->registerDevice();
@@ -303,6 +444,109 @@ class SyncControllerTest extends TestCase
         $match = $rows->firstWhere('product_id', $branchProduct->product_id);
         $this->assertNotNull($match);
         $this->assertSame('5901234123457', $match['barcode']);
+    }
+
+    /** @test */
+    public function an_offline_sale_uploaded_after_a_price_change_keeps_the_till_price(): void
+    {
+        $device = $this->registerDevice();
+        $shift = $this->openShift();
+        $product = Product::factory()->create(['business_id' => $this->business->id]);
+        $paymentMethod = PaymentMethod::factory()->create(['business_id' => $this->business->id]);
+
+        // Item added yesterday at 50; the price went up to 60 an hour ago
+        \Illuminate\Support\Carbon::setTestNow(now()->subDay());
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'cost_price' => 25.00,
+            'selling_price' => 50.00,
+        ]);
+        \Illuminate\Support\Carbon::setTestNow(now()->addDay()->subHour());
+        $branchProduct->update(['selling_price' => 60.00]);
+        \Illuminate\Support\Carbon::setTestNow();
+
+        $push = function (float $tillPrice, string $soldAt) use ($device, $shift, $product, $paymentMethod) {
+            $saleNumber = 'SALE-OFFLINE-'.Str::random(6);
+            $this->postJson('/api/sync/push', [
+                'session_id' => Str::uuid()->toString(),
+                'changes' => ['sales' => [[
+                    'client_uuid' => Str::uuid()->toString(),
+                    'sale_number' => $saleNumber,
+                    'branch_id' => $this->branch->id,
+                    'shift_id' => $shift->id,
+                    'sale_type' => 'pos',
+                    'sale_date' => $soldAt,
+                    'status' => 'completed',
+                    'version' => 1,
+                    'items' => [[
+                        'client_uuid' => Str::uuid()->toString(),
+                        'product_id' => $product->id,
+                        'quantity' => 2,
+                        'unit_price' => $tillPrice,
+                    ]],
+                    'payments' => [[
+                        'client_uuid' => Str::uuid()->toString(),
+                        'payment_method_id' => $paymentMethod->id,
+                        'amount' => $tillPrice * 2,
+                        'payment_date' => $soldAt,
+                    ]],
+                ]]],
+            ], [
+                'X-Business-Id' => $this->business->id,
+                'X-Device-Id' => $device->device_id,
+            ])->assertOk();
+
+            return \App\Models\Sale::where('sale_number', $saleNumber)->firstOrFail()->items()->first();
+        };
+
+        // Sold offline 2 hours ago at the old price: recorded at what the customer paid
+        $offline = $push(50.00, now()->subHours(2)->toIso8601String());
+        $this->assertEquals(50, (float) $offline->unit_price);
+        $this->assertTrue($offline->metadata['priced_at_sale_time'] ?? false);
+
+        // A price the item never had falls back to today's price
+        $unknown = $push(41.00, now()->subHours(2)->toIso8601String());
+        $this->assertEquals(60, (float) $unknown->unit_price);
+        $this->assertArrayNotHasKey('priced_at_sale_time', $unknown->metadata ?? []);
+
+        // An old price from long before the sale is not accepted either
+        \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->where('price', 50)
+            ->update(['effective_from' => now()->subDays(10)]);
+        \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->where('price', 60)
+            ->update(['effective_from' => now()->subDays(5)]);
+        $tooOld = $push(50.00, now()->subMinutes(10)->toIso8601String());
+        $this->assertEquals(60, (float) $tooOld->unit_price);
+    }
+
+    /** @test */
+    public function price_changes_are_recorded_for_items_using_the_product_price(): void
+    {
+        $product = Product::factory()->create([
+            'business_id' => $this->business->id,
+            'base_selling_price' => 30,
+        ]);
+        $branchProduct = BranchProduct::create([
+            'branch_id' => $this->branch->id,
+            'product_id' => $product->id,
+            'stock_quantity' => 10,
+            'selling_price' => null,
+        ]);
+
+        $branchProduct->update(['stock_quantity' => 8]);
+        $product->update(['base_selling_price' => 35]);
+        $branchProduct->fresh()->update(['discount_type' => 'fixed', 'discount_amount' => 5]);
+
+        $prices = \App\Models\BranchProductPriceChange::where('branch_product_id', $branchProduct->id)
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($row) => [(float) $row->price, (float) $row->full_price])
+            ->all();
+
+        $this->assertSame([[30.0, 30.0], [35.0, 35.0], [30.0, 35.0]], $prices);
     }
 
     /** @test */
@@ -1420,6 +1664,37 @@ class SyncControllerTest extends TestCase
             'opening_balance' => 0,
             'status' => 'open',
         ]);
+    }
+
+    /** Make every item look unchanged for days, so only a test's own edits are pulled. */
+    protected function ageCatalog(): void
+    {
+        $old = now()->subDays(3);
+        \Illuminate\Support\Facades\DB::table('branch_products')->update(['created_at' => $old, 'updated_at' => $old]);
+        \Illuminate\Support\Facades\DB::table('products')->update(['updated_at' => $old]);
+        \Illuminate\Support\Facades\DB::table('product_categories')->update(['updated_at' => $old]);
+    }
+
+    /**
+     * @return array{changed: \Illuminate\Support\Collection, deleted: \Illuminate\Support\Collection}
+     */
+    protected function pullProductsSince($since, $device): array
+    {
+        $response = $this->postJson('/api/sync/pull', [
+            'last_sync_at' => $since->toIso8601String(),
+            'entities' => ['products'],
+            'branch_id' => $this->branch->id,
+        ], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ]);
+        $response->assertOk();
+
+        return [
+            'changed' => collect($response->json('changes.products.updated'))
+                ->merge($response->json('changes.products.created')),
+            'deleted' => collect($response->json('changes.products.deleted')),
+        ];
     }
 
     protected function createTestData(): void

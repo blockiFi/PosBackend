@@ -89,6 +89,19 @@ class TieredPricingTest extends TestCase
         $this->assertNull($result['quantity_tier_id']);
     }
 
+    public function test_single_unit_price_includes_a_running_promotion_discount(): void
+    {
+        // A promotion puts its discount on the branch item; sales must be
+        // recorded at the discounted price the till charged
+        $this->branchProduct->update(['discount_type' => 'percentage', 'discount_amount' => 10]);
+
+        $result = (new TieredPricingService)->getUnitPrice($this->branchProduct->fresh(), 2);
+
+        $this->assertSame('single', $result['tier_type']);
+        $this->assertEquals(90, (float) $result['unit_price']);
+        $this->assertEquals(180, (float) $result['total']);
+    }
+
     public function test_tiered_pricing_service_uses_quantity_tier_when_in_range(): void
     {
         BranchProductQuantityTier::create([

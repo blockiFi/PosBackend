@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Traits\HasBranchAccess;
 use App\Models\Branch;
 use App\Models\BranchProduct;
+use App\Models\BranchProductPriceChange;
 use App\Models\BranchProductQuantityTier;
 use App\Models\BranchProductUnitPrice;
 use App\Models\Business;
@@ -42,6 +43,9 @@ class SyncController extends Controller
     use HasBranchAccess;
 
     private const DEPOSIT_STOCK_MODES = BusinessSettings::DEPOSIT_STOCK_MODES;
+
+    /** How far /sync/pull looks back before the till's last sync time. */
+    private const PULL_OVERLAP_SECONDS = 120;
 
     private const DEFAULT_DEPOSIT_STOCK_MODE = BusinessSettings::DEFAULT_DEPOSIT_STOCK_MODE;
 
@@ -293,13 +297,24 @@ class SyncController extends Controller
             return response()->json(['success' => false, 'message' => 'You do not have access to this branch'], 403);
         }
 
-        $lastSyncAt = Carbon::parse($request->last_sync_at);
+        // Look back a little before the till's last sync. A change saved inside
+        // a transaction that was still open during the previous pull (a sale
+        // batch, a stock adjustment) carries an updated_at older than that
+        // pull's timestamp, so a strict "> last_sync_at" skipped it for good and
+        // the till only saw it at its daily full download. Re-sending a few
+        // recent rows is harmless: the till just overwrites them.
+        $lastSyncAt = Carbon::parse($request->last_sync_at)->subSeconds(self::PULL_OVERLAP_SECONDS);
         $entities = $request->entities ?? ['products', 'customers', 'branch_products'];
         $limit = $request->limit ?? 500;
         $deviceId = $request->header('X-Device-Id');
         $branchId = (int) $request->branch_id;
         $sessionId = Str::uuid()->toString();
-        $afterId = is_numeric($request->input('cursor')) ? (int) $request->input('cursor') : 0;
+        [$afterId, $pullStartedAt] = $this->parsePullCursor($request->input('cursor'));
+        // The timestamp the till saves must be taken before reading anything,
+        // never after: changes made while this pull was being built would
+        // otherwise fall between the read and the saved time. Paged pulls keep
+        // the first page's start time (carried in the cursor).
+        $pullStartedAt ??= now();
         $changes = [];
         $hasMore = false;
         $nextCursor = null;
@@ -313,7 +328,9 @@ class SyncController extends Controller
                 $page = $this->pageBranchProducts($businessId, $branchId, $lastSyncAt, $limit, $afterId);
                 $changes['products'] = $page['changes'];
                 $hasMore = $page['has_more'];
-                $nextCursor = $page['next_cursor'];
+                $nextCursor = $page['next_cursor'] !== null
+                    ? $page['next_cursor'].'@'.$pullStartedAt->getTimestamp()
+                    : null;
                 $productsPaged = true;
 
                 continue;
@@ -328,7 +345,7 @@ class SyncController extends Controller
 
         return response()->json([
             'session_id' => $sessionId,
-            'server_timestamp' => now()->toIso8601String(),
+            'server_timestamp' => $pullStartedAt->toIso8601String(),
             'changes' => $changes,
             'has_more' => $hasMore,
             'next_cursor' => $nextCursor,
@@ -336,6 +353,24 @@ class SyncController extends Controller
             // (e.g. deposit_stock_mode) without a re-bootstrap.
             'business_settings' => $this->businessSettingsPayload((int) $businessId),
         ]);
+    }
+
+    /**
+     * Read a pull cursor: "<last branch product id>@<unix time the pull
+     * started>", or a bare id from older responses.
+     *
+     * @return array{0: int, 1: Carbon|null}
+     */
+    private function parsePullCursor(mixed $cursor): array
+    {
+        if (is_numeric($cursor)) {
+            return [(int) $cursor, null];
+        }
+        if (is_string($cursor) && preg_match('/^(\d+)@(\d+)$/', $cursor, $parts)) {
+            return [(int) $parts[1], Carbon::createFromTimestamp((int) $parts[2])];
+        }
+
+        return [0, null];
     }
 
     /**
@@ -658,6 +693,11 @@ class SyncController extends Controller
                     ->orWhere('branch_products.created_at', '>', $since)
                     ->orWhereHas('product', function ($product) use ($since) {
                         $product->where('updated_at', '>', $since);
+                    })
+                    // A renamed category changes only the category row, but
+                    // every till shows the name on its items
+                    ->orWhereHas('product.category', function ($category) use ($since) {
+                        $category->where('updated_at', '>', $since);
                     });
             })
             ->orderBy('branch_products.id');
@@ -685,11 +725,52 @@ class SyncController extends Controller
             'changes' => [
                 'created' => $created,
                 'updated' => $updated,
-                'deleted' => [],
+                // Removals are sent once, with the first page
+                'deleted' => $afterId === 0 ? $this->removedBranchProducts($branchId, $since) : [],
             ],
             'has_more' => $hasMore,
             'next_cursor' => $hasMore && $page->isNotEmpty() ? $page->last()->id : null,
         ];
+    }
+
+    /**
+     * Items taken off this branch since the till's last pull: the branch item
+     * or the product itself was deleted. Without this a till kept selling a
+     * deleted item for good (the daily full download only adds and updates).
+     * Items that are live again (restored or re-added) are left out.
+     *
+     * @return list<array{product_id: int}>
+     */
+    private function removedBranchProducts(int $branchId, Carbon $since): array
+    {
+        $productIds = BranchProduct::onlyTrashed()
+            ->where('branch_id', $branchId)
+            ->where('deleted_at', '>', $since)
+            ->pluck('product_id')
+            ->merge(
+                BranchProduct::query()
+                    ->where('branch_id', $branchId)
+                    ->whereHas('product', function ($product) use ($since) {
+                        $product->onlyTrashed()->where('deleted_at', '>', $since);
+                    })
+                    ->pluck('product_id')
+            )
+            ->unique();
+
+        if ($productIds->isEmpty()) {
+            return [];
+        }
+
+        $stillSold = BranchProduct::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('product_id', $productIds)
+            ->whereHas('product')
+            ->pluck('product_id');
+
+        return $productIds->diff($stillSold)
+            ->map(fn ($productId) => ['product_id' => (int) $productId])
+            ->values()
+            ->all();
     }
 
     /**
@@ -991,6 +1072,23 @@ class SyncController extends Controller
                     }
                     if ($tierResult['quantity_tier_id'] !== null) {
                         $metadata['quantity_tier_id'] = $tierResult['quantity_tier_id'];
+                    }
+
+                    // A sale made while the till was offline uploads later, maybe
+                    // after a price change. Keep the till's price when the item
+                    // really had it shortly before the sale, so the sale shows what
+                    // the customer paid; otherwise use today's price as before.
+                    $tillPrice = isset($item['unit_price']) && is_numeric($item['unit_price'])
+                        ? round((float) $item['unit_price'], 2)
+                        : null;
+                    if ($batchId === null
+                        && $tierResult['tier_type'] === 'single'
+                        && $tillPrice !== null
+                        && abs($tillPrice - (float) $unitPrice) >= 0.005
+                        && $sale->sale_date
+                        && BranchProductPriceChange::wasPriceBefore($branchProduct, $tillPrice, $sale->sale_date)) {
+                        $unitPrice = $tillPrice;
+                        $metadata['priced_at_sale_time'] = true;
                     }
 
                     if ($batchId !== null) {
@@ -1435,6 +1533,17 @@ class SyncController extends Controller
             'price_with_tax' => $branchProduct->getPriceWithTax(),
             'profit_margin' => $branchProduct->getProfitMargin(),
             'quick_sale' => $quickSaleData,
+            // Tills read pricing.final_price first, so items on a promotion
+            // get the discounted price on every pull, the same as the full
+            // catalog download (which already sends this block)
+            'pricing' => [
+                'cost_price' => $branchProduct->cost_price,
+                'selling_price' => $branchProduct->selling_price,
+                'discount_amount' => $branchProduct->discount_amount,
+                'discount_type' => $branchProduct->discount_type,
+                'tax_rate' => $branchProduct->tax_rate,
+                'final_price' => $branchProduct->getFinalPrice(),
+            ],
 
             'stock_quantity' => $qty($branchProduct->stock_quantity),
             'shelf_quantity' => $qty($branchProduct->shelf_quantity),

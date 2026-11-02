@@ -67,6 +67,26 @@ class BranchProduct extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /** Fields that change the price a till charges. */
+    private const PRICE_FIELDS = ['selling_price', 'discount_amount', 'discount_type'];
+
+    protected static function booted(): void
+    {
+        // Keep a record of every price, so a sale uploaded late can be
+        // recorded at the price the till charged (see SyncController push)
+        static::created(function (BranchProduct $branchProduct) {
+            BranchProductPriceChange::record($branchProduct, $branchProduct->created_at);
+        });
+
+        static::updated(function (BranchProduct $branchProduct) {
+            if (! $branchProduct->wasChanged(self::PRICE_FIELDS)) {
+                return;
+            }
+            $before = (clone $branchProduct)->setRawAttributes($branchProduct->getRawOriginal());
+            BranchProductPriceChange::recordChange($before, $branchProduct);
+        });
+    }
+
     /**
      * Get the product
      */

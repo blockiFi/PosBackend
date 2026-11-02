@@ -100,6 +100,36 @@ class QuickSaleTest extends TestCase
     }
 
     /** @test */
+    public function an_ended_promotion_takes_its_discount_off_the_item_within_a_minute()
+    {
+        $quickSale = QuickSale::create([
+            'product_id' => $this->product->id,
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'requested_by' => $this->requester->id,
+            'reason' => 'Expires soon',
+            'expiry_date' => now()->addDays(3),
+            'status' => QuickSale::STATUS_ACTIVE,
+            'discount_type' => 'fixed',
+            'discount_value' => 5,
+            'start_time' => now()->subHours(3),
+            'end_time' => now()->subMinute(),
+        ]);
+        $branchProduct = BranchProduct::where('product_id', $this->product->id)
+            ->where('branch_id', $this->branch->id)
+            ->first();
+        $branchProduct->update(['discount_type' => 'fixed', 'discount_amount' => 5]);
+
+        $this->artisan('quicksales:activate')->assertSuccessful();
+
+        $this->assertSame(QuickSale::STATUS_EXPIRED, $quickSale->fresh()->status);
+        $branchProduct->refresh();
+        $this->assertNull($branchProduct->discount_type);
+        $this->assertNull($branchProduct->discount_amount);
+        $this->assertEquals(20, $branchProduct->getFinalPrice());
+    }
+
+    /** @test */
     public function user_with_permission_can_create_quick_sale_request()
     {
         $response = $this->actingAs($this->requester)
