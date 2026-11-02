@@ -12,6 +12,8 @@ use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SalesShift;
 use App\Models\User;
+use App\Support\SalesProfit;
+use App\Support\ShiftMoney;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -860,6 +862,65 @@ class DepositSaleTest extends TestCase
         $this->actingAs($cashier)->postJson("/api/sales/{$sale->id}/complete-deposit", [
             'payments' => [['payment_method_id' => $this->cashMethod->id, 'amount' => 500]],
         ], $this->headers())->assertStatus(200)->assertJsonPath('sale.status', 'completed');
+    }
+
+    public function test_finished_deposit_is_sold_on_the_shift_and_day_that_gave_the_item(): void
+    {
+        $startShift = $this->openShift('SHIFT-START');
+        $sale = $this->itemlessDeposit(600, $startShift);
+        // An older payment saved with no shift of its own counts on the sale's shift
+        Payment::create([
+            'sale_id' => $sale->id,
+            'shift_id' => null,
+            'payment_method_id' => $this->cashMethod->id,
+            'amount' => 400,
+            'payment_date' => now(),
+            'status' => 'completed',
+        ]);
+        $sale->update(['sale_date' => now()->subDays(2)]);
+        $this->actingAs($this->user)->putJson("/api/sales/{$sale->id}/deposit-items", [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 2]],
+        ], $this->headers())->assertStatus(200);
+        $startShift->update(['status' => 'closed', 'end_time' => now()]);
+
+        $cashier = $this->staffWith(['create sales', 'view sales']);
+        $handoverShift = SalesShift::create([
+            'shift_number' => 'SHIFT-HANDOVER',
+            'business_id' => $this->business->id,
+            'branch_id' => $this->branch->id,
+            'user_id' => $cashier->id,
+            'start_time' => now(),
+            'opening_balance' => 0,
+            'status' => 'open',
+        ]);
+        $total = (float) $sale->fresh()->total_amount;
+
+        $this->actingAs($cashier)->postJson("/api/sales/{$sale->id}/complete-deposit", [
+            'payments' => [['payment_method_id' => $this->cashMethod->id, 'amount' => $total - 1000]],
+        ], $this->headers())->assertStatus(200)->assertJsonPath('sale.status', 'completed');
+
+        $sale->refresh();
+        $this->assertSame($handoverShift->id, (int) $sale->shift_id);
+        $this->assertTrue($sale->sale_date->isToday());
+        $this->assertSame($startShift->id, (int) $sale->metadata['deposit_started_shift_id']);
+        $this->assertSame($handoverShift->id, (int) $sale->metadata['deposit_completed_shift_id']);
+
+        // Money stays on the shift that took it
+        $this->assertEquals(1000.0, $startShift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+        $this->assertEquals($total - 1000, $handoverShift->fresh()->computeMetricsFromShiftPayments()['cash_sales']);
+
+        // The item is sold on the handover shift
+        $handover = ShiftMoney::summary($handoverShift->fresh());
+        $this->assertEquals($total, $handover['items_sold']);
+        $this->assertEquals(1000, $handover['paid_on_other_shifts']);
+        $this->assertEquals(0, $handover['other_difference']);
+        $this->assertSame(1, SalesProfit::total(fn ($q) => $q->where('sales.shift_id', $handoverShift->id))['sales_count']);
+
+        $start = ShiftMoney::summary($startShift->fresh());
+        $this->assertEquals(0, $start['items_sold']);
+        $this->assertEquals(1000, $start['deposits_finished_later']);
+        $this->assertEquals(0, $start['other_difference']);
+        $this->assertSame('deposit_finished_later', ShiftMoney::row($sale->fresh('payments.paymentMethod'), $startShift)['kind']);
     }
 
     public function test_cancelling_a_deposit_gives_all_money_back(): void
