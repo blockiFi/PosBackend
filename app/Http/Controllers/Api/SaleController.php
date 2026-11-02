@@ -621,9 +621,12 @@ class SaleController extends Controller
             return response()->json(['message' => 'Choose an item for this deposit first'], 422);
         }
 
+        // The shift handing the item over: it takes any money paid now, and the sale itself
+        // (item value, profit, Section) is counted on it, on the day of handover.
+        $handoverShiftId = $this->resolveCurrentShiftIdForPayment($user, $businessId, $sale->branch_id);
         $paymentShiftId = null;
         if (! empty($validated['payments']) || ! empty($validated['change_payment_method_id'])) {
-            $paymentShiftId = $this->resolveCurrentShiftIdForPayment($user, $businessId, $sale->branch_id);
+            $paymentShiftId = $handoverShiftId;
             if ($paymentShiftId === null) {
                 return response()->json([
                     'message' => 'No open shift for this cashier on the sale\'s branch. Open a shift before recording a payment.',
@@ -771,6 +774,8 @@ class SaleController extends Controller
                     }
                 }
             }
+
+            $this->countDepositOnHandoverShift($sale, $handoverShiftId);
 
             $sale->status = 'completed';
             if (! empty($validated['closing_notes'])) {
@@ -1423,6 +1428,37 @@ class SaleController extends Controller
      * payments with the shift in which the cash was actually received (cash-basis
      * shift accounting).
      */
+    /**
+     * A finished deposit is sold when the item is handed over: move the sale to the shift and
+     * day of handover so Items sold, profit and Sales by section count it there. Money already
+     * paid stays on the shifts it was taken on (payments keep their own shift_id), and the
+     * shift/date the deposit was started on are kept in metadata.
+     */
+    private function countDepositOnHandoverShift(Sale $sale, ?int $handoverShiftId): void
+    {
+        $metadata = $sale->metadata ?? [];
+        $metadata['deposit_started_shift_id'] = $metadata['deposit_started_shift_id'] ?? $sale->shift_id;
+        $metadata['deposit_started_at'] = $metadata['deposit_started_at'] ?? optional($sale->sale_date)->toIso8601String();
+        $metadata['deposit_completed_shift_id'] = $handoverShiftId;
+        $sale->metadata = $metadata;
+        $sale->sale_date = now();
+
+        if ($handoverShiftId === null || (int) $sale->shift_id === $handoverShiftId) {
+            return;
+        }
+
+        // Payments with no shift of their own count on the sale's shift; pin them first so
+        // their money does not move with the sale.
+        $unpinned = Payment::where('sale_id', $sale->id)->whereNull('shift_id');
+        if ($sale->shift_id !== null) {
+            $unpinned->update(['shift_id' => $sale->shift_id]);
+        } elseif ($unpinned->exists()) {
+            return;
+        }
+
+        $sale->shift_id = $handoverShiftId;
+    }
+
     private function resolveCurrentShiftIdForPayment($user, $businessId, $branchId): ?int
     {
         $shift = SalesShift::forBusiness($businessId)
