@@ -62,6 +62,21 @@ class Product extends Model
                 $product->sku = static::generateSKU();
             }
         });
+
+        // Branch items without their own price use this one: record the change
+        // for them too (see BranchProductPriceChange)
+        static::updated(function ($product) {
+            if (! $product->wasChanged('base_selling_price')) {
+                return;
+            }
+            $old = (clone $product)->setRawAttributes($product->getRawOriginal());
+            $product->branchProducts()->whereNull('selling_price')->get()
+                ->each(function (BranchProduct $branchProduct) use ($product, $old) {
+                    $before = (clone $branchProduct)->setRelation('product', $old);
+                    $branchProduct->setRelation('product', $product);
+                    BranchProductPriceChange::recordChange($before, $branchProduct);
+                });
+        });
     }
 
     /**

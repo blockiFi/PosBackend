@@ -63,8 +63,9 @@ class TieredPricingService
             ];
         }
 
-        // 3) Default single-unit price
-        $unitPrice = (float) $branchProduct->getEffectiveSellingPrice();
+        // 3) Default single-unit price, with any running promotion discount
+        // (the price the till shows and the customer pays)
+        $unitPrice = (float) $branchProduct->getFinalPrice();
 
         return [
             'unit_price' => round($unitPrice, 2),
