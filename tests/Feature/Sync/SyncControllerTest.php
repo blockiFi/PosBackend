@@ -354,6 +354,23 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function pulled_items_carry_the_promotion_price(): void
+    {
+        $device = $this->registerDevice();
+        $this->createTestData();
+
+        $branchProduct = BranchProduct::where('branch_id', $this->branch->id)->first();
+        $this->ageCatalog();
+        $branchProduct->update(['discount_type' => 'percentage', 'discount_amount' => 20]);
+
+        $rows = $this->pullProductsSince(now()->subHour(), $device);
+
+        $row = $rows['changed']->firstWhere('product_id', $branchProduct->product_id);
+        $this->assertEquals(40, $row['pricing']['final_price']);
+        $this->assertEquals(50, $row['pricing']['selling_price']);
+    }
+
+    /** @test */
     public function paged_pulls_return_the_time_the_first_page_started(): void
     {
         $device = $this->registerDevice();

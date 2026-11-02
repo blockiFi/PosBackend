@@ -1515,6 +1515,17 @@ class SyncController extends Controller
             'price_with_tax' => $branchProduct->getPriceWithTax(),
             'profit_margin' => $branchProduct->getProfitMargin(),
             'quick_sale' => $quickSaleData,
+            // Tills read pricing.final_price first, so items on a promotion
+            // get the discounted price on every pull, the same as the full
+            // catalog download (which already sends this block)
+            'pricing' => [
+                'cost_price' => $branchProduct->cost_price,
+                'selling_price' => $branchProduct->selling_price,
+                'discount_amount' => $branchProduct->discount_amount,
+                'discount_type' => $branchProduct->discount_type,
+                'tax_rate' => $branchProduct->tax_rate,
+                'final_price' => $branchProduct->getFinalPrice(),
+            ],
 
             'stock_quantity' => $qty($branchProduct->stock_quantity),
             'shelf_quantity' => $qty($branchProduct->shelf_quantity),
