@@ -601,6 +601,16 @@ class SyncController extends Controller
 
         if ($device) {
             $device->updateLastSeen($request->ip());
+
+            // Tills send their app version on every heartbeat, so the dashboard's
+            // Devices page shows the new version within a minute of an update.
+            $appVersion = trim((string) $request->header('X-App-Version', ''));
+            $sameBusiness = ! $businessId || (int) $device->business_id === (int) $businessId;
+            if ($sameBusiness
+                && preg_match('/^\d+\.\d+\.\d+$/', $appVersion)
+                && $device->app_version !== $appVersion) {
+                $device->update(['app_version' => $appVersion]);
+            }
         }
 
         $pendingChanges = $device ? ChangeLog::where('business_id', $device->business_id)
