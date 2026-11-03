@@ -1224,6 +1224,40 @@ class SyncControllerTest extends TestCase
     }
 
     /** @test */
+    public function heartbeat_updates_the_devices_app_version()
+    {
+        $device = $this->registerDevice();
+        $device->update(['app_version' => '0.1.15']);
+
+        $this->postJson('/api/sync/heartbeat', [], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+            'X-App-Version' => '0.1.22',
+        ])->assertStatus(200);
+
+        $this->assertSame('0.1.22', $device->fresh()->app_version);
+    }
+
+    /** @test */
+    public function heartbeat_without_a_valid_app_version_keeps_the_old_one()
+    {
+        $device = $this->registerDevice();
+        $device->update(['app_version' => '0.1.15']);
+
+        $this->postJson('/api/sync/heartbeat', [], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+        ])->assertStatus(200);
+        $this->postJson('/api/sync/heartbeat', [], [
+            'X-Business-Id' => $this->business->id,
+            'X-Device-Id' => $device->device_id,
+            'X-App-Version' => 'not-a-version',
+        ])->assertStatus(200);
+
+        $this->assertSame('0.1.15', $device->fresh()->app_version);
+    }
+
+    /** @test */
     public function it_requires_authentication_for_sync_endpoints()
     {
         $response = $this->postJson('/api/sync/bootstrap', [
