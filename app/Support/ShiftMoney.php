@@ -108,6 +108,7 @@ final class ShiftMoney
             'unfinished_deposits' => 0.0, 'older_deposit_balances' => 0.0, 'paid_on_other_shifts' => 0.0,
             'deposits_finished_later' => 0.0,
             'sales_cash' => 0.0, 'sales_transfer_card' => 0.0, 'sales_paid_earlier' => 0.0, 'sales_total' => 0.0,
+            'deposits_collected_total' => 0.0, 'deposits_collected_count' => 0,
             'deposits_cash' => 0.0, 'deposits_transfer_card' => 0.0, 'deposits_total' => 0.0, 'deposits_count' => 0,
         ];
 
@@ -130,6 +131,8 @@ final class ShiftMoney
                 $earlier = max(0.0, $row['item_value'] - $row['received_on_shift']);
                 $totals['sales_paid_earlier'] += $earlier;
                 $totals['sales_total'] += $earlier;
+                $totals['deposits_collected_total'] += $row['item_value'];
+                $totals['deposits_collected_count']++;
             }
             if ($row['kind'] === 'sale' || $row['kind'] === 'deposit_done') {
                 $totals['items_sold'] += $row['item_value'];
@@ -196,14 +199,23 @@ final class ShiftMoney
 
         // Deposits finished (item handed over) on these shifts are sales here, at full price
         $finished = DB::table('sales')
+            ->leftJoin('customers', 'customers.id', '=', 'sales.customer_id')
             ->leftJoin('sales_shifts as sale_shift', 'sale_shift.id', '=', 'sales.shift_id')
             ->leftJoin('device_groups as sale_group', 'sale_group.id', '=', 'sale_shift.group_id')
             ->where('sales.sale_type', 'deposit')
             ->where('sales.status', 'completed')
             ->whereNull('sales.deleted_at')
             ->whereIn('sales.shift_id', $shiftIds->toBase())
-            ->get(['sales.id', 'sales.total_amount', 'sales.shift_id', 'sale_shift.group_id', 'sale_group.name as group_name'])
+            ->get([
+                'sales.id', 'sales.sale_number', 'sales.total_amount', 'sales.shift_id', 'sales.created_at',
+                'customers.name as customer_name', 'sale_shift.group_id', 'sale_group.name as group_name',
+            ])
             ->keyBy('id');
+        $items = DB::table('sale_items')
+            ->whereIn('sale_id', $finished->keys()->all())
+            ->orderBy('id')
+            ->get(['sale_id', 'product_name', 'quantity'])
+            ->groupBy('sale_id');
         $paidHere = [];
 
         $sections = [];
@@ -247,8 +259,20 @@ final class ShiftMoney
         }
 
         // The part of each finished deposit paid on earlier shifts (all of it if nothing was paid here)
+        $collected = [];
         foreach ($finished as $sale) {
             $earlier = max(0.0, (float) $sale->total_amount - ($paidHere[$sale->id] ?? 0.0));
+            $collected[] = [
+                'sale_number' => $sale->sale_number,
+                'customer_name' => $sale->customer_name,
+                'section_id' => $sale->group_id !== null ? (int) $sale->group_id : null,
+                'section_name' => $sale->group_name,
+                'items' => self::itemsLabel($items->get($sale->id, collect())),
+                'started_at' => $sale->created_at !== null ? \Illuminate\Support\Carbon::parse($sale->created_at)->toIso8601String() : null,
+                'total' => round((float) $sale->total_amount, 2),
+                'paid_today' => round($paidHere[$sale->id] ?? 0.0, 2),
+                'paid_earlier' => round($earlier, 2),
+            ];
             $key = $sale->group_id ?? 'none';
             $sections[$key] ??= self::emptySection($sale->group_id, $sale->group_name);
             $sections[$key]['paid_earlier'] += $earlier;
@@ -274,6 +298,7 @@ final class ShiftMoney
             'total' => round($row['total'], 2),
         ]))->sortByDesc('total')->values();
 
+        $collected = collect($collected)->sortByDesc('total')->values();
         $sum = fn ($rows, string $column) => round((float) $rows->sum($column), 2);
 
         return [
@@ -283,6 +308,17 @@ final class ShiftMoney
                 'transfer_card' => $sum($sections, 'transfer_card'),
                 'paid_earlier' => $sum($sections, 'paid_earlier'),
                 'total' => $sum($sections, 'total'),
+                // Sales = normal sales + deposits collected (item handed over) on these shifts
+                'normal' => round($sum($sections, 'total') - $sum($collected, 'total'), 2),
+                'from_deposits' => $sum($collected, 'total'),
+            ],
+            // Deposits whose item was handed over on these shifts, one row each
+            'deposits_collected' => [
+                'count' => $collected->count(),
+                'total' => $sum($collected, 'total'),
+                'paid_today' => $sum($collected, 'paid_today'),
+                'paid_earlier' => $sum($collected, 'paid_earlier'),
+                'rows' => $collected->all(),
             ],
             'deposits' => [
                 'cash' => $sum($deposits, 'cash'),
@@ -299,6 +335,19 @@ final class ShiftMoney
                 'deposits' => round($row['deposits'], 2),
             ])->all(),
         ];
+    }
+
+    /** "3 × KENTE GOLD, 1 × GYALE and 4 more" */
+    private static function itemsLabel(\Illuminate\Support\Collection $items): string
+    {
+        $names = $items->take(3)->map(function ($item) {
+            $quantity = (float) $item->quantity;
+            $quantity = floor($quantity) === $quantity ? (int) $quantity : $quantity;
+
+            return $quantity.' × '.$item->product_name;
+        })->implode(', ');
+
+        return $items->count() > 3 ? $names.' and '.($items->count() - 3).' more' : $names;
     }
 
     /** @return array<string, mixed> */

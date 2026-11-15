@@ -198,6 +198,9 @@ class ShiftMoneyTest extends TestCase
         $this->assertEquals(2, $sections['none']['sales_count']);
         $this->assertEquals(490060, $ledger['sales']['total']);
         $this->assertEquals(0, $ledger['sales']['paid_earlier']);
+        $this->assertEquals(260060, $ledger['sales']['normal']);
+        $this->assertEquals(['count' => 1, 'total' => 230000, 'paid_today' => 230000, 'paid_earlier' => 0],
+            collect($ledger['deposits_collected'])->except('rows')->all());
 
         $deposits = collect($ledger['deposits']['rows'])->keyBy('sale_number');
         $this->assertEquals(['DEP-2', 'DEP-3'], $deposits->keys()->sort()->values()->all());
@@ -218,10 +221,24 @@ class ShiftMoneyTest extends TestCase
 
         // The day of shift B alone: DEP-1 at full price, A's 100,000 as paid earlier
         $dayB = ShiftMoney::ledger(SalesShift::whereIn('id', [$shiftB->id]));
-        $this->assertEquals(['cash' => 60, 'transfer_card' => 130000, 'paid_earlier' => 100000, 'total' => 230060], $dayB['sales']);
+        $this->assertEquals(['cash' => 60, 'transfer_card' => 130000, 'paid_earlier' => 100000, 'total' => 230060, 'normal' => 60, 'from_deposits' => 230000], $dayB['sales']);
         $this->assertEquals(100000, $dayB['deposits']['total']);
         $this->assertEquals($b['money_received'], $dayB['money_received']);
         $this->assertEquals(['sales' => 230060, 'deposits' => 100000], $dayB['shifts'][$shiftB->id]);
+        // How the day adds up: normal sales + deposits collected = Sales
+        $this->assertEquals(60, $dayB['sales']['normal']);
+        $this->assertEquals(230000, $dayB['sales']['from_deposits']);
+        $this->assertEquals(1, $dayB['deposits_collected']['count']);
+        $collected = $dayB['deposits_collected']['rows'][0];
+        $this->assertEquals('DEP-1', $collected['sale_number']);
+        $this->assertEquals(230000, $collected['total']);
+        $this->assertEquals(130000, $collected['paid_today']);
+        $this->assertEquals(100000, $collected['paid_earlier']);
+        $this->assertEquals(1, $b['deposits_collected_count']);
+        $this->assertEquals(230000, $b['deposits_collected_total']);
+        $this->assertEquals(0, $a['deposits_collected_count']);
+        $this->assertEquals(0, $dayA['deposits_collected']['count']);
+        $this->assertEquals(260000, $dayA['sales']['normal']);
 
         // Shifts & Sales list carries the same ledger
         $this->actingAs($this->user)->getJson('/api/shifts?branch_id='.$this->branch->id, ['X-Business-Id' => $this->business->id])
@@ -252,7 +269,7 @@ class ShiftMoneyTest extends TestCase
         $this->assertEquals(0, $b['money_received']);
 
         $dayB = ShiftMoney::ledger(SalesShift::whereIn('id', [$shiftB->id]));
-        $this->assertEquals(['cash' => 0, 'transfer_card' => 0, 'paid_earlier' => 34000, 'total' => 34000], $dayB['sales']);
+        $this->assertEquals(['cash' => 0, 'transfer_card' => 0, 'paid_earlier' => 34000, 'total' => 34000, 'normal' => 0, 'from_deposits' => 34000], $dayB['sales']);
         $this->assertEquals(1, $dayB['sections'][0]['sales_count']);
         $this->assertEquals(0, $dayB['deposits']['total']);
         $this->assertEquals(0, $dayB['money_received']);
