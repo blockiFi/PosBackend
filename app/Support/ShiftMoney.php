@@ -23,9 +23,11 @@ use Illuminate\Support\Facades\DB;
  * A finished deposit counts as sold on the shift (and day) that handed the item over: complete-
  * deposit moves the sale there and keeps where it began in metadata.deposit_started_shift_id.
  *
- * - Ledger: money received split the way the store's handwritten book is kept. Normal sales go
- *   under their Section as cash / transfer+card; every naira paid on a deposit (first payment,
- *   top-ups and the final balance) goes in a separate Deposits line.
+ * - Ledger: money split the way the store's handwritten book is kept. Normal sales go under their
+ *   Section as cash / transfer+card. A deposit finished (item handed over) on the shift becomes a
+ *   sale there at full price: money paid for it on the shift goes in its cash / transfer+card, and
+ *   what was paid on earlier shifts goes in paid_earlier, so cash and transfer+card stay the money
+ *   actually taken. Money paid on deposits not finished on the shift goes in a separate Deposits line.
  */
 final class ShiftMoney
 {
@@ -105,7 +107,7 @@ final class ShiftMoney
             'items_sold' => 0.0, 'items_sold_count' => 0, 'rows_count' => 0,
             'unfinished_deposits' => 0.0, 'older_deposit_balances' => 0.0, 'paid_on_other_shifts' => 0.0,
             'deposits_finished_later' => 0.0,
-            'sales_cash' => 0.0, 'sales_transfer_card' => 0.0, 'sales_total' => 0.0,
+            'sales_cash' => 0.0, 'sales_transfer_card' => 0.0, 'sales_paid_earlier' => 0.0, 'sales_total' => 0.0,
             'deposits_cash' => 0.0, 'deposits_transfer_card' => 0.0, 'deposits_total' => 0.0, 'deposits_count' => 0,
         ];
 
@@ -113,7 +115,8 @@ final class ShiftMoney
             $row = self::row($sale, $shift);
             $totals['rows_count']++;
             $totals['money_received'] += $row['received_on_shift'];
-            $line = self::isDeposit($sale) ? 'deposits' : 'sales';
+            $finishedHere = self::isDeposit($sale) && $row['kind'] === 'deposit_done';
+            $line = self::isDeposit($sale) && ! $finishedHere ? 'deposits' : 'sales';
             foreach ($row['received_methods'] as $part) {
                 $totals[$part['type']] += $part['amount'];
                 $totals[$line.($part['type'] === 'cash' ? '_cash' : '_transfer_card')] += $part['amount'];
@@ -121,6 +124,12 @@ final class ShiftMoney
             }
             if ($line === 'deposits' && $row['received_methods'] !== []) {
                 $totals['deposits_count']++;
+            }
+            if ($finishedHere) {
+                // The rest of the item's price was paid on earlier shifts
+                $earlier = max(0.0, $row['item_value'] - $row['received_on_shift']);
+                $totals['sales_paid_earlier'] += $earlier;
+                $totals['sales_total'] += $earlier;
             }
             if ($row['kind'] === 'sale' || $row['kind'] === 'deposit_done') {
                 $totals['items_sold'] += $row['item_value'];
@@ -160,6 +169,7 @@ final class ShiftMoney
     public static function ledger(Builder $shifts): array
     {
         $shiftIds = (clone $shifts)->reorder()->select('sales_shifts.id');
+        $inPeriod = array_flip(array_map('intval', (clone $shiftIds)->toBase()->pluck('id')->all()));
 
         $payments = DB::table('payments')
             ->join('sales', 'sales.id', '=', 'payments.sale_id')
@@ -181,8 +191,20 @@ final class ShiftMoney
                 'sales.id as sale_id', 'sales.sale_number', 'sales.sale_type', 'sales.status as sale_status',
                 'customers.name as customer_name', 'sales_shifts.group_id', 'device_groups.name as group_name',
                 'sale_shift.group_id as sale_group_id', 'sale_group.name as sale_group_name',
-                'sales_shifts.id as paid_on_shift_id',
+                'sales_shifts.id as paid_on_shift_id', 'sales.shift_id as sale_shift_id',
             ]);
+
+        // Deposits finished (item handed over) on these shifts are sales here, at full price
+        $finished = DB::table('sales')
+            ->leftJoin('sales_shifts as sale_shift', 'sale_shift.id', '=', 'sales.shift_id')
+            ->leftJoin('device_groups as sale_group', 'sale_group.id', '=', 'sale_shift.group_id')
+            ->where('sales.sale_type', 'deposit')
+            ->where('sales.status', 'completed')
+            ->whereNull('sales.deleted_at')
+            ->whereIn('sales.shift_id', $shiftIds->toBase())
+            ->get(['sales.id', 'sales.total_amount', 'sales.shift_id', 'sale_shift.group_id', 'sale_group.name as group_name'])
+            ->keyBy('id');
+        $paidHere = [];
 
         $sections = [];
         $deposits = [];
@@ -190,11 +212,19 @@ final class ShiftMoney
         foreach ($payments as $payment) {
             $amount = (float) $payment->amount;
             $column = $payment->method_type === 'cash' ? 'cash' : 'transfer_card';
-            $line = $payment->sale_type === 'deposit' ? 'deposits' : 'sales';
+            $finishedHere = $finished->has($payment->sale_id);
+            $line = $payment->sale_type === 'deposit' && ! $finishedHere ? 'deposits' : 'sales';
             $byShift[$payment->paid_on_shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0];
             $byShift[$payment->paid_on_shift_id][$line] += $amount;
 
-            if ($payment->sale_type === 'deposit') {
+            if ($finishedHere) {
+                $paidHere[$payment->sale_id] = ($paidHere[$payment->sale_id] ?? 0.0) + $amount;
+                // Under the Section of the till that handed the item over
+                $payment->group_id = $payment->sale_group_id;
+                $payment->group_name = $payment->sale_group_name;
+            }
+
+            if ($line === 'deposits') {
                 $deposits[$payment->sale_id] ??= [
                     'sale_number' => $payment->sale_number,
                     'customer_name' => $payment->customer_name,
@@ -210,14 +240,22 @@ final class ShiftMoney
             }
 
             $key = $payment->group_id ?? 'none';
-            $sections[$key] ??= [
-                'section_id' => $payment->group_id !== null ? (int) $payment->group_id : null,
-                'section_name' => $payment->group_name,
-                'cash' => 0.0, 'transfer_card' => 0.0, 'total' => 0.0, 'sales_ids' => [],
-            ];
+            $sections[$key] ??= self::emptySection($payment->group_id, $payment->group_name);
             $sections[$key][$column] += $amount;
             $sections[$key]['total'] += $amount;
             $sections[$key]['sales_ids'][$payment->sale_id] = true;
+        }
+
+        // The part of each finished deposit paid on earlier shifts (all of it if nothing was paid here)
+        foreach ($finished as $sale) {
+            $earlier = max(0.0, (float) $sale->total_amount - ($paidHere[$sale->id] ?? 0.0));
+            $key = $sale->group_id ?? 'none';
+            $sections[$key] ??= self::emptySection($sale->group_id, $sale->group_name);
+            $sections[$key]['paid_earlier'] += $earlier;
+            $sections[$key]['total'] += $earlier;
+            $sections[$key]['sales_ids'][$sale->id] = true;
+            $byShift[$sale->shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0];
+            $byShift[$sale->shift_id]['sales'] += $earlier;
         }
 
         $sections = collect($sections)->map(fn (array $row) => [
@@ -226,6 +264,7 @@ final class ShiftMoney
             'sales_count' => count($row['sales_ids']),
             'cash' => round($row['cash'], 2),
             'transfer_card' => round($row['transfer_card'], 2),
+            'paid_earlier' => round($row['paid_earlier'], 2),
             'total' => round($row['total'], 2),
         ])->sortBy(fn (array $row) => [$row['section_name'] === null ? 1 : 0, $row['section_name']])->values();
 
@@ -239,7 +278,12 @@ final class ShiftMoney
 
         return [
             'sections' => $sections->all(),
-            'sales' => ['cash' => $sum($sections, 'cash'), 'transfer_card' => $sum($sections, 'transfer_card'), 'total' => $sum($sections, 'total')],
+            'sales' => [
+                'cash' => $sum($sections, 'cash'),
+                'transfer_card' => $sum($sections, 'transfer_card'),
+                'paid_earlier' => $sum($sections, 'paid_earlier'),
+                'total' => $sum($sections, 'total'),
+            ],
             'deposits' => [
                 'cash' => $sum($deposits, 'cash'),
                 'transfer_card' => $sum($deposits, 'transfer_card'),
@@ -247,12 +291,23 @@ final class ShiftMoney
                 'count' => $deposits->count(),
                 'rows' => $deposits->all(),
             ],
-            'money_received' => round($sum($sections, 'total') + $sum($deposits, 'total'), 2),
+            // Money actually taken on these shifts: not what was paid earlier for finished deposits
+            'money_received' => round($sum($sections, 'cash') + $sum($sections, 'transfer_card') + $sum($deposits, 'total'), 2),
             // Sales vs deposits for each shift, keyed by shift id, for the Shifts & Sales rows
             'shifts' => collect($byShift)->map(fn (array $row) => [
                 'sales' => round($row['sales'], 2),
                 'deposits' => round($row['deposits'], 2),
             ])->all(),
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private static function emptySection(mixed $groupId, ?string $groupName): array
+    {
+        return [
+            'section_id' => $groupId !== null ? (int) $groupId : null,
+            'section_name' => $groupName,
+            'cash' => 0.0, 'transfer_card' => 0.0, 'paid_earlier' => 0.0, 'total' => 0.0, 'sales_ids' => [],
         ];
     }
 
