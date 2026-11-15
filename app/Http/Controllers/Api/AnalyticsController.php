@@ -11,6 +11,7 @@ use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Support\ReportingTimezone;
 use App\Support\SalesProfit;
+use App\Support\ShiftMoney;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -752,6 +753,63 @@ class AnalyticsController extends Controller
      * Dates are inclusive local days, like the other analytics endpoints. Sales from tills
      * that are not in a section come back as one row with section_id null.
      */
+    /**
+     * Deposits whose item was handed over in the period (completed deposit sales by sale_date,
+     * the same sales Items sold counts), with what was paid inside the period and before it.
+     *
+     * @param  array<int, int>|null  $branchIds
+     * @param  array{0: mixed, 1: mixed}  $bounds  UTC start and end
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function depositsCollected(int $businessId, ?array $branchIds, array $bounds)
+    {
+        $sales = DB::table('sales')
+            ->leftJoin('sales_shifts as shifts', 'shifts.id', '=', 'sales.shift_id')
+            ->leftJoin('device_groups', 'device_groups.id', '=', 'shifts.group_id')
+            ->leftJoin('customers', 'customers.id', '=', 'sales.customer_id')
+            ->where('sales.business_id', $businessId)
+            ->where('sales.sale_type', 'deposit')
+            ->where('sales.status', 'completed')
+            ->whereNull('sales.deleted_at')
+            ->whereBetween('sales.sale_date', $bounds)
+            ->when($branchIds !== null, fn ($q) => $q->whereIn('sales.branch_id', $branchIds))
+            ->get([
+                'sales.id', 'sales.sale_number', 'sales.total_amount', 'customers.name as customer_name',
+                'shifts.group_id', 'device_groups.name as group_name',
+            ]);
+        if ($sales->isEmpty()) {
+            return collect();
+        }
+
+        $ids = $sales->pluck('id')->all();
+        $paidInPeriod = DB::table('payments')
+            ->whereIn('sale_id', $ids)
+            ->where('status', 'completed')
+            ->whereNull('deleted_at')
+            ->whereBetween('payment_date', $bounds)
+            ->groupBy('sale_id')
+            ->selectRaw('sale_id, SUM(amount) as amount')
+            ->pluck('amount', 'sale_id');
+        $items = DB::table('sale_items')->whereIn('sale_id', $ids)->orderBy('id')
+            ->get(['sale_id', 'product_name', 'quantity'])->groupBy('sale_id');
+
+        return $sales->map(function ($sale) use ($paidInPeriod, $items) {
+            $total = (float) $sale->total_amount;
+            $now = min($total, (float) ($paidInPeriod[$sale->id] ?? 0));
+
+            return [
+                'sale_number' => $sale->sale_number,
+                'customer_name' => $sale->customer_name,
+                'section_id' => $sale->group_id !== null ? (int) $sale->group_id : null,
+                'section_name' => $sale->group_name,
+                'items' => ShiftMoney::itemsLabel($items->get($sale->id, collect())),
+                'total' => round($total, 2),
+                'paid_today' => round($now, 2),
+                'paid_earlier' => round($total - $now, 2),
+            ];
+        })->sortByDesc('total')->values();
+    }
+
     public function sectionAnalytics(Request $request)
     {
         $user = $request->user();
@@ -808,9 +866,12 @@ class AnalyticsController extends Controller
                 ->keyBy('id');
 
             $totalRevenue = $rows->sum('revenue');
+            $collected = $this->depositsCollected($businessId, $branchIds, $bounds);
+            $collectedBySection = $collected->groupBy(fn (array $row) => (string) ($row['section_id'] ?? ''));
 
-            $sections = $rows->map(function (array $row, string $groupId) use ($groups, $totalRevenue) {
+            $sections = $rows->map(function (array $row, string $groupId) use ($groups, $totalRevenue, $collectedBySection) {
                 $group = $groupId === '' ? null : $groups->get((int) $groupId);
+                $fromDeposits = $collectedBySection->get($groupId, collect());
 
                 return [
                     'section_id' => $group?->id,
@@ -819,6 +880,9 @@ class AnalyticsController extends Controller
                     'branch_name' => $group?->branch?->name,
                     'sales_count' => $row['sales_count'],
                     'revenue' => $row['revenue'],
+                    // Part of revenue that is deposits collected (item handed over) in the period
+                    'deposits_collected_count' => $fromDeposits->count(),
+                    'deposits_collected_total' => round((float) $fromDeposits->sum('total'), 2),
                     'cost' => $row['cost'],
                     'profit' => $row['profit'],
                     'items_without_cost' => $row['items_without_cost'],
@@ -832,6 +896,15 @@ class AnalyticsController extends Controller
                     'end_date' => $endDate->format('Y-m-d'),
                 ],
                 'sections' => $sections,
+                // Items sold = normal sales + deposits collected in the period
+                'normal_sales' => round($totalRevenue - (float) $collected->sum('total'), 2),
+                'deposits_collected' => [
+                    'count' => $collected->count(),
+                    'total' => round((float) $collected->sum('total'), 2),
+                    'paid_today' => round((float) $collected->sum('paid_today'), 2),
+                    'paid_earlier' => round((float) $collected->sum('paid_earlier'), 2),
+                    'rows' => $collected->values()->all(),
+                ],
             ]);
         });
     }

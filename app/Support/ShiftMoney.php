@@ -338,7 +338,7 @@ final class ShiftMoney
     }
 
     /** "3 × KENTE GOLD, 1 × GYALE and 4 more" */
-    private static function itemsLabel(\Illuminate\Support\Collection $items): string
+    public static function itemsLabel(\Illuminate\Support\Collection $items): string
     {
         $names = $items->take(3)->map(function ($item) {
             $quantity = (float) $item->quantity;
