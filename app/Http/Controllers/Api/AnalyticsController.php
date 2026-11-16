@@ -10,6 +10,7 @@ use App\Models\DeviceGroup;
 use App\Models\Sale;
 use App\Models\SaleItem;
 use App\Support\ReportingTimezone;
+use App\Support\SaleReturns;
 use App\Support\SalesProfit;
 use App\Support\ShiftMoney;
 use Carbon\Carbon;
@@ -810,6 +811,39 @@ class AnalyticsController extends Controller
         })->sortByDesc('total')->values();
     }
 
+    /**
+     * Returns and swaps in the period by section (the devices they were done at): how many, the
+     * price of what came back and of what went out on swaps. Keyed by group id ('' for none).
+     *
+     * @param  array<int, int>|null  $branchIds
+     * @param  array{0: mixed, 1: mixed}  $bounds  UTC start and end
+     * @return \Illuminate\Support\Collection<string, array{count: int, returned_value: float, new_value: float}>
+     */
+    private function returnsInPeriod(int $businessId, ?array $branchIds, array $bounds)
+    {
+        return DB::table('sale_items')
+            ->join('sales', 'sales.id', '=', 'sale_items.sale_id')
+            ->leftJoin('sales_shifts as shifts', 'shifts.id', '=', 'sales.shift_id')
+            ->where('sales.business_id', $businessId)
+            ->where('sales.sale_type', SaleReturns::TYPE)
+            ->where('sales.status', 'completed')
+            ->whereNull('sales.deleted_at')
+            ->whereBetween('sales.sale_date', $bounds)
+            ->when($branchIds !== null, fn ($q) => $q->whereIn('sales.branch_id', $branchIds))
+            ->groupBy('shifts.group_id')
+            ->selectRaw(
+                'shifts.group_id as group_key, COUNT(DISTINCT sales.id) as count,'.
+                ' COALESCE(SUM(CASE WHEN sale_items.quantity < 0 THEN -sale_items.total ELSE 0 END), 0) as returned_value,'.
+                ' COALESCE(SUM(CASE WHEN sale_items.quantity > 0 THEN sale_items.total ELSE 0 END), 0) as new_value'
+            )
+            ->get()
+            ->mapWithKeys(fn ($row) => [(string) ($row->group_key ?? '') => [
+                'count' => (int) $row->count,
+                'returned_value' => (float) $row->returned_value,
+                'new_value' => (float) $row->new_value,
+            ]]);
+    }
+
     public function sectionAnalytics(Request $request)
     {
         $user = $request->user();
@@ -868,10 +902,13 @@ class AnalyticsController extends Controller
             $totalRevenue = $rows->sum('revenue');
             $collected = $this->depositsCollected($businessId, $branchIds, $bounds);
             $collectedBySection = $collected->groupBy(fn (array $row) => (string) ($row['section_id'] ?? ''));
+            $returns = $this->returnsInPeriod($businessId, $branchIds, $bounds);
+            $returnsNet = round((float) $returns->sum('new_value') - (float) $returns->sum('returned_value'), 2);
 
-            $sections = $rows->map(function (array $row, string $groupId) use ($groups, $totalRevenue, $collectedBySection) {
+            $sections = $rows->map(function (array $row, string $groupId) use ($groups, $totalRevenue, $collectedBySection, $returns) {
                 $group = $groupId === '' ? null : $groups->get((int) $groupId);
                 $fromDeposits = $collectedBySection->get($groupId, collect());
+                $sectionReturns = $returns->get($groupId);
 
                 return [
                     'section_id' => $group?->id,
@@ -883,6 +920,10 @@ class AnalyticsController extends Controller
                     // Part of revenue that is deposits collected (item handed over) in the period
                     'deposits_collected_count' => $fromDeposits->count(),
                     'deposits_collected_total' => round((float) $fromDeposits->sum('total'), 2),
+                    // Returns done at this section's devices: what came back, and what went out on swaps
+                    'returns_count' => (int) ($sectionReturns['count'] ?? 0),
+                    'returns_value' => round((float) ($sectionReturns['returned_value'] ?? 0), 2),
+                    'swaps_value' => round((float) ($sectionReturns['new_value'] ?? 0), 2),
                     'cost' => $row['cost'],
                     'profit' => $row['profit'],
                     'items_without_cost' => $row['items_without_cost'],
@@ -896,8 +937,14 @@ class AnalyticsController extends Controller
                     'end_date' => $endDate->format('Y-m-d'),
                 ],
                 'sections' => $sections,
-                // Items sold = normal sales + deposits collected in the period
-                'normal_sales' => round($totalRevenue - (float) $collected->sum('total'), 2),
+                // Items sold = normal sales + deposits collected - items returned + items given on swaps
+                'normal_sales' => round($totalRevenue - (float) $collected->sum('total') - $returnsNet, 2),
+                'returns' => [
+                    'count' => (int) $returns->sum('count'),
+                    'returned_value' => round((float) $returns->sum('returned_value'), 2),
+                    'swaps_value' => round((float) $returns->sum('new_value'), 2),
+                    'net' => $returnsNet,
+                ],
                 'deposits_collected' => [
                     'count' => $collected->count(),
                     'total' => round((float) $collected->sum('total'), 2),
@@ -956,7 +1003,10 @@ class AnalyticsController extends Controller
             ->where('status', 'completed')
             ->whereBetween('sale_date', ReportingTimezone::utcBounds($startDate, $endDate))
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->selectRaw('COUNT(*) as txn_count, COALESCE(SUM(total_amount), 0) as revenue')
+            // Returns take their money off revenue on the day they happen but are not sales
+            ->selectRaw(
+                "SUM(CASE WHEN sale_type = '".SaleReturns::TYPE."' THEN 0 ELSE 1 END) as txn_count, COALESCE(SUM(total_amount), 0) as revenue"
+            )
             ->first();
 
         $transactionCount = (int) ($salesAgg->txn_count ?? 0);
