@@ -1025,6 +1025,8 @@ class SalesShiftController extends Controller
             return [
                 'id' => $sale->id,
                 'sale_number' => $sale->sale_number,
+                // On a return: the number of the sale it came from
+                'reference_id' => $sale->reference_id,
                 'total' => (float) $sale->total_amount,
                 'subtotal' => (float) $sale->subtotal,
                 'tax' => (float) $sale->tax_amount,

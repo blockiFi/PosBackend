@@ -22,6 +22,7 @@ use App\Http\Controllers\Api\QuickSaleController;
 use App\Http\Controllers\Api\RefundRequestController;
 use App\Http\Controllers\Api\RolePermissionController;
 use App\Http\Controllers\Api\SaleController;
+use App\Http\Controllers\Api\SaleReturnController;
 use App\Http\Controllers\Api\SalesShiftController;
 use App\Http\Controllers\Api\SeedController;
 use App\Http\Controllers\Api\ShelfStoreMoveRequestController;
@@ -305,6 +306,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::post('stock-writeoffs', [StockWriteoffController::class, 'store']);
         Route::post('stock-writeoffs/writeoff-batch', [StockWriteoffController::class, 'writeOffBatch']);
         Route::get('stock-writeoffs/{id}', [StockWriteoffController::class, 'show']);
+
+        // Returns and swaps on the cashier's device, approved with a manager's own PIN
+        Route::get('returns', [SaleReturnController::class, 'index']);
+        Route::post('returns', [SaleReturnController::class, 'store']);
+        Route::get('returns/sales', [SaleReturnController::class, 'searchSales']);
+        Route::get('returns/sales/{id}', [SaleReturnController::class, 'showSale'])->whereNumber('id');
+        Route::post('returns/manager-pin', [SaleReturnController::class, 'checkManagerPin']);
 
         // Refund Request routes (workflow system)
         Route::get('refund-requests', [RefundRequestController::class, 'index']);

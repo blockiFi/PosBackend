@@ -28,6 +28,8 @@ use Illuminate\Support\Facades\DB;
  *   sale there at full price: money paid for it on the shift goes in its cash / transfer+card, and
  *   what was paid on earlier shifts goes in paid_earlier, so cash and transfer+card stay the money
  *   actually taken. Money paid on deposits not finished on the shift goes in a separate Deposits line.
+ *   Money given back for returned items goes in a separate Returns line (see SaleReturns); money a
+ *   customer paid more on a swap is a normal sale of the new item.
  */
 final class ShiftMoney
 {
@@ -68,6 +70,9 @@ final class ShiftMoney
             $kind = 'cancelled';
         } elseif ($sale->status === 'refunded') {
             $kind = 'refunded';
+        } elseif ($sale->sale_type === SaleReturns::TYPE) {
+            // Items brought back (and maybe swapped) on this shift, approved by a manager
+            $kind = 'return';
         } elseif (! $ownShift && self::startedOn($sale, $shift)) {
             // Deposit taken here, item handed over (and sold) on a later shift
             $kind = 'deposit_finished_later';
@@ -110,6 +115,9 @@ final class ShiftMoney
             'sales_cash' => 0.0, 'sales_transfer_card' => 0.0, 'sales_paid_earlier' => 0.0, 'sales_total' => 0.0,
             'deposits_collected_total' => 0.0, 'deposits_collected_count' => 0,
             'deposits_cash' => 0.0, 'deposits_transfer_card' => 0.0, 'deposits_total' => 0.0, 'deposits_count' => 0,
+            // Returns: money given back (a plus number here), the price of what came back, swaps paid more
+            'returns_cash' => 0.0, 'returns_transfer_card' => 0.0, 'returns_total' => 0.0, 'returns_count' => 0,
+            'returns_value' => 0.0, 'returns_paid_more' => 0.0,
         ];
 
         foreach (self::salesQuery($shift)->get() as $sale) {
@@ -120,8 +128,22 @@ final class ShiftMoney
             $line = self::isDeposit($sale) && ! $finishedHere ? 'deposits' : 'sales';
             foreach ($row['received_methods'] as $part) {
                 $totals[$part['type']] += $part['amount'];
-                $totals[$line.($part['type'] === 'cash' ? '_cash' : '_transfer_card')] += $part['amount'];
-                $totals[$line.'_total'] += $part['amount'];
+                $partLine = $line;
+                $amount = $part['amount'];
+                if ($row['kind'] === 'return' && $amount < 0) {
+                    $partLine = 'returns';
+                    $amount = -$amount;
+                } elseif ($row['kind'] === 'return') {
+                    $totals['returns_paid_more'] += $amount;
+                }
+                $totals[$partLine.($part['type'] === 'cash' ? '_cash' : '_transfer_card')] += $amount;
+                $totals[$partLine.'_total'] += $amount;
+            }
+            if ($row['kind'] === 'return') {
+                // Its minus lines take what came back off Items sold, its new lines add the swap
+                $totals['items_sold'] += $row['item_value'];
+                $totals['returns_count']++;
+                $totals['returns_value'] += SaleReturns::returnedValue($sale);
             }
             if ($line === 'deposits' && $row['received_methods'] !== []) {
                 $totals['deposits_count']++;
@@ -221,12 +243,24 @@ final class ShiftMoney
         $sections = [];
         $deposits = [];
         $byShift = [];
+        $returnMoney = [];
         foreach ($payments as $payment) {
             $amount = (float) $payment->amount;
             $column = $payment->method_type === 'cash' ? 'cash' : 'transfer_card';
             $finishedHere = $finished->has($payment->sale_id);
             $line = $payment->sale_type === 'deposit' && ! $finishedHere ? 'deposits' : 'sales';
-            $byShift[$payment->paid_on_shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0];
+            $byShift[$payment->paid_on_shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0, 'returns' => 0.0];
+
+            if ($payment->sale_type === SaleReturns::TYPE && $amount < 0) {
+                // Money given back for returned items: its own line, never taken off a Section
+                $returnMoney[$payment->sale_id] ??= ['cash' => 0.0, 'transfer_card' => 0.0, 'total' => 0.0];
+                $returnMoney[$payment->sale_id][$column] -= $amount;
+                $returnMoney[$payment->sale_id]['total'] -= $amount;
+                $byShift[$payment->paid_on_shift_id]['returns'] -= $amount;
+
+                continue;
+            }
+
             $byShift[$payment->paid_on_shift_id][$line] += $amount;
 
             if ($finishedHere) {
@@ -278,7 +312,7 @@ final class ShiftMoney
             $sections[$key]['paid_earlier'] += $earlier;
             $sections[$key]['total'] += $earlier;
             $sections[$key]['sales_ids'][$sale->id] = true;
-            $byShift[$sale->shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0];
+            $byShift[$sale->shift_id] ??= ['sales' => 0.0, 'deposits' => 0.0, 'returns' => 0.0];
             $byShift[$sale->shift_id]['sales'] += $earlier;
         }
 
@@ -300,6 +334,40 @@ final class ShiftMoney
 
         $collected = collect($collected)->sortByDesc('total')->values();
         $sum = fn ($rows, string $column) => round((float) $rows->sum($column), 2);
+
+        // Returns and swaps done on these shifts, one row each (a swap at the same price too)
+        $returns = Sale::query()
+            ->where('sale_type', SaleReturns::TYPE)
+            ->whereIn('shift_id', (clone $shiftIds)->toBase())
+            ->with(['items', 'shift.group', 'user:id,name'])
+            ->orderBy('sale_date')
+            ->get()
+            ->map(function (Sale $return) use ($returnMoney) {
+                $row = SaleReturns::present($return);
+                $money = $returnMoney[$return->id] ?? ['cash' => 0.0, 'transfer_card' => 0.0, 'total' => 0.0];
+
+                return [
+                    'return_number' => $row['return_number'],
+                    'sale_number' => $row['of_sale']['sale_number'],
+                    'kind' => $row['kind'],
+                    'section_name' => $row['shift']['section'] ?? null,
+                    'cashier_name' => $row['cashier']['name'] ?? null,
+                    'manager_name' => $row['manager']['name'] ?? null,
+                    'items_back' => self::itemsLabel(collect($row['items_back'])->map(fn ($l) => (object) [
+                        'product_name' => $l['name'], 'quantity' => $l['quantity'],
+                    ])),
+                    'items_out' => self::itemsLabel(collect($row['items_out'])->map(fn ($l) => (object) [
+                        'product_name' => $l['name'], 'quantity' => $l['quantity'],
+                    ])),
+                    'returned_value' => $row['returned_value'],
+                    'paid_more' => $row['money_in'],
+                    'cash' => round($money['cash'], 2),
+                    'transfer_card' => round($money['transfer_card'], 2),
+                    'total' => round($money['total'], 2),
+                    'created_at' => $row['created_at'],
+                ];
+            })
+            ->values();
 
         return [
             'sections' => $sections->all(),
@@ -327,12 +395,27 @@ final class ShiftMoney
                 'count' => $deposits->count(),
                 'rows' => $deposits->all(),
             ],
-            // Money actually taken on these shifts: not what was paid earlier for finished deposits
-            'money_received' => round($sum($sections, 'cash') + $sum($sections, 'transfer_card') + $sum($deposits, 'total'), 2),
-            // Sales vs deposits for each shift, keyed by shift id, for the Shifts & Sales rows
+            // Money given back for returned items on these shifts (a plus number), one row per return
+            'returns' => [
+                'cash' => $sum($returns, 'cash'),
+                'transfer_card' => $sum($returns, 'transfer_card'),
+                'total' => $sum($returns, 'total'),
+                'count' => $returns->count(),
+                'returned_value' => $sum($returns, 'returned_value'),
+                'paid_more' => $sum($returns, 'paid_more'),
+                'rows' => $returns->all(),
+            ],
+            // Money actually taken on these shifts: not what was paid earlier for finished deposits,
+            // less money given back for returns
+            'money_received' => round(
+                $sum($sections, 'cash') + $sum($sections, 'transfer_card') + $sum($deposits, 'total') - $sum($returns, 'total'),
+                2
+            ),
+            // Sales vs deposits vs returns for each shift, keyed by shift id, for the Shifts & Sales rows
             'shifts' => collect($byShift)->map(fn (array $row) => [
                 'sales' => round($row['sales'], 2),
                 'deposits' => round($row['deposits'], 2),
+                'returns' => round($row['returns'], 2),
             ])->all(),
         ];
     }
