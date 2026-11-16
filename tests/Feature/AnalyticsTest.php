@@ -606,6 +606,54 @@ class AnalyticsTest extends TestCase
         $this->assertEquals('40.00', $data['current']['margin_percentage']);
     }
 
+    /** @test */
+    public function section_analytics_lists_deposits_collected_inside_items_sold()
+    {
+        $this->createSalesData($this->branch1, 2, 100);
+        $clothing = \App\Models\DeviceGroup::create([
+            'business_id' => $this->business->id, 'branch_id' => $this->branch1->id, 'name' => 'CLOTHING', 'code' => 'CLO', 'is_active' => true,
+        ]);
+        $shift = \App\Models\SalesShift::create([
+            'shift_number' => 'SHIFT-DEP', 'business_id' => $this->business->id, 'branch_id' => $this->branch1->id,
+            'user_id' => $this->user->id, 'group_id' => $clothing->id, 'start_time' => now()->subHour(),
+            'opening_balance' => 0, 'status' => 'open',
+        ]);
+        $customer = \App\Models\Customer::create(['business_id' => $this->business->id, 'customer_code' => 'C-1', 'name' => 'AUWAL', 'phone' => '08000000000']);
+        $deposit = $this->createSale($this->branch1, 34000);
+        $deposit->update(['sale_type' => 'deposit', 'shift_id' => $shift->id, 'customer_id' => $customer->id, 'sale_number' => 'DEP-1']);
+        SaleItem::create([
+            'sale_id' => $deposit->id, 'product_id' => $this->product1->id, 'product_name' => 'PRESIDENT PLUS',
+            'quantity' => 4, 'unit_price' => 8500, 'subtotal' => 34000, 'total' => 34000,
+        ]);
+        $method = \App\Models\PaymentMethod::create(['business_id' => $this->business->id, 'name' => 'Cash', 'type' => 'cash', 'is_active' => true]);
+        foreach ([[31000, now()->subDays(25)], [3000, now()]] as [$amount, $paidAt]) {
+            \App\Models\Payment::create([
+                'business_id' => $this->business->id, 'sale_id' => $deposit->id, 'payment_method_id' => $method->id,
+                'amount' => $amount, 'payment_date' => $paidAt, 'status' => 'completed',
+            ]);
+        }
+
+        $today = now()->format('Y-m-d');
+        $data = $this->actingAs($this->user)->getJson("/api/analytics/sections?start_date={$today}&end_date={$today}", [
+            'X-Business-Id' => $this->business->id,
+        ])->assertOk()->json();
+
+        $this->assertEquals(200, $data['normal_sales']);
+        $this->assertEquals(1, $data['deposits_collected']['count']);
+        $this->assertEquals(34000, $data['deposits_collected']['total']);
+        $row = $data['deposits_collected']['rows'][0];
+        $this->assertEquals('AUWAL', $row['customer_name']);
+        $this->assertEquals('CLOTHING', $row['section_name']);
+        $this->assertEquals('4 × PRESIDENT PLUS', $row['items']);
+        $this->assertEquals(3000, $row['paid_today']);
+        $this->assertEquals(31000, $row['paid_earlier']);
+        $sections = collect($data['sections'])->keyBy(fn ($s) => $s['section_name'] ?? 'none');
+        $this->assertEquals(34000, $sections['CLOTHING']['revenue']);
+        $this->assertEquals(34000, $sections['CLOTHING']['deposits_collected_total']);
+        $this->assertEquals(1, $sections['CLOTHING']['deposits_collected_count']);
+        $this->assertEquals(0, $sections['none']['deposits_collected_total']);
+    }
+
     // Helper Methods
 
     protected function createSalesData($branch, $count, $amount, $date = null)
